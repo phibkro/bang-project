@@ -235,3 +235,51 @@ describe("Core cross-theory bridge contracts", () => {
     expect(error.message).toContain(diagnostic);
   });
 });
+
+describe("Core recursive algebraic data contracts", () => {
+  test("accepts the recursive BridgeTerm dogfood declaration", async () => {
+    const text = await Bun.file("examples/bang-core/bridge-term-data.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const validated = Effect.runSync(validateCore(document));
+
+    expect(validated.declarations[0]?.id).toBe("BridgeTerm");
+  });
+
+  test.each([
+    [
+      "duplicate constructor tag",
+      "examples/core-fixtures/invalid/duplicate-data-constructor.json",
+      "data DuplicateConstructor constructors contains duplicate identity value",
+    ],
+    [
+      "duplicate constructor field",
+      "examples/core-fixtures/invalid/duplicate-data-field.json",
+      "constructor DuplicateField.value fields contains duplicate identity item",
+    ],
+    [
+      "unknown data reference",
+      "examples/core-fixtures/invalid/unknown-data-reference.json",
+      "data UnknownReference constructor value field missing references unknown data MissingData",
+    ],
+    [
+      "constructor field colliding with the discriminator",
+      "examples/core-fixtures/invalid/data-discriminator-field-conflict.json",
+      "constructor DiscriminatorConflict.value field kind conflicts with data discriminator",
+    ],
+  ])("rejects %s", async (_case, path, diagnostic) => {
+    const document = Schema.decodeSync(CoreDocumentFromJson)(await Bun.file(path).text());
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(diagnostic);
+  });
+
+  test("makes a constructor-less declaration structurally invalid", async () => {
+    const text = await Bun.file(
+      "examples/core-fixtures/invalid/empty-data-constructors.json",
+    ).text();
+
+    expect(() => Schema.decodeSync(CoreDocumentFromJson)(text)).toThrow();
+  });
+});

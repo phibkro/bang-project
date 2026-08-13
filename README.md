@@ -2,7 +2,7 @@
 
 BANG specifies software systems as networks of related theories and projects their accumulated contracts into executable conformance boundaries.
 
-The completed vertical missions are [M000 executable specification spine](design-specs/M000-executable-specification-spine.md), [M001 refined domain value](design-specs/M001-refined-domain-value.md), [M002 one theory and one finite model](design-specs/M002-one-theory-one-model.md), [M003 generated algebraic law suite](design-specs/M003-generated-law-suite.md), [M004 state transition and invariant preservation](design-specs/M004-state-transition-invariant.md), and [M005 two related theories](design-specs/M005-two-related-theories.md). The [capability dependency map](CAPABILITIES.md) records the current route—including the first useful dogfood dependency and the unscheduled ADLC-OS north-star pressure test—without treating unexercised architecture as settled.
+The completed vertical missions are [M000 executable specification spine](design-specs/M000-executable-specification-spine.md), [M001 refined domain value](design-specs/M001-refined-domain-value.md), [M002 one theory and one finite model](design-specs/M002-one-theory-one-model.md), [M003 generated algebraic law suite](design-specs/M003-generated-law-suite.md), [M004 state transition and invariant preservation](design-specs/M004-state-transition-invariant.md), [M005 two related theories](design-specs/M005-two-related-theories.md), and [M005A first useful Core dogfood](design-specs/M005A-first-core-dogfood.md). The [capability dependency map](CAPABILITIES.md) records the current route and the unscheduled ADLC-OS north-star pressure test without treating unexercised architecture as settled.
 
 This is the monorepo for the whole BANG project: specification language, Core, compilers, target projections, conformance tools, build system, theory and realization registry, documentation, and any future implementation language. See the [repository map](docs/repository-map.md). Subsystems become packages only under pressure from an active mission.
 
@@ -13,7 +13,7 @@ just install
 just preview
 ```
 
-The current demonstrations decode a Core service, a refined `Balance`, a finite Account Lifecycle model, an integer-addition law, an Account state machine, and an Account/Ledger theory bridge; reject invalid declarations and illegal transition inputs; generate Effect boundaries and property suites; return finite, algebraic, invariant-preservation, and cross-theory counterexamples; and write scoped evidence manifests under `.bang/evidence/`.
+The current demonstrations decode a Core service, a refined `Balance`, a finite Account Lifecycle model, an integer-addition law, an Account state machine, an Account/Ledger theory bridge, and BANG's own recursive `BridgeTerm`; reject invalid declarations and illegal transition inputs; generate Effect boundaries and property suites; return finite, algebraic, invariant-preservation, cross-theory, and decoder-drift counterexamples; and write scoped evidence manifests under `.bang/evidence/`.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 

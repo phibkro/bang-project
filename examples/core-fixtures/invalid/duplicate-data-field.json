@@ -1,0 +1,19 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "DuplicateField",
+      "discriminator": "kind",
+      "constructors": [
+        {
+          "tag": "value",
+          "fields": [
+            { "id": "item", "type": { "kind": "builtin", "name": "Identifier" } },
+            { "id": "item", "type": { "kind": "builtin", "name": "Identifier" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

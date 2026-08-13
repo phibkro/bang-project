@@ -30,6 +30,76 @@ const RefinementDeclaration = Schema.Struct({
   }),
 });
 
+export interface DataBuiltinType {
+  readonly kind: "builtin";
+  readonly name: "Identifier";
+}
+
+export interface DataReferenceType {
+  readonly kind: "reference";
+  readonly id: string;
+}
+
+export interface DataListType {
+  readonly kind: "list";
+  readonly element: DataType;
+}
+
+export interface DataRecordType {
+  readonly kind: "record";
+  readonly fields: ReadonlyArray<DataField>;
+}
+
+export type DataType = DataBuiltinType | DataReferenceType | DataListType | DataRecordType;
+
+export interface DataField {
+  readonly id: string;
+  readonly type: DataType;
+}
+
+export interface DataConstructor {
+  readonly tag: string;
+  readonly fields: ReadonlyArray<DataField>;
+}
+
+const DataTypeReference = Schema.suspend((): Schema.Codec<DataType> => DataTypeSchema);
+const DataFieldSchema: Schema.Codec<DataField> = Schema.Struct({
+  id: Identifier,
+  type: DataTypeReference,
+});
+const DataBuiltinTypeSchema: Schema.Codec<DataBuiltinType> = Schema.Struct({
+  kind: Schema.Literal("builtin"),
+  name: Schema.Literal("Identifier"),
+});
+const DataReferenceTypeSchema: Schema.Codec<DataReferenceType> = Schema.Struct({
+  kind: Schema.Literal("reference"),
+  id: Identifier,
+});
+const DataListTypeSchema: Schema.Codec<DataListType> = Schema.Struct({
+  kind: Schema.Literal("list"),
+  element: DataTypeReference,
+});
+const DataRecordTypeSchema: Schema.Codec<DataRecordType> = Schema.Struct({
+  kind: Schema.Literal("record"),
+  fields: Schema.Array(DataFieldSchema),
+});
+const DataTypeSchema: Schema.Codec<DataType> = Schema.Union([
+  DataBuiltinTypeSchema,
+  DataReferenceTypeSchema,
+  DataListTypeSchema,
+  DataRecordTypeSchema,
+]);
+const DataConstructorSchema: Schema.Codec<DataConstructor> = Schema.Struct({
+  tag: Identifier,
+  fields: Schema.Array(DataFieldSchema),
+});
+const DataDeclaration = Schema.Struct({
+  kind: Schema.Literal("data"),
+  id: Identifier,
+  discriminator: Identifier,
+  constructors: Schema.NonEmptyArray(DataConstructorSchema),
+});
+
 export interface VariableTerm {
   readonly kind: "variable";
   readonly id: string;
@@ -125,6 +195,7 @@ const BridgeTermSchema: Schema.Codec<BridgeTerm> = Schema.Union([
   BridgeVariableTermSchema,
   BridgeApplicationTermSchema,
 ]);
+export const decodeBridgeTerm = Schema.decodeUnknownEffect(BridgeTermSchema);
 
 const TheoryBridgeLaw = Schema.Struct({
   id: Identifier,
@@ -244,6 +315,7 @@ const FiniteModelDeclaration = Schema.Struct({
 });
 
 const Declaration = Schema.Union([
+  DataDeclaration,
   ServiceDeclaration,
   RefinementDeclaration,
   TheoryDeclaration,
@@ -262,6 +334,7 @@ export type CoreDocument = typeof CoreDocument.Type;
 const CheckedCoreDocumentSchema = CoreDocument.pipe(Schema.brand("CheckedCoreDocument"));
 export type CheckedCoreDocument = typeof CheckedCoreDocumentSchema.Type;
 export type ServiceDeclaration = typeof ServiceDeclaration.Type;
+export type DataDeclaration = typeof DataDeclaration.Type;
 export type RefinementDeclaration = typeof RefinementDeclaration.Type;
 export type TheoryDeclaration = typeof TheoryDeclaration.Type;
 export type FiniteModelDeclaration = typeof FiniteModelDeclaration.Type;
@@ -289,6 +362,64 @@ const validateUnique = (scope: string, values: ReadonlyArray<string>) =>
         });
       }
       seen.add(value);
+    }
+  });
+
+const validateDataType = (
+  scope: string,
+  type: DataType,
+  dataDeclarations: ReadonlyMap<string, DataDeclaration>,
+): Effect.Effect<void, SemanticError> =>
+  Effect.gen(function* () {
+    if (type.kind === "reference") {
+      if (!dataDeclarations.has(type.id)) {
+        return yield* new SemanticError({
+          message: `${scope} references unknown data ${type.id}`,
+        });
+      }
+      return;
+    }
+    if (type.kind === "list") {
+      yield* validateDataType(`${scope} list element`, type.element, dataDeclarations);
+      return;
+    }
+    if (type.kind === "record") {
+      yield* validateUnique(
+        `${scope} record fields`,
+        type.fields.map(({ id }) => id),
+      );
+      for (const field of type.fields) {
+        yield* validateDataType(`${scope} record field ${field.id}`, field.type, dataDeclarations);
+      }
+    }
+  });
+
+const validateDataDeclaration = (
+  declaration: DataDeclaration,
+  dataDeclarations: ReadonlyMap<string, DataDeclaration>,
+) =>
+  Effect.gen(function* () {
+    yield* validateUnique(
+      `data ${declaration.id} constructors`,
+      declaration.constructors.map(({ tag }) => tag),
+    );
+    for (const constructor of declaration.constructors) {
+      if (constructor.fields.some(({ id }) => id === declaration.discriminator)) {
+        return yield* new SemanticError({
+          message: `constructor ${declaration.id}.${constructor.tag} field ${declaration.discriminator} conflicts with data discriminator`,
+        });
+      }
+      yield* validateUnique(
+        `constructor ${declaration.id}.${constructor.tag} fields`,
+        constructor.fields.map(({ id }) => id),
+      );
+      for (const field of constructor.fields) {
+        yield* validateDataType(
+          `data ${declaration.id} constructor ${constructor.tag} field ${field.id}`,
+          field.type,
+          dataDeclarations,
+        );
+      }
     }
   });
 
@@ -795,8 +926,17 @@ const validateCoreSemantics = (document: CoreDocument) =>
         .filter((declaration) => declaration.kind === "theory")
         .map((theory) => [theory.id, theory]),
     );
+    const dataDeclarations = new Map(
+      document.declarations
+        .filter((declaration) => declaration.kind === "data")
+        .map((declaration) => [declaration.id, declaration]),
+    );
 
     for (const declaration of document.declarations) {
+      if (declaration.kind === "data") {
+        yield* validateDataDeclaration(declaration, dataDeclarations);
+        continue;
+      }
       if (declaration.kind === "theory") {
         yield* validateTheory(declaration);
         continue;
