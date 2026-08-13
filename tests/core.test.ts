@@ -321,6 +321,11 @@ describe("Core effectful capability bindings", () => {
       "examples/core-fixtures/invalid/realization-binds-initializer.json",
       "realization InitializerRealization binds initializer Account.initialize; expected transition",
     ],
+    [
+      "failure identity collision",
+      "examples/core-fixtures/invalid/realization-failure-collision.json",
+      "realization FailureCollisionWithdrawal failure DebitAccount conflicts with a declaration identity",
+    ],
   ])("rejects %s", async (_case, path, diagnostic) => {
     const document = Schema.decodeSync(CoreDocumentFromJson)(await Bun.file(path).text());
 
