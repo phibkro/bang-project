@@ -1,7 +1,7 @@
 ---
 id: M005A
 title: First useful Core dogfood
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - algebraic-data-modeling
@@ -201,6 +201,31 @@ polymorphism, higher-kinded types, or a complete module calculus?
 
 ## Result
 
-Record the demonstrated bootstrap boundary, the exact checked conformance
-direction, the minimized drift counterexample, and which later data-modeling
-capability is now under concrete pressure.
+Completed on 2026-08-13. BANG Core now represents recursive tagged sums whose
+constructors contain ordered product fields, nested records, lists, the Core
+`Identifier` prelude type, and guarded references to named data declarations.
+The checked codec composes JSON parsing, structural Schema decoding, semantic
+reference validation, and the `CheckedCoreDocument` brand. Duplicate
+constructors, duplicate fields, unknown references, discriminator collisions,
+and constructor-less declarations are rejected at their owning boundary.
+
+The Effect projection derives a recursive type and Schema, uses
+`Schema.suspend` for the recursive edge, `Schema.toArbitrary` for generation,
+and exhaustive `Match` patterns for domain paths. The handwritten
+`@bang/core` decoder implements the generated port rather than being copied
+into the suite. At seed `20260813`, it accepted and preserved 100 generated
+valid values and rejected 100 invalid discriminator mutations. The deepest
+observed generated value had depth 4.
+
+The deliberately drifted decoder rejected terminal variables beneath an
+application. The property failed after two executed cases and shrank nine
+times to `BridgeTerm.Application.arguments[0].Variable.id`. Evidence classifies
+these observations as `property-tested`; equivalence of the complete generated
+and handwritten decoder languages remains explicitly unsupported.
+
+This demonstrates a bootstrap conformance boundary, not self-hosting: the
+handwritten compiler still defines and executes the Core machinery. The next
+concrete data-modeling pressure is reuse across multiple declarations and
+projection units; generic types, kinds, and a module calculus remain deferred
+until a user journey requires them. Implementation commit `4f06c2b` passed
+`just verify` on its clean committed tree.
