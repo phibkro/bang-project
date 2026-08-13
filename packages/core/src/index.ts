@@ -291,6 +291,25 @@ const StateMachineDeclaration = Schema.Struct({
   ),
 });
 
+const CapabilityDeclaration = Schema.Struct({
+  kind: Schema.Literal("capability"),
+  id: Identifier,
+});
+
+const OperationRealizationDeclaration = Schema.Struct({
+  kind: Schema.Literal("operationRealization"),
+  id: Identifier,
+  operation: Schema.Struct({
+    stateMachine: Identifier,
+    operation: Identifier,
+  }),
+  requires: Schema.Array(Identifier),
+  disabled: Schema.Struct({
+    kind: Schema.Literal("failure"),
+    id: Identifier,
+  }),
+});
+
 const FiniteModelDeclaration = Schema.Struct({
   kind: Schema.Literal("finiteModel"),
   id: Identifier,
@@ -321,6 +340,8 @@ const Declaration = Schema.Union([
   TheoryDeclaration,
   TheoryBridgeDeclaration,
   StateMachineDeclaration,
+  CapabilityDeclaration,
+  OperationRealizationDeclaration,
   FiniteModelDeclaration,
 ]);
 
@@ -339,6 +360,8 @@ export type RefinementDeclaration = typeof RefinementDeclaration.Type;
 export type TheoryDeclaration = typeof TheoryDeclaration.Type;
 export type FiniteModelDeclaration = typeof FiniteModelDeclaration.Type;
 export type StateMachineDeclaration = typeof StateMachineDeclaration.Type;
+export type CapabilityDeclaration = typeof CapabilityDeclaration.Type;
+export type OperationRealizationDeclaration = typeof OperationRealizationDeclaration.Type;
 export type StatePredicate = typeof StatePredicate.Type;
 export type StateOperation = typeof StateOperation.Type;
 export type TheoryOperation = typeof TheoryOperation.Type;
@@ -931,6 +954,16 @@ const validateCoreSemantics = (document: CoreDocument) =>
         .filter((declaration) => declaration.kind === "data")
         .map((declaration) => [declaration.id, declaration]),
     );
+    const stateMachines = new Map(
+      document.declarations
+        .filter((declaration) => declaration.kind === "stateMachine")
+        .map((declaration) => [declaration.id, declaration]),
+    );
+    const capabilities = new Set(
+      document.declarations
+        .filter((declaration) => declaration.kind === "capability")
+        .map(({ id }) => id),
+    );
 
     for (const declaration of document.declarations) {
       if (declaration.kind === "data") {
@@ -947,6 +980,42 @@ const validateCoreSemantics = (document: CoreDocument) =>
       }
       if (declaration.kind === "stateMachine") {
         yield* validateStateMachine(declaration, knownTypes);
+        continue;
+      }
+      if (declaration.kind === "capability") {
+        continue;
+      }
+      if (declaration.kind === "operationRealization") {
+        yield* validateUnique(`realization ${declaration.id} capabilities`, declaration.requires);
+        const machine = stateMachines.get(declaration.operation.stateMachine);
+        if (machine === undefined) {
+          return yield* new SemanticError({
+            message: `realization ${declaration.id} references unknown state machine ${declaration.operation.stateMachine}`,
+          });
+        }
+        const transition = machine.transitions.find(
+          ({ id }) => id === declaration.operation.operation,
+        );
+        if (transition === undefined) {
+          const initializer = machine.initializers.find(
+            ({ id }) => id === declaration.operation.operation,
+          );
+          if (initializer !== undefined) {
+            return yield* new SemanticError({
+              message: `realization ${declaration.id} binds initializer ${machine.id}.${initializer.id}; expected transition`,
+            });
+          }
+          return yield* new SemanticError({
+            message: `realization ${declaration.id} references unknown transition ${machine.id}.${declaration.operation.operation}`,
+          });
+        }
+        for (const capability of declaration.requires) {
+          if (!capabilities.has(capability)) {
+            return yield* new SemanticError({
+              message: `realization ${declaration.id} requires unknown capability ${capability}`,
+            });
+          }
+        }
         continue;
       }
       if (declaration.kind === "finiteModel") {

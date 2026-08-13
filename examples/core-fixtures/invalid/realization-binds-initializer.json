@@ -1,0 +1,21 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "Account",
+      "state": { "id": "AccountState", "fields": [] },
+      "initializers": [{ "id": "initialize", "parameters": [], "requires": [] }],
+      "transitions": [],
+      "invariants": []
+    },
+    { "kind": "capability", "id": "DebitAccount" },
+    {
+      "kind": "operationRealization",
+      "id": "InitializerRealization",
+      "operation": { "stateMachine": "Account", "operation": "initialize" },
+      "requires": ["DebitAccount"],
+      "disabled": { "kind": "failure", "id": "InitializationRejected" }
+    }
+  ]
+}

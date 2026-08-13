@@ -283,3 +283,49 @@ describe("Core recursive algebraic data contracts", () => {
     expect(() => Schema.decodeSync(CoreDocumentFromJson)(text)).toThrow();
   });
 });
+
+describe("Core effectful capability bindings", () => {
+  test("accepts withdrawal bound to a typed failure and debit capability", async () => {
+    const document = Schema.decodeSync(CoreDocumentFromJson)(
+      await Bun.file("examples/tiny-bank/core/account-withdrawal-realization.json").text(),
+    );
+
+    const checked = Effect.runSync(validateCore(document));
+
+    expect(checked.declarations[2]?.id).toBe("WithdrawAccount");
+  });
+
+  test.each([
+    [
+      "unknown state machine",
+      "examples/core-fixtures/invalid/unknown-realization-state-machine.json",
+      "realization UnknownMachineWithdrawal references unknown state machine MissingAccount",
+    ],
+    [
+      "unknown transition",
+      "examples/core-fixtures/invalid/unknown-realization-operation.json",
+      "realization UnknownOperationWithdrawal references unknown transition Account.missing",
+    ],
+    [
+      "unknown capability",
+      "examples/core-fixtures/invalid/unknown-realization-capability.json",
+      "realization UnknownCapabilityWithdrawal requires unknown capability MissingDebitAccount",
+    ],
+    [
+      "duplicate capability requirement",
+      "examples/core-fixtures/invalid/duplicate-realization-capability.json",
+      "realization DuplicateCapabilityWithdrawal capabilities contains duplicate identity DebitAccount",
+    ],
+    [
+      "initializer binding",
+      "examples/core-fixtures/invalid/realization-binds-initializer.json",
+      "realization InitializerRealization binds initializer Account.initialize; expected transition",
+    ],
+  ])("rejects %s", async (_case, path, diagnostic) => {
+    const document = Schema.decodeSync(CoreDocumentFromJson)(await Bun.file(path).text());
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(diagnostic);
+  });
+});

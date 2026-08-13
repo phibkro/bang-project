@@ -1,0 +1,20 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "Account",
+      "state": { "id": "AccountState", "fields": [] },
+      "initializers": [],
+      "transitions": [{ "id": "withdraw", "parameters": [], "requires": [] }],
+      "invariants": []
+    },
+    {
+      "kind": "operationRealization",
+      "id": "UnknownCapabilityWithdrawal",
+      "operation": { "stateMachine": "Account", "operation": "withdraw" },
+      "requires": ["MissingDebitAccount"],
+      "disabled": { "kind": "failure", "id": "WithdrawalRejected" }
+    }
+  ]
+}
