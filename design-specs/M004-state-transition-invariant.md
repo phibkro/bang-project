@@ -1,7 +1,7 @@
 ---
 id: M004
 title: State transition and invariant preservation
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - coalgebraic-state
@@ -159,3 +159,15 @@ Can one small state-machine Core construct make construction, observation, legal
 - arbitrary Boolean logic, quantifiers, or user-defined predicates;
 - proof or exhaustive evaluation over unbounded integers;
 - static enforcement of dependent bigint preconditions in TypeScript.
+
+## Result
+
+Completed on 2026-08-13. One state-machine Core declaration now separates owned state, initializer requirements, transition requirements, and invariants. Semantic validation rejects unknown observations, ill-typed comparisons, and initializer attempts to observe unavailable pre-state.
+
+The generated Effect kit exposes the state Schema, independent realization port, invariant predicates, and legal-operation guards. A transition is legal only when the current state satisfies every invariant and its input satisfies every declared requirement. TypeScript cannot encode the dependent bigint relation statically, so the kit reports a runtime guard and `unsupported-by-target` evidence instead.
+
+At seed `20260813`, the lawful initializer and withdrawal each passed 100 generated cases. The generated guard rejected the overdraft scenario `{ balance: 10n }, amount = 11n`. The broken realization shrank to `{ balance: 0n }, amount = 0n` and produced `{ balance: -1n }`, violating `nonnegativeBalance`; the full 140-step replay path is retained in the manifest.
+
+The clean-checkout gate exposed and corrected a hidden generated-file dependency in the development tree. The exact committed artifact now succeeds after a frozen install without relying on prior demo output.
+
+Hosted acceptance: [GitHub Actions run 31733476156](https://github.com/phibkro/bang-project/actions/runs/31733476156).

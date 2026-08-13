@@ -8,7 +8,7 @@ flowchart LR
     M001["M001 · refined domain value<br/>complete"]
     M002["M002 · one theory + finite model<br/>complete"]
     M003["M003 · generated algebraic law suite<br/>complete"]
-    M004["M004 · coalgebraic state preservation<br/>active"]
+    M004["M004 · coalgebraic state preservation<br/>complete"]
     M005["M005 · Account ↔ Ledger bridge law"]
     M006["M006 · effect + capability boundary"]
     M007["M007 · graded evidence report"]
@@ -36,7 +36,7 @@ flowchart LR
 | refined domain value           | Construct `Balance`, reject invalid values                    | Core-to-target spine              | M001         | complete |
 | theory and finite model        | Ask whether one finite model satisfies one law                | refined domain value              | M002         | complete |
 | algebraic law suite            | Find and minimize a law counterexample                        | theory and finite model           | M003         | complete |
-| coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | active   |
+| coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | complete |
 | cross-theory bridge            | Expose an Account/Ledger disagreement in domain terms         | theory/model + state preservation | M005         | planned  |
 | effectful capability boundary  | Require debit authority and typed failure                     | spine + state preservation        | M006         | planned  |
 | graded evidence                | Distinguish structure, tests, runtime checks, and assumptions | produced evidence classes         | M007         | planned  |
