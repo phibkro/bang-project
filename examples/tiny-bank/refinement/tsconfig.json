@@ -1,0 +1,4 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": ["balance-conformance.ts", "../../../generated/effect/Balance.ts"]
+}

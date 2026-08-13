@@ -3,6 +3,7 @@ import { Data, Effect, Schema } from "effect";
 const Identifier = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9]*$/)));
 
 const TypeReference = Schema.String;
+const DecimalInteger = Schema.String.pipe(Schema.check(Schema.isPattern(/^-?(?:0|[1-9][0-9]*)$/)));
 
 const Parameter = Schema.Struct({
   id: Identifier,
@@ -21,15 +22,32 @@ const ServiceDeclaration = Schema.Struct({
   operations: Schema.Array(Operation),
 });
 
+const RefinementDeclaration = Schema.Struct({
+  kind: Schema.Literal("refinement"),
+  id: Identifier,
+  base: TypeReference,
+  predicate: Schema.Struct({
+    kind: Schema.Literal("greaterThanOrEqual"),
+    left: Schema.Struct({ kind: Schema.Literal("self") }),
+    right: Schema.Struct({
+      kind: Schema.Literal("integerLiteral"),
+      value: DecimalInteger,
+    }),
+  }),
+});
+
+const Declaration = Schema.Union([ServiceDeclaration, RefinementDeclaration]);
+
 export const CoreDocument = Schema.Struct({
   bangCore: Schema.Literal(1),
-  declarations: Schema.Array(ServiceDeclaration),
+  declarations: Schema.Array(Declaration),
 });
 
 export const CoreDocumentFromJson = Schema.fromJsonString(CoreDocument);
 
 export type CoreDocument = typeof CoreDocument.Type;
 export type ServiceDeclaration = typeof ServiceDeclaration.Type;
+export type RefinementDeclaration = typeof RefinementDeclaration.Type;
 
 const builtInTypes = new Set(["String", "Integer"]);
 
@@ -57,7 +75,28 @@ export const validateCore = (document: CoreDocument) =>
       document.declarations.map(({ id }) => id),
     );
 
+    const knownTypes = new Set([
+      ...builtInTypes,
+      ...document.declarations
+        .filter((declaration) => declaration.kind === "refinement")
+        .map(({ id }) => id),
+    ]);
+
     for (const declaration of document.declarations) {
+      if (declaration.kind === "refinement") {
+        if (!builtInTypes.has(declaration.base)) {
+          return yield* new SemanticError({
+            message: `refinement ${declaration.id} references unknown base ${declaration.base}`,
+          });
+        }
+        if (declaration.base !== "Integer") {
+          return yield* new SemanticError({
+            message: `refinement ${declaration.id} compares self : ${declaration.base} with Integer`,
+          });
+        }
+        continue;
+      }
+
       yield* validateUnique(
         `service ${declaration.id}`,
         declaration.operations.map(({ id }) => id),
@@ -70,7 +109,7 @@ export const validateCore = (document: CoreDocument) =>
         );
         const references = [...operation.parameters.map(({ type }) => type), operation.result];
         for (const reference of references) {
-          if (!builtInTypes.has(reference)) {
+          if (!knownTypes.has(reference)) {
             return yield* new SemanticError({
               message: `operation ${declaration.id}.${operation.id} references unknown type ${reference}`,
             });

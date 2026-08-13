@@ -11,7 +11,8 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "demo:m000": "bun run scripts/demo-m000.ts",
-    "dev": "bun --watch scripts/demo-m000.ts",
+    "demo:m001": "bun run scripts/demo-m001.ts",
+    "dev": "bun --watch scripts/demo-m001.ts",
     "effect:setup": "effect-tsgo patch --typescript --oxlint",
     "check:effect-lsp": "bun run scripts/check-effect-lsp.ts",
     "hooks:install": "bun run scripts/install-git-hooks.ts",
@@ -22,8 +23,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "bun run effect:setup && bun run typecheck && bun run check:effect-lsp && bun run lint && bun run format:check",
-    "preview": "bun run demo:m000",
-    "verify": "bun run check && bun run test && bun run demo:m000 && bun run build",
+    "preview": "bun run demo:m000 && bun run demo:m001",
+    "verify": "bun run check && bun run test && bun run preview && bun run build",
     "prepare": "bun run effect:setup && bun run hooks:install"
   },
   "dependencies": {
