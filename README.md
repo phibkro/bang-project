@@ -9,16 +9,18 @@ This is the monorepo for the whole BANG project: specification language, Core, c
 ## Experience the current capability
 
 ```sh
-bun install --frozen-lockfile
-bun run demo:m000
+just install
+just preview
 ```
 
 The command decodes one Core JSON service, rejects an invalid reference, generates an Effect service port, compiles an independent implementation, and writes a scoped evidence manifest to `.bang/evidence/M000.json`.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 
+Run `just` to list the repository task surface. `just verify` is the same readiness contract used by GitHub Actions. Native Git hooks apply safe fixes and static checks before commits, enforce Conventional Commits, and run tests before pushes.
+
 Read [BANG-PROJECT-DIRECTION.md](BANG-PROJECT-DIRECTION.md) for the project constitution. The three previous attempts remain external historical references; they are not merged into this repository.
 
 ## Repository identity
 
-`bang` is the provisional local repository name. Remote naming and publication are deferred until M000 produces a durable checkpoint worth pushing. The existing `phibkro/bang`, `phibkro/bang-lang`, and `phibkro/semantic-systems` remotes remain attached to earlier attempts.
+This project is published as [`phibkro/bang-project`](https://github.com/phibkro/bang-project). The existing `phibkro/bang`, `phibkro/bang-lang`, and `phibkro/semantic-systems` repositories remain attached to earlier attempts and serve only as historical references.

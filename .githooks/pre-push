@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+if ! command -v just >/dev/null 2>&1; then
+  echo "pre-push: just is required; run 'just install' after installing Just." >&2
+  exit 1
+fi
+exec just test

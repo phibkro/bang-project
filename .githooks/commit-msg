@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+commitlint="$root/node_modules/.bin/commitlint"
+if [ ! -x "$commitlint" ]; then
+  echo "commit-msg: dependencies are missing; run 'just install'." >&2
+  exit 1
+fi
+exec bun --bun "$commitlint" --edit "${1:-}"

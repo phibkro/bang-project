@@ -6,6 +6,8 @@ Read in this order before changing the project:
 2. the single active contract under `design-specs/`
 3. `references/prior-attempts.md` only when historical context is relevant
 
+For Effect code, use the official sibling repository `../effect` as the primary source. Start with `../effect/LLMS.md`, then follow its links into source and reference guides. See `docs/effect-development.md` for local routing; never let copied or remembered Effect guidance outrank the official checkout.
+
 The active design-spec freezes the observable problem. Implementation may vary beneath that boundary. If implementation pressure changes the contract, revise the design-spec explicitly before continuing.
 
 ## Authority
@@ -27,4 +29,4 @@ The active design-spec freezes the observable problem. Implementation may vary b
 - Effect, TypeScript, solvers, and targets implement or evaluate Core; none defines Core semantics.
 - Research needs an activation condition tied to a mission blocker.
 
-Run `bun run check` before claiming the active mission is complete.
+Run `just verify` before claiming the active mission is complete.
