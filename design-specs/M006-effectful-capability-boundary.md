@@ -1,7 +1,7 @@
 ---
 id: M006
 title: Effectful capability boundary
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - effect-contracts
@@ -234,6 +234,35 @@ host types normative Core semantics?
 
 ## Result
 
-Record the checked binding, the exact Effect type channels, observed legal and
-illegal scenarios, defect distinction, target weakening, and the next concrete
-pressure on effects or capabilities.
+`bun run demo:m006` now carries one checked `Account.withdraw` realization
+through Core, deterministic Effect projection, an independent Layer-backed
+implementation, conformance scenarios, and `.bang/evidence/M006.json`.
+
+The generated `WithdrawAccount` method has the exact channel
+`Effect.Effect<AccountState, WithdrawalRejected, DebitAccount>`. Its safe Layer
+adapter obtains `DebitAccount` and evaluates the checked transition predicate
+before invoking the independent implementation. Balance `10` withdrawn by `4`
+returns balance `6`; balance `10` withdrawn by `11` returns
+`WithdrawalRejected` containing the rejected state and amount. A dying
+implementation is observed as a defect and is never relabeled as the declared
+failure.
+
+The M004 property suite and M006 realization share one `withdrawAccountState`
+function, so the same transition implementation preserved nonnegative balance
+for 100 generated cases. This is sampled evidence, not a universal proof that
+withdrawal subtracts exactly the requested amount.
+
+The primary uncertainty resolved positively: one Core realization binding can
+connect state legality, typed failure, and environmental authority without
+making Effect normative Core semantics. The important target weakening remains
+explicit: TypeScript cannot prevent unsafe casts, foreign JavaScript, direct
+implementation calls, or forged Layers. The evidence therefore treats the
+selected `DebitAccount` Layer as assumed authority rather than cryptographic
+proof of authorization.
+
+Hosted acceptance passed on exact implementation head `7f9521a`:
+<https://github.com/phibkro/bang-project/actions/runs/31742910345>.
+
+The next pressure belongs to M007: replace mission-local evidence object shapes
+with one checked obligation and evidence model without erasing the distinctions
+demonstrated here.
