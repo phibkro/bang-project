@@ -1,0 +1,49 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "BridgeTerm",
+      "discriminator": "kind",
+      "constructors": [
+        {
+          "tag": "variable",
+          "fields": [
+            {
+              "id": "id",
+              "type": { "kind": "builtin", "name": "Identifier" }
+            }
+          ]
+        },
+        {
+          "tag": "application",
+          "fields": [
+            {
+              "id": "operation",
+              "type": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "id": "participant",
+                    "type": { "kind": "builtin", "name": "Identifier" }
+                  },
+                  {
+                    "id": "operation",
+                    "type": { "kind": "builtin", "name": "Identifier" }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "arguments",
+              "type": {
+                "kind": "list",
+                "element": { "kind": "reference", "id": "BridgeTerm" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

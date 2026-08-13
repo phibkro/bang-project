@@ -1,6 +1,8 @@
 import type {
   BridgeTerm,
   CheckedCoreDocument,
+  DataDeclaration,
+  DataType,
   FiniteModelDeclaration,
   RefinementDeclaration,
   ServiceDeclaration,
@@ -28,6 +30,7 @@ const projectIntegerLiteral = (value: string): string => `${value}n`;
 const projectStringArray = (values: ReadonlyArray<string>): string =>
   `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
 const lowerFirst = (value: string): string => `${value[0]?.toLowerCase() ?? ""}${value.slice(1)}`;
+const upperFirst = (value: string): string => `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 
 const projectEffectTerm = (term: Term): string => {
   if (term.kind === "variable") return term.id;
@@ -170,6 +173,334 @@ export class TargetProjectionError extends Schema.TaggedError<TargetProjectionEr
   "TargetProjectionError",
   { message: Schema.String },
 ) {}
+
+const dataTypeContainsReference = (type: DataType, declarationId: string): boolean => {
+  switch (type.kind) {
+    case "builtin":
+      return false;
+    case "reference":
+      return type.id === declarationId;
+    case "list":
+      return dataTypeContainsReference(type.element, declarationId);
+    case "record":
+      return type.fields.some((field) => dataTypeContainsReference(field.type, declarationId));
+  }
+};
+
+const projectEffectDataType = (type: DataType): string => {
+  switch (type.kind) {
+    case "builtin":
+      return type.name;
+    case "reference":
+      return type.id;
+    case "list":
+      return `ReadonlyArray<${projectEffectDataType(type.element)}>`;
+    case "record":
+      return `{ ${type.fields
+        .map(
+          (field) => `readonly ${JSON.stringify(field.id)}: ${projectEffectDataType(field.type)}`,
+        )
+        .join("; ")} }`;
+  }
+};
+
+const projectEffectDataSchema = (type: DataType, declarationId: string): string => {
+  switch (type.kind) {
+    case "builtin":
+      return type.name;
+    case "reference":
+      return type.id === declarationId ? `${declarationId}Reference` : type.id;
+    case "list":
+      return `Schema.Array(${projectEffectDataSchema(type.element, declarationId)})`;
+    case "record":
+      return `Schema.Struct({ ${type.fields
+        .map(
+          (field) =>
+            `${JSON.stringify(field.id)}: ${projectEffectDataSchema(field.type, declarationId)}`,
+        )
+        .join(", ")} })`;
+  }
+};
+
+const firstDataLeafPath = (type: DataType, prefix: string): string => {
+  switch (type.kind) {
+    case "builtin":
+    case "reference":
+      return prefix;
+    case "list":
+      return prefix;
+    case "record": {
+      const field = type.fields[0];
+      return field === undefined ? prefix : firstDataLeafPath(field.type, `${prefix}.${field.id}`);
+    }
+  }
+};
+
+const projectRecursiveDataPath = (
+  type: DataType,
+  declarationId: string,
+  valueExpression: string,
+  pathExpression: string,
+  depth = 0,
+): string => {
+  switch (type.kind) {
+    case "reference":
+      return `return ${declarationId}DomainPath(${valueExpression}, ${pathExpression});`;
+    case "list": {
+      const child = `recursiveChild${depth}`;
+      return `if (${valueExpression}.length === 0) return ${pathExpression};
+      const ${child} = ${valueExpression}[0];
+      if (${child} === undefined) return ${pathExpression};
+      ${projectRecursiveDataPath(
+        type.element,
+        declarationId,
+        child,
+        `\`\${${pathExpression}}[0]\``,
+        depth + 1,
+      )}`;
+    }
+    case "record": {
+      const field = type.fields.find((candidate) =>
+        dataTypeContainsReference(candidate.type, declarationId),
+      );
+      if (field === undefined) return `return ${pathExpression};`;
+      return projectRecursiveDataPath(
+        field.type,
+        declarationId,
+        `${valueExpression}[${JSON.stringify(field.id)}]`,
+        `\`\${${pathExpression}}.${field.id}\``,
+        depth,
+      );
+    }
+    case "builtin":
+      return `return ${pathExpression};`;
+  }
+};
+
+const projectDataDomainPathCases = (declaration: DataDeclaration): string =>
+  declaration.constructors
+    .map((constructor) => {
+      const base = `\`\${prefix}.${upperFirst(constructor.tag)}\``;
+      const recursiveField = constructor.fields.find((field) =>
+        dataTypeContainsReference(field.type, declaration.id),
+      );
+      const valueName = recursiveField === undefined ? "_candidate" : "candidate";
+      const body =
+        recursiveField === undefined
+          ? `return \`\${base}.${
+              constructor.fields[0] === undefined
+                ? declaration.discriminator
+                : firstDataLeafPath(constructor.fields[0].type, constructor.fields[0].id)
+            }\`;`
+          : projectRecursiveDataPath(
+              recursiveField.type,
+              declaration.id,
+              `${valueName}[${JSON.stringify(recursiveField.id)}]`,
+              `\`\${base}.${recursiveField.id}\``,
+            );
+      return `    Match.when({ ${JSON.stringify(declaration.discriminator)}: ${JSON.stringify(constructor.tag)} }, (${valueName}) => {
+      const base = ${base};
+      ${body}
+    }),`;
+    })
+    .join("\n");
+
+export const projectEffectData = Effect.fn("projectEffectData")(function* (
+  document: CheckedCoreDocument,
+  declarationId: string,
+): Effect.fn.Return<string, TargetProjectionError> {
+  const declaration = document.declarations.find(
+    (candidate): candidate is DataDeclaration =>
+      candidate.kind === "data" && candidate.id === declarationId,
+  );
+  if (declaration === undefined) {
+    return yield* new TargetProjectionError({
+      message: `Effect data projection cannot resolve checked data ${declarationId}`,
+    });
+  }
+  for (const constructor of declaration.constructors) {
+    const references: Array<string> = [];
+    const collectReferences = (type: DataType): void => {
+      if (type.kind === "reference") references.push(type.id);
+      if (type.kind === "list") collectReferences(type.element);
+      if (type.kind === "record") {
+        for (const field of type.fields) collectReferences(field.type);
+      }
+    };
+    for (const field of constructor.fields) collectReferences(field.type);
+    const externalReference = references.find((reference) => reference !== declaration.id);
+    if (externalReference !== undefined) {
+      return yield* new TargetProjectionError({
+        message: `Effect data projection does not yet bundle external data ${externalReference} referenced by ${declaration.id}.${constructor.tag}`,
+      });
+    }
+  }
+
+  const variants = declaration.constructors.map(
+    (constructor, index) => `${declaration.id}Constructor${index}`,
+  );
+  const interfaces = declaration.constructors
+    .map((constructor, index) => {
+      const fields = constructor.fields
+        .map(
+          (field) =>
+            `  readonly ${JSON.stringify(field.id)}: ${projectEffectDataType(field.type)};`,
+        )
+        .join("\n");
+      return `/** Core source: data ${declaration.id} constructor ${constructor.tag}. */
+export interface ${variants[index]} {
+  readonly ${JSON.stringify(declaration.discriminator)}: ${JSON.stringify(constructor.tag)};
+${fields}
+}`;
+    })
+    .join("\n\n");
+  const schemas = declaration.constructors
+    .map((constructor, index) => {
+      const fields = constructor.fields
+        .map(
+          (field) =>
+            `  ${JSON.stringify(field.id)}: ${projectEffectDataSchema(field.type, declaration.id)},`,
+        )
+        .join("\n");
+      return `export const ${variants[index]}: Schema.Codec<${variants[index]}> = Schema.Struct({
+  ${JSON.stringify(declaration.discriminator)}: Schema.Literal(${JSON.stringify(constructor.tag)}),
+${fields}
+});`;
+    })
+    .join("\n\n");
+
+  return `// Generated by BANG M005A. Do not edit.
+import { expect, it } from "@effect/vitest";
+import { Effect, Match, Result, Schema } from "effect";
+import { FastCheck } from "effect/testing";
+
+export const Identifier = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9]*$/)),
+);
+export type Identifier = typeof Identifier.Type;
+
+${interfaces}
+
+export type ${declaration.id} = ${variants.join(" | ")};
+
+const ${declaration.id}Reference = Schema.suspend(
+  (): Schema.Codec<${declaration.id}> => ${declaration.id},
+);
+
+${schemas}
+
+export const ${declaration.id}: Schema.Codec<${declaration.id}> = Schema.Union([
+  ${variants.join(",\n  ")},
+]);
+
+export interface ${declaration.id}Decoder {
+  readonly decode: (input: unknown) => Effect.Effect<${declaration.id}, unknown>;
+}
+
+export interface DecoderPropertyResult {
+  readonly passed: boolean;
+  readonly requestedCases: number;
+  readonly executedRuns: number;
+  readonly seed: number;
+  readonly numShrinks: number;
+  readonly counterexamplePath: string | null;
+}
+
+export interface ${declaration.id}ConformanceResult {
+  readonly valid: DecoderPropertyResult;
+  readonly invalid: DecoderPropertyResult;
+  readonly maximumObservedDepth: number;
+}
+
+const ${declaration.id}Arbitrary = Schema.toArbitrary(${declaration.id})(FastCheck);
+
+const dataDepth = (value: unknown): number => {
+  if (Array.isArray(value)) {
+    return value.length === 0 ? 0 : 1 + Math.max(...value.map(dataDepth));
+  }
+  if (typeof value !== "object" || value === null) return 0;
+  return 1 + Math.max(0, ...Object.values(value).map(dataDepth));
+};
+
+const ${declaration.id}DomainPath = (
+  value: ${declaration.id},
+  prefix = ${JSON.stringify(declaration.id)},
+): string =>
+  Match.value(value).pipe(
+${projectDataDomainPathCases(declaration)}
+    Match.exhaustive,
+  );
+
+const preservesValue = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const invalidMutation = (value: ${declaration.id}): unknown => ({
+  ...value,
+  [${JSON.stringify(declaration.discriminator)}]: "__invalid__",
+});
+
+export const check${declaration.id}Decoder = (
+  decoder: ${declaration.id}Decoder,
+  options: { readonly seed: number; readonly numRuns: number },
+): ${declaration.id}ConformanceResult => {
+  let maximumObservedDepth = 0;
+  let validCounterexample: ${declaration.id} | null = null;
+  const validProperty = FastCheck.property(${declaration.id}Arbitrary, (value) => {
+    maximumObservedDepth = Math.max(maximumObservedDepth, dataDepth(value));
+    const decoded = Effect.runSync(Effect.result(decoder.decode(value)));
+    const passed = Result.isSuccess(decoded) && preservesValue(decoded.success, value);
+    if (!passed) validCounterexample = value;
+    return passed;
+  });
+  const valid = FastCheck.check(validProperty, options);
+
+  const invalidProperty = FastCheck.property(${declaration.id}Arbitrary, (value) => {
+    const decoded = Effect.runSync(Effect.result(decoder.decode(invalidMutation(value))));
+    return Result.isFailure(decoded);
+  });
+  const invalid = FastCheck.check(invalidProperty, options);
+
+  return {
+    valid: {
+      passed: !valid.failed,
+      requestedCases: options.numRuns,
+      executedRuns: valid.numRuns,
+      seed: valid.seed,
+      numShrinks: valid.numShrinks,
+      counterexamplePath:
+        validCounterexample === null ? null : ${declaration.id}DomainPath(validCounterexample),
+    },
+    invalid: {
+      passed: !invalid.failed,
+      requestedCases: options.numRuns,
+      executedRuns: invalid.numRuns,
+      seed: invalid.seed,
+      numShrinks: invalid.numShrinks,
+      counterexamplePath: invalid.failed ? ${JSON.stringify(declaration.id)} : null,
+    },
+    maximumObservedDepth,
+  };
+};
+
+export const register${declaration.id}DecoderConformance = (
+  decoder: ${declaration.id}Decoder,
+  options: { readonly seed: number; readonly numRuns: number },
+): void => {
+  it.effect("${declaration.id} decoder accepts and preserves generated valid values", () =>
+    Effect.sync(() => {
+      const result = check${declaration.id}Decoder(decoder, options);
+      expect(result.valid.passed).toBe(true);
+    }),
+  );
+  it.effect("${declaration.id} decoder rejects generated invalid mutations", () =>
+    Effect.sync(() => {
+      const result = check${declaration.id}Decoder(decoder, options);
+      expect(result.invalid.passed).toBe(true);
+    }),
+  );
+};
+`;
+});
 
 export const projectEffectTheoryBridge = Effect.fn("projectEffectTheoryBridge")(function* (
   document: CheckedCoreDocument,

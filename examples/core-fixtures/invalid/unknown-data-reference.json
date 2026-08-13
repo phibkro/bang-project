@@ -1,0 +1,16 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "UnknownReference",
+      "discriminator": "kind",
+      "constructors": [
+        {
+          "tag": "value",
+          "fields": [{ "id": "missing", "type": { "kind": "reference", "id": "MissingData" } }]
+        }
+      ]
+    }
+  ]
+}

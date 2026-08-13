@@ -108,15 +108,17 @@ T ∈ Δ
 ───────────────────────────────────────────────────
 Δ ⊢ Record({ f₁: T₁, ... fₙ: Tₙ }) type
 
-constructor tags unique    fields well-typed
-recursive references occur beneath a constructor field
-──────────────────────────────────────────────────────
+constructors nonempty     constructor tags unique
+fields well-typed         fields distinct from discriminator
+──────────────────────────────────────────────────
 Δ ⊢ data D well-formed
 ```
 
 Every recursive value remains a finite encoded tree. M005A does not add cyclic
 runtime objects, coinductive values, infinite observations, or recursive type
-aliases without a constructor boundary.
+aliases without a constructor boundary. The Core grammar has no alias node and
+permits named references only within constructor fields, so unguarded recursion
+is unrepresentable rather than diagnosed after decoding.
 
 ## Projection contract
 
@@ -133,7 +135,10 @@ The Effect kit contains:
 The projector must use official Effect abstractions discovered through
 `../effect`. It must not hand-roll recursion, parsing, arbitrary generation, or
 runtime execution where Schema, `Schema.toArbitrary`, `@effect/vitest`, and the
-platform Runtime already provide the capability.
+platform Runtime already provide the capability. Core string decoding composes
+through `Schema.fromJsonString` and `Schema.decodeTo` (the Effect v4 value-level
+constructor whose result has the `Schema.compose` type). Generated tagged sums
+use exhaustive Effect `Match` patterns.
 
 ## Conformance direction
 
@@ -146,15 +151,18 @@ M005A checks both directions over the declared bounded corpus:
 This is bounded conformance evidence, not proof that the two decoders accept
 identical languages for every finite tree.
 
-The deliberately drifted implementation omits recursive `application` terms
-inside `arguments`. The suite must minimize to one application containing one
-variable child and identify the rejected path.
+The deliberately drifted implementation rejects the terminal `variable`
+constructor when it occurs inside `arguments`. The suite must minimize to one
+application containing one variable child and identify the rejected path.
 
 ## Acceptance evidence
 
 - the valid `BridgeTerm` data declaration decodes and validates;
-- duplicate constructor tags, duplicate field names, unknown references, and
-  unguarded recursion are rejected with declaration-level diagnostics;
+- duplicate constructor tags, duplicate field names, and unknown references are
+  rejected with declaration-level diagnostics;
+- constructor fields cannot collide with the data discriminator;
+- a constructor-less declaration and recursive alias are structurally
+  unrepresentable in Core;
 - generated Effect source is deterministic and matches a committed snapshot;
 - the generated recursive Schema decodes nested application/variable terms;
 - the existing `@bang/core` decoder is connected through the generated port,

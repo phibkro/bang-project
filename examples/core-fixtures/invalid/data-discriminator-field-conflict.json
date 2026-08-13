@@ -1,0 +1,16 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "DiscriminatorConflict",
+      "discriminator": "kind",
+      "constructors": [
+        {
+          "tag": "value",
+          "fields": [{ "id": "kind", "type": { "kind": "builtin", "name": "Identifier" } }]
+        }
+      ]
+    }
+  ]
+}
