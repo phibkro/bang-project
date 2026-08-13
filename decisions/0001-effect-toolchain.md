@@ -32,3 +32,11 @@ During scaffolding the plugin did execute against the RC and rejected untyped th
 ## Consequence
 
 BANG starts on the current RC without silently weakening the plugin's support policy. Plain Oxlint remains active. The richer Effect gate becomes a small dependency transition once its activation conditions hold.
+
+## Compatibility update
+
+On 2026-08-13, plugin source commit `a6a4903b2665154c986001ea4f11b2e3194ff03b` declared exact review of Effect `4.0.0-rc.108`, TypeScript `7.0.2`, Oxlint `1.77.0`, Oxfmt `0.61.0`, and `@effect/tsgo@0.36.4`. The source commit is on the public `main` branch.
+
+The npm registry still serves `@phibkro/oxlint-effect-plugin@0.1.0` with the older exact Effect `4.0.0-beta.102` and Oxlint `1.76.0` contract. Installing the registry package would therefore violate this decision. A clean Bun Git consumer probe also showed that installing the Git commit directly is invalid: `dist/` is intentionally untracked and the package has no Git-dependency preparation lifecycle, so its exported entrypoint is absent.
+
+Adoption remains blocked only on publishing a clean RC-compatible distribution. Do not substitute a local file dependency or a vendored build that GitHub Actions cannot reproduce.

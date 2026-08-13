@@ -1,0 +1,67 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "AccountBalance",
+      "sorts": [{ "id": "AccountId" }, { "id": "Balance" }],
+      "operations": [
+        {
+          "id": "balance",
+          "parameters": [{ "id": "accountId", "sort": "AccountId" }],
+          "result": "Balance"
+        }
+      ],
+      "laws": []
+    },
+    {
+      "kind": "theory",
+      "id": "LedgerBalance",
+      "sorts": [{ "id": "AccountId" }, { "id": "Balance" }],
+      "operations": [
+        {
+          "id": "balance",
+          "parameters": [{ "id": "accountId", "sort": "AccountId" }],
+          "result": "Balance"
+        }
+      ],
+      "laws": []
+    },
+    {
+      "kind": "theoryBridge",
+      "id": "UnsharedBridgeResult",
+      "participants": [
+        { "id": "account", "theory": "AccountBalance" },
+        { "id": "ledger", "theory": "LedgerBalance" }
+      ],
+      "sharedSorts": [
+        {
+          "id": "AccountId",
+          "members": [
+            { "participant": "account", "sort": "AccountId" },
+            { "participant": "ledger", "sort": "AccountId" }
+          ]
+        }
+      ],
+      "laws": [
+        {
+          "id": "balancesAgree",
+          "parameters": [{ "id": "accountId", "sort": "AccountId" }],
+          "proposition": {
+            "kind": "equal",
+            "left": {
+              "kind": "application",
+              "operation": { "participant": "account", "operation": "balance" },
+              "arguments": [{ "kind": "variable", "id": "accountId" }]
+            },
+            "right": {
+              "kind": "application",
+              "operation": { "participant": "ledger", "operation": "balance" },
+              "arguments": [{ "kind": "variable", "id": "accountId" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

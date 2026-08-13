@@ -1,0 +1,37 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "AccountBalance",
+      "sorts": [{ "id": "AccountId" }],
+      "operations": [],
+      "laws": []
+    },
+    {
+      "kind": "theory",
+      "id": "LedgerBalance",
+      "sorts": [{ "id": "AccountId" }],
+      "operations": [],
+      "laws": []
+    },
+    {
+      "kind": "theoryBridge",
+      "id": "UnknownBridgeSort",
+      "participants": [
+        { "id": "account", "theory": "AccountBalance" },
+        { "id": "ledger", "theory": "LedgerBalance" }
+      ],
+      "sharedSorts": [
+        {
+          "id": "AccountId",
+          "members": [
+            { "participant": "account", "sort": "AccountId" },
+            { "participant": "ledger", "sort": "MissingAccountId" }
+          ]
+        }
+      ],
+      "laws": []
+    }
+  ]
+}

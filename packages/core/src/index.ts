@@ -1,4 +1,4 @@
-import { Data, Effect, Schema } from "effect";
+import { Effect, Graph, HashMap, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 const Identifier = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9]*$/)));
 const TypeReference = Schema.String;
@@ -85,6 +85,78 @@ const TheoryDeclaration = Schema.Struct({
   sorts: Schema.Array(TheorySort),
   operations: Schema.Array(TheoryOperation),
   laws: Schema.Array(TheoryLaw),
+});
+
+const QualifiedTheorySort = Schema.Struct({
+  participant: Identifier,
+  sort: Identifier,
+});
+
+export interface BridgeVariableTerm {
+  readonly kind: "variable";
+  readonly id: string;
+}
+
+export interface BridgeApplicationTerm {
+  readonly kind: "application";
+  readonly operation: {
+    readonly participant: string;
+    readonly operation: string;
+  };
+  readonly arguments: ReadonlyArray<BridgeTerm>;
+}
+
+export type BridgeTerm = BridgeVariableTerm | BridgeApplicationTerm;
+
+const BridgeTermReference = Schema.suspend((): Schema.Codec<BridgeTerm> => BridgeTermSchema);
+const BridgeVariableTermSchema: Schema.Codec<BridgeVariableTerm> = Schema.Struct({
+  kind: Schema.Literal("variable"),
+  id: Identifier,
+});
+const BridgeApplicationTermSchema: Schema.Codec<BridgeApplicationTerm> = Schema.Struct({
+  kind: Schema.Literal("application"),
+  operation: Schema.Struct({
+    participant: Identifier,
+    operation: Identifier,
+  }),
+  arguments: Schema.Array(BridgeTermReference),
+});
+const BridgeTermSchema: Schema.Codec<BridgeTerm> = Schema.Union([
+  BridgeVariableTermSchema,
+  BridgeApplicationTermSchema,
+]);
+
+const TheoryBridgeLaw = Schema.Struct({
+  id: Identifier,
+  parameters: Schema.Array(
+    Schema.Struct({
+      id: Identifier,
+      sort: Identifier,
+    }),
+  ),
+  proposition: Schema.Struct({
+    kind: Schema.Literal("equal"),
+    left: BridgeTermSchema,
+    right: BridgeTermSchema,
+  }),
+});
+
+const TheoryBridgeDeclaration = Schema.Struct({
+  kind: Schema.Literal("theoryBridge"),
+  id: Identifier,
+  participants: Schema.Array(
+    Schema.Struct({
+      id: Identifier,
+      theory: Identifier,
+    }),
+  ),
+  sharedSorts: Schema.Array(
+    Schema.Struct({
+      id: Identifier,
+      members: Schema.Array(QualifiedTheorySort),
+    }),
+  ),
+  laws: Schema.Array(TheoryBridgeLaw),
 });
 
 export interface StateParameterValue {
@@ -175,6 +247,7 @@ const Declaration = Schema.Union([
   ServiceDeclaration,
   RefinementDeclaration,
   TheoryDeclaration,
+  TheoryBridgeDeclaration,
   StateMachineDeclaration,
   FiniteModelDeclaration,
 ]);
@@ -186,6 +259,8 @@ export const CoreDocument = Schema.Struct({
 export const CoreDocumentFromJson = Schema.fromJsonString(CoreDocument);
 
 export type CoreDocument = typeof CoreDocument.Type;
+const CheckedCoreDocumentSchema = CoreDocument.pipe(Schema.brand("CheckedCoreDocument"));
+export type CheckedCoreDocument = typeof CheckedCoreDocumentSchema.Type;
 export type ServiceDeclaration = typeof ServiceDeclaration.Type;
 export type RefinementDeclaration = typeof RefinementDeclaration.Type;
 export type TheoryDeclaration = typeof TheoryDeclaration.Type;
@@ -195,12 +270,14 @@ export type StatePredicate = typeof StatePredicate.Type;
 export type StateOperation = typeof StateOperation.Type;
 export type TheoryOperation = typeof TheoryOperation.Type;
 export type TheoryLaw = typeof TheoryLaw.Type;
+export type TheoryBridgeDeclaration = typeof TheoryBridgeDeclaration.Type;
+export type TheoryBridgeLaw = typeof TheoryBridgeLaw.Type;
 
 const builtInTypes = new Set(["String", "Integer"]);
 
-export class SemanticError extends Data.TaggedError("SemanticError")<{
-  readonly message: string;
-}> {}
+export class SemanticError extends Schema.TaggedError<SemanticError>()("SemanticError", {
+  message: Schema.String,
+}) {}
 
 const validateUnique = (scope: string, values: ReadonlyArray<string>) =>
   Effect.gen(function* () {
@@ -319,6 +396,166 @@ const validateTheory = (theory: TheoryDeclaration) =>
       if (left !== right) {
         return yield* new SemanticError({
           message: `law ${theory.id}.${law.id} compares sort ${left} with ${right}`,
+        });
+      }
+    }
+  });
+
+const validateTheoryBridge = (
+  bridge: TheoryBridgeDeclaration,
+  theories: ReadonlyMap<string, TheoryDeclaration>,
+) =>
+  Effect.gen(function* () {
+    if (bridge.participants.length !== 2) {
+      return yield* new SemanticError({
+        message: `theory bridge ${bridge.id} has ${bridge.participants.length} participants; M005 requires exactly 2`,
+      });
+    }
+    yield* validateUnique(
+      `theory bridge ${bridge.id} participants`,
+      bridge.participants.map(({ id }) => id),
+    );
+    yield* validateUnique(
+      `theory bridge ${bridge.id} shared sorts`,
+      bridge.sharedSorts.map(({ id }) => id),
+    );
+    yield* validateUnique(
+      `theory bridge ${bridge.id} laws`,
+      bridge.laws.map(({ id }) => id),
+    );
+
+    const participantTheories = new Map<string, TheoryDeclaration>();
+    for (const participant of bridge.participants) {
+      const theory = theories.get(participant.theory);
+      if (theory === undefined) {
+        return yield* new SemanticError({
+          message: `theory bridge ${bridge.id} participant ${participant.id} references unknown theory ${participant.theory}`,
+        });
+      }
+      participantTheories.set(participant.id, theory);
+    }
+
+    for (const sharedSort of bridge.sharedSorts) {
+      if (sharedSort.members.length !== bridge.participants.length) {
+        return yield* new SemanticError({
+          message: `theory bridge ${bridge.id} shared sort ${sharedSort.id} has ${sharedSort.members.length} members; expected one for each participant`,
+        });
+      }
+      yield* validateUnique(
+        `theory bridge ${bridge.id} shared sort ${sharedSort.id} participants`,
+        sharedSort.members.map(({ participant }) => participant),
+      );
+
+      const representations = new Array<string | undefined>();
+      for (const participant of bridge.participants) {
+        const member = sharedSort.members.find(({ participant: id }) => id === participant.id);
+        if (member === undefined) {
+          return yield* new SemanticError({
+            message: `theory bridge ${bridge.id} shared sort ${sharedSort.id} has no member for participant ${participant.id}`,
+          });
+        }
+        const theory = participantTheories.get(participant.id);
+        const sort = theory?.sorts.find(({ id }) => id === member.sort);
+        if (sort === undefined) {
+          return yield* new SemanticError({
+            message: `theory bridge ${bridge.id} shared sort ${sharedSort.id} references unknown sort ${participant.id}.${member.sort}`,
+          });
+        }
+        representations.push(sort.representation?.type);
+      }
+      if (representations.some((representation) => representation !== representations[0])) {
+        return yield* new SemanticError({
+          message: `theory bridge ${bridge.id} shared sort ${sharedSort.id} has incompatible participant representations`,
+        });
+      }
+    }
+
+    const sharedSorts = new Map(
+      bridge.sharedSorts.map((sharedSort) => [sharedSort.id, sharedSort]),
+    );
+    const sharingFor = (participant: string, sort: string) =>
+      bridge.sharedSorts.find((sharedSort) =>
+        sharedSort.members.some(
+          (member) => member.participant === participant && member.sort === sort,
+        ),
+      );
+
+    const inferBridgeTermSort = (
+      law: TheoryBridgeLaw,
+      term: BridgeTerm,
+    ): Effect.Effect<string, SemanticError> =>
+      Effect.gen(function* () {
+        if (term.kind === "variable") {
+          const parameter = law.parameters.find(({ id }) => id === term.id);
+          if (parameter === undefined) {
+            return yield* new SemanticError({
+              message: `bridge law ${bridge.id}.${law.id} references unknown variable ${term.id}`,
+            });
+          }
+          return parameter.sort;
+        }
+
+        const theory = participantTheories.get(term.operation.participant);
+        if (theory === undefined) {
+          return yield* new SemanticError({
+            message: `bridge law ${bridge.id}.${law.id} references unknown participant ${term.operation.participant}`,
+          });
+        }
+        const operation = theory.operations.find(({ id }) => id === term.operation.operation);
+        if (operation === undefined) {
+          return yield* new SemanticError({
+            message: `bridge law ${bridge.id}.${law.id} references unknown operation ${term.operation.participant}.${term.operation.operation}`,
+          });
+        }
+        if (term.arguments.length !== operation.parameters.length) {
+          return yield* new SemanticError({
+            message: `bridge law ${bridge.id}.${law.id} applies ${term.operation.participant}.${operation.id} with ${term.arguments.length} arguments; expected ${operation.parameters.length}`,
+          });
+        }
+        for (const [index, argument] of term.arguments.entries()) {
+          const actual = yield* inferBridgeTermSort(law, argument);
+          const participantSort = operation.parameters[index]?.sort;
+          const expected =
+            participantSort === undefined
+              ? undefined
+              : sharingFor(term.operation.participant, participantSort)?.id;
+          if (expected === undefined) {
+            return yield* new SemanticError({
+              message: `bridge law ${bridge.id}.${law.id} operation ${term.operation.participant}.${operation.id} argument ${index + 1} sort ${participantSort} is not shared by the bridge`,
+            });
+          }
+          if (actual !== expected) {
+            return yield* new SemanticError({
+              message: `bridge law ${bridge.id}.${law.id} gives ${term.operation.participant}.${operation.id} argument ${index + 1} shared sort ${actual}; expected ${expected}`,
+            });
+          }
+        }
+        const result = sharingFor(term.operation.participant, operation.result);
+        if (result === undefined) {
+          return yield* new SemanticError({
+            message: `bridge law ${bridge.id}.${law.id} operation ${term.operation.participant}.${operation.id} result sort ${operation.result} is not shared by the bridge`,
+          });
+        }
+        return result.id;
+      });
+
+    for (const law of bridge.laws) {
+      yield* validateUnique(
+        `bridge law ${bridge.id}.${law.id}`,
+        law.parameters.map(({ id }) => id),
+      );
+      for (const parameter of law.parameters) {
+        if (!sharedSorts.has(parameter.sort)) {
+          return yield* new SemanticError({
+            message: `bridge law ${bridge.id}.${law.id} references unknown shared sort ${parameter.sort}`,
+          });
+        }
+      }
+      const left = yield* inferBridgeTermSort(law, law.proposition.left);
+      const right = yield* inferBridgeTermSort(law, law.proposition.right);
+      if (left !== right) {
+        return yield* new SemanticError({
+          message: `bridge law ${bridge.id}.${law.id} compares shared sort ${left} with ${right}`,
         });
       }
     }
@@ -540,7 +777,7 @@ const validateFiniteModel = (model: FiniteModelDeclaration, theory: TheoryDeclar
     }
   });
 
-export const validateCore = (document: CoreDocument) =>
+const validateCoreSemantics = (document: CoreDocument) =>
   Effect.gen(function* () {
     yield* validateUnique(
       "document",
@@ -562,6 +799,10 @@ export const validateCore = (document: CoreDocument) =>
     for (const declaration of document.declarations) {
       if (declaration.kind === "theory") {
         yield* validateTheory(declaration);
+        continue;
+      }
+      if (declaration.kind === "theoryBridge") {
+        yield* validateTheoryBridge(declaration, theories);
         continue;
       }
       if (declaration.kind === "stateMachine") {
@@ -615,6 +856,80 @@ export const validateCore = (document: CoreDocument) =>
     }
     return document;
   });
+
+const CheckedCoreDocumentFromDecoded = CoreDocument.pipe(
+  Schema.decodeTo(
+    CheckedCoreDocumentSchema,
+    SchemaTransformation.transformOrFail<CoreDocument, CoreDocument>({
+      decode: (document, options) =>
+        validateCoreSemantics(document).pipe(
+          Effect.mapError(
+            (error) => new SchemaIssue.InvalidValue({ message: error.message }, document, options),
+          ),
+        ),
+      encode: (document) => Effect.succeed(document),
+    }),
+  ),
+);
+
+export const CheckedCoreDocumentFromJson = Schema.fromJsonString(CheckedCoreDocumentFromDecoded);
+
+export const validateCore = (document: CoreDocument) =>
+  Schema.decodeEffect(CheckedCoreDocumentFromDecoded)(document).pipe(
+    Effect.mapError((issue) => new SemanticError({ message: String(issue) })),
+  );
+
+export interface TheoryGraphNode {
+  readonly kind: "theory";
+  readonly theory: string;
+}
+
+export interface TheoryGraphEdge {
+  readonly kind: "bridge";
+  readonly bridge: string;
+  readonly sharedSorts: ReadonlyArray<string>;
+  readonly laws: ReadonlyArray<string>;
+}
+
+export const buildTheoryGraph = Effect.fn("buildTheoryGraph")(function* (
+  document: CheckedCoreDocument,
+): Effect.fn.Return<Graph.UndirectedGraph<TheoryGraphNode, TheoryGraphEdge>, SemanticError> {
+  const mutable = Graph.beginMutation(Graph.undirected<TheoryGraphNode, TheoryGraphEdge>());
+  let indices = HashMap.empty<string, Graph.NodeIndex>();
+
+  for (const declaration of document.declarations) {
+    if (declaration.kind !== "theory") continue;
+    const node: TheoryGraphNode = { kind: "theory", theory: declaration.id };
+    const index = Graph.addNode(mutable, node);
+    indices = HashMap.set(indices, declaration.id, index);
+  }
+
+  for (const declaration of document.declarations) {
+    if (declaration.kind !== "theoryBridge") continue;
+    const left = declaration.participants[0];
+    const right = declaration.participants[1];
+    if (left === undefined || right === undefined) {
+      return yield* new SemanticError({
+        message: `checked theory bridge ${declaration.id} lost its two participants`,
+      });
+    }
+    const leftIndex = HashMap.get(indices, left.theory);
+    const rightIndex = HashMap.get(indices, right.theory);
+    if (Option.isNone(leftIndex) || Option.isNone(rightIndex)) {
+      return yield* new SemanticError({
+        message: `checked theory bridge ${declaration.id} lost a participant theory node`,
+      });
+    }
+    Graph.addEdge(mutable, leftIndex.value, rightIndex.value, {
+      kind: "bridge",
+      bridge: declaration.id,
+      sharedSorts: declaration.sharedSorts.map(({ id }) => id),
+      laws: declaration.laws.map(({ id }) => id),
+    });
+  }
+
+  return Graph.endMutation(mutable);
+});
 
 export interface FiniteCounterexample {
   readonly law: string;

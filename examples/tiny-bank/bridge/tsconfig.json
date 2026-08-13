@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-ledger.test.ts",
+    "bridge-diagnostics.ts",
+    "../implementation/account-ledger.ts",
+    "../../../generated/effect/AccountLedgerBridge.ts"
+  ]
+}
