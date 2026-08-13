@@ -40,9 +40,7 @@
     "packages/**/*.ts",
     "apps/**/*.ts",
     "tools/**/*.ts",
-    "examples/**/*.ts",
     "scripts/**/*.ts",
-    "tests/**/*.ts",
-    "generated/**/*.ts"
+    "tests/**/*.ts"
   ]
 }

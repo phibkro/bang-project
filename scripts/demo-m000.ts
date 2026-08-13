@@ -38,10 +38,13 @@ await mkdir(dirname(generatedPath), { recursive: true });
 await Bun.write(generatedPath, generated);
 console.log("PASS deterministic Effect projection");
 
-const compile = Bun.spawnSync(["bun", "x", "tsc", "--noEmit"], {
-  stdout: "inherit",
-  stderr: "inherit",
-});
+const compile = Bun.spawnSync(
+  ["bun", "x", "tsc", "--noEmit", "--project", "examples/tiny-bank/tsconfig.json"],
+  {
+    stdout: "inherit",
+    stderr: "inherit",
+  },
+);
 if (compile.exitCode !== 0) throw new Error(`TypeScript compilation exited ${compile.exitCode}`);
 console.log("PASS implementation type-check");
 
