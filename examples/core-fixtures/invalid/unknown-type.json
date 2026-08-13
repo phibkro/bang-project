@@ -1,0 +1,16 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "service",
+      "id": "BrokenService",
+      "operations": [
+        {
+          "id": "breakIt",
+          "parameters": [],
+          "result": "MissingType"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "service",
+      "id": "AccountService",
+      "operations": [
+        {
+          "id": "balance",
+          "parameters": [
+            {
+              "id": "accountId",
+              "type": "String"
+            }
+          ],
+          "result": "Integer"
+        }
+      ]
+    }
+  ]
+}
