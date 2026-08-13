@@ -964,6 +964,8 @@ const validateCoreSemantics = (document: CoreDocument) =>
         .filter((declaration) => declaration.kind === "capability")
         .map(({ id }) => id),
     );
+    const declarationIdentities = new Set(document.declarations.map(({ id }) => id));
+    const realizationFailureIdentities = new Set<string>();
 
     for (const declaration of document.declarations) {
       if (declaration.kind === "data") {
@@ -987,6 +989,17 @@ const validateCoreSemantics = (document: CoreDocument) =>
       }
       if (declaration.kind === "operationRealization") {
         yield* validateUnique(`realization ${declaration.id} capabilities`, declaration.requires);
+        if (declarationIdentities.has(declaration.disabled.id)) {
+          return yield* new SemanticError({
+            message: `realization ${declaration.id} failure ${declaration.disabled.id} conflicts with a declaration identity`,
+          });
+        }
+        if (realizationFailureIdentities.has(declaration.disabled.id)) {
+          return yield* new SemanticError({
+            message: `realization ${declaration.id} failure ${declaration.disabled.id} duplicates another realization failure`,
+          });
+        }
+        realizationFailureIdentities.add(declaration.disabled.id);
         const machine = stateMachines.get(declaration.operation.stateMachine);
         if (machine === undefined) {
           return yield* new SemanticError({

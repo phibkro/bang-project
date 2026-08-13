@@ -1,8 +1,9 @@
 import type { AccountStateMachineModel } from "../../../generated/effect/AccountStateMachine.ts";
+import { withdrawAccountState } from "./account-withdrawal.ts";
 
 export const accountStateMachine = {
   initialize: (initialBalance) => ({ balance: initialBalance }),
-  withdraw: (state, amount) => ({ balance: state.balance - amount }),
+  withdraw: withdrawAccountState,
 } satisfies AccountStateMachineModel;
 
 export const brokenAccountStateMachine = {

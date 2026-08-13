@@ -1,0 +1,21 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "Account",
+      "state": { "id": "AccountState", "fields": [{ "id": "balance", "type": "Integer" }] },
+      "initializers": [],
+      "transitions": [{ "id": "withdraw", "parameters": [], "requires": [] }],
+      "invariants": []
+    },
+    { "kind": "capability", "id": "DebitAccount" },
+    {
+      "kind": "operationRealization",
+      "id": "FailureCollisionWithdrawal",
+      "operation": { "stateMachine": "Account", "operation": "withdraw" },
+      "requires": ["DebitAccount"],
+      "disabled": { "kind": "failure", "id": "DebitAccount" }
+    }
+  ]
+}

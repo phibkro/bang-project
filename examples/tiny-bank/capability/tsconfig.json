@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-withdrawal.test.ts",
+    "capability-diagnostics.ts",
+    "../implementation/account-withdrawal.ts",
+    "../implementation/account-withdrawal-effect.ts",
+    "../../../generated/effect/WithdrawAccount.ts"
+  ]
+}
