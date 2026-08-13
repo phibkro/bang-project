@@ -1,7 +1,7 @@
 ---
 id: M002
 title: One theory and one finite model
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - theory-signatures
@@ -158,3 +158,14 @@ Can this minimal typed term and finite-table representation express one useful l
 - content-addressed theory/model identity;
 - arbitrary target-code generation;
 - surface syntax beyond Core JSON.
+
+## Result
+
+- GitHub clean-run evidence: <https://github.com/phibkro/bang-project/actions/runs/31730449517>
+- The valid Account Lifecycle model satisfied `freezeIdempotent` over all three declared assignments.
+- The broken model produced structured data for `status = Open`, with left `Open` and right `Frozen`.
+- An incomplete operation table was rejected before satisfaction evaluation.
+- The generated Effect kit preserved the finite carrier, operation signature, model rows, and Core identities; an independent realization agreed with all three rows.
+- The evidence manifest kept finite satisfaction, counterexample observation, and target runtime conformance distinct and left universal proof unsupported.
+- Integration exposed and corrected a mission-ownership leak: M000's type-check glob included later TinyBank implementations. Each mission now compiles only its owned generated boundary and consumer.
+- The typed variable/application/equality fragment was sufficient for this law. M003 can reuse the normalized law and target port; it must add generation and shrinking without redefining satisfaction.
