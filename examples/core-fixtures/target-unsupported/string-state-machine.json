@@ -1,0 +1,28 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "StringState",
+      "state": {
+        "id": "StringStateValue",
+        "fields": [
+          { "id": "label", "type": "String" },
+          { "id": "count", "type": "Integer" }
+        ]
+      },
+      "initializers": [],
+      "transitions": [],
+      "invariants": [
+        {
+          "id": "nonnegativeCount",
+          "proposition": {
+            "kind": "greaterThanOrEqual",
+            "left": { "kind": "stateField", "field": "count" },
+            "right": { "kind": "integerLiteral", "value": "0" }
+          }
+        }
+      ]
+    }
+  ]
+}

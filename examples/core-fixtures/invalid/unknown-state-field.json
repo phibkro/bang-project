@@ -1,0 +1,25 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "UnknownStateField",
+      "state": {
+        "id": "State",
+        "fields": [{ "id": "balance", "type": "Integer" }]
+      },
+      "initializers": [],
+      "transitions": [],
+      "invariants": [
+        {
+          "id": "nonnegativeBalance",
+          "proposition": {
+            "kind": "greaterThanOrEqual",
+            "left": { "kind": "stateField", "field": "missing" },
+            "right": { "kind": "integerLiteral", "value": "0" }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "InitializerObservesState",
+      "state": {
+        "id": "State",
+        "fields": [{ "id": "balance", "type": "Integer" }]
+      },
+      "initializers": [
+        {
+          "id": "initialize",
+          "parameters": [],
+          "requires": [
+            {
+              "kind": "greaterThanOrEqual",
+              "left": { "kind": "stateField", "field": "balance" },
+              "right": { "kind": "integerLiteral", "value": "0" }
+            }
+          ]
+        }
+      ],
+      "transitions": [],
+      "invariants": []
+    }
+  ]
+}

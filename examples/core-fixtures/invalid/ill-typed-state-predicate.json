@@ -1,0 +1,25 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "stateMachine",
+      "id": "IllTypedStatePredicate",
+      "state": {
+        "id": "State",
+        "fields": [{ "id": "label", "type": "String" }]
+      },
+      "initializers": [],
+      "transitions": [],
+      "invariants": [
+        {
+          "id": "nonnegativeLabel",
+          "proposition": {
+            "kind": "greaterThanOrEqual",
+            "left": { "kind": "stateField", "field": "label" },
+            "right": { "kind": "integerLiteral", "value": "0" }
+          }
+        }
+      ]
+    }
+  ]
+}

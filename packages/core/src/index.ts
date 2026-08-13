@@ -87,6 +87,67 @@ const TheoryDeclaration = Schema.Struct({
   laws: Schema.Array(TheoryLaw),
 });
 
+export interface StateParameterValue {
+  readonly kind: "parameter";
+  readonly id: string;
+}
+
+export interface StateFieldValue {
+  readonly kind: "stateField";
+  readonly field: string;
+}
+
+export interface StateIntegerLiteralValue {
+  readonly kind: "integerLiteral";
+  readonly value: string;
+}
+
+export type StateValue = StateParameterValue | StateFieldValue | StateIntegerLiteralValue;
+
+const StateParameterValueSchema: Schema.Codec<StateParameterValue> = Schema.Struct({
+  kind: Schema.Literal("parameter"),
+  id: Identifier,
+});
+const StateFieldValueSchema: Schema.Codec<StateFieldValue> = Schema.Struct({
+  kind: Schema.Literal("stateField"),
+  field: Identifier,
+});
+const StateIntegerLiteralValueSchema: Schema.Codec<StateIntegerLiteralValue> = Schema.Struct({
+  kind: Schema.Literal("integerLiteral"),
+  value: DecimalInteger,
+});
+const StateValueSchema: Schema.Codec<StateValue> = Schema.Union([
+  StateParameterValueSchema,
+  StateFieldValueSchema,
+  StateIntegerLiteralValueSchema,
+]);
+const StatePredicate = Schema.Struct({
+  kind: Schema.Literal("greaterThanOrEqual"),
+  left: StateValueSchema,
+  right: StateValueSchema,
+});
+const StateOperation = Schema.Struct({
+  id: Identifier,
+  parameters: Schema.Array(Parameter),
+  requires: Schema.Array(StatePredicate),
+});
+const StateMachineDeclaration = Schema.Struct({
+  kind: Schema.Literal("stateMachine"),
+  id: Identifier,
+  state: Schema.Struct({
+    id: Identifier,
+    fields: Schema.Array(Parameter),
+  }),
+  initializers: Schema.Array(StateOperation),
+  transitions: Schema.Array(StateOperation),
+  invariants: Schema.Array(
+    Schema.Struct({
+      id: Identifier,
+      proposition: StatePredicate,
+    }),
+  ),
+});
+
 const FiniteModelDeclaration = Schema.Struct({
   kind: Schema.Literal("finiteModel"),
   id: Identifier,
@@ -114,6 +175,7 @@ const Declaration = Schema.Union([
   ServiceDeclaration,
   RefinementDeclaration,
   TheoryDeclaration,
+  StateMachineDeclaration,
   FiniteModelDeclaration,
 ]);
 
@@ -128,6 +190,9 @@ export type ServiceDeclaration = typeof ServiceDeclaration.Type;
 export type RefinementDeclaration = typeof RefinementDeclaration.Type;
 export type TheoryDeclaration = typeof TheoryDeclaration.Type;
 export type FiniteModelDeclaration = typeof FiniteModelDeclaration.Type;
+export type StateMachineDeclaration = typeof StateMachineDeclaration.Type;
+export type StatePredicate = typeof StatePredicate.Type;
+export type StateOperation = typeof StateOperation.Type;
 export type TheoryOperation = typeof TheoryOperation.Type;
 export type TheoryLaw = typeof TheoryLaw.Type;
 
@@ -259,6 +324,125 @@ const validateTheory = (theory: TheoryDeclaration) =>
     }
   });
 
+const inferStateValueType = (
+  machine: StateMachineDeclaration,
+  scope: string,
+  parameters: ReadonlyArray<{ readonly id: string; readonly type: string }>,
+  stateAvailable: boolean,
+  value: StateValue,
+): Effect.Effect<string, SemanticError> =>
+  Effect.gen(function* () {
+    if (value.kind === "integerLiteral") return "Integer";
+    if (value.kind === "parameter") {
+      const parameter = parameters.find(({ id }) => id === value.id);
+      if (parameter === undefined) {
+        return yield* new SemanticError({
+          message: `${scope} references unknown parameter ${value.id}`,
+        });
+      }
+      return parameter.type;
+    }
+    if (!stateAvailable) {
+      return yield* new SemanticError({
+        message: `${scope} cannot observe state field ${value.field}`,
+      });
+    }
+    const field = machine.state.fields.find(({ id }) => id === value.field);
+    if (field === undefined) {
+      return yield* new SemanticError({
+        message: `${scope} references unknown state field ${value.field}`,
+      });
+    }
+    return field.type;
+  });
+
+const validateStatePredicate = (
+  machine: StateMachineDeclaration,
+  scope: string,
+  parameters: ReadonlyArray<{ readonly id: string; readonly type: string }>,
+  stateAvailable: boolean,
+  predicate: StatePredicate,
+) =>
+  Effect.gen(function* () {
+    const left = yield* inferStateValueType(
+      machine,
+      scope,
+      parameters,
+      stateAvailable,
+      predicate.left,
+    );
+    const right = yield* inferStateValueType(
+      machine,
+      scope,
+      parameters,
+      stateAvailable,
+      predicate.right,
+    );
+    if (left !== "Integer" || right !== "Integer") {
+      return yield* new SemanticError({
+        message: `${scope} compares ${left} with ${right}; greaterThanOrEqual requires Integer operands`,
+      });
+    }
+  });
+
+const validateStateMachine = (machine: StateMachineDeclaration, knownTypes: ReadonlySet<string>) =>
+  Effect.gen(function* () {
+    yield* validateUnique(
+      `state machine ${machine.id} fields`,
+      machine.state.fields.map(({ id }) => id),
+    );
+    yield* validateUnique(
+      `state machine ${machine.id} operations`,
+      [...machine.initializers, ...machine.transitions].map(({ id }) => id),
+    );
+    yield* validateUnique(
+      `state machine ${machine.id} invariants`,
+      machine.invariants.map(({ id }) => id),
+    );
+
+    for (const field of machine.state.fields) {
+      if (!knownTypes.has(field.type)) {
+        return yield* new SemanticError({
+          message: `state machine ${machine.id} field ${field.id} references unknown type ${field.type}`,
+        });
+      }
+    }
+
+    for (const operation of [...machine.initializers, ...machine.transitions]) {
+      yield* validateUnique(
+        `state operation ${machine.id}.${operation.id}`,
+        operation.parameters.map(({ id }) => id),
+      );
+      for (const parameter of operation.parameters) {
+        if (!knownTypes.has(parameter.type)) {
+          return yield* new SemanticError({
+            message: `state operation ${machine.id}.${operation.id} parameter ${parameter.id} references unknown type ${parameter.type}`,
+          });
+        }
+      }
+      const stateAvailable = machine.transitions.some(({ id }) => id === operation.id);
+      for (const requirement of operation.requires) {
+        yield* validateStatePredicate(
+          machine,
+          `state operation ${machine.id}.${operation.id} requirement`,
+          operation.parameters,
+          stateAvailable,
+          requirement,
+        );
+      }
+    }
+
+    for (const invariant of machine.invariants) {
+      yield* validateStatePredicate(
+        machine,
+        `invariant ${machine.id}.${invariant.id}`,
+        [],
+        true,
+        invariant.proposition,
+      );
+    }
+  });
+
 const validateFiniteModel = (model: FiniteModelDeclaration, theory: TheoryDeclaration) =>
   Effect.gen(function* () {
     yield* validateUnique(
@@ -378,6 +562,10 @@ export const validateCore = (document: CoreDocument) =>
     for (const declaration of document.declarations) {
       if (declaration.kind === "theory") {
         yield* validateTheory(declaration);
+        continue;
+      }
+      if (declaration.kind === "stateMachine") {
+        yield* validateStateMachine(declaration, knownTypes);
         continue;
       }
       if (declaration.kind === "finiteModel") {
