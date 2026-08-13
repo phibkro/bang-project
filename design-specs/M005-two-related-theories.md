@@ -1,7 +1,7 @@
 ---
 id: M005
 title: Two related theories and one bridge law
-status: active
+status: completed
 timebox: 5 focused sessions
 vision_claims:
   - theory-composition
@@ -195,4 +195,24 @@ Can explicit participant qualification plus shared-sort identity support a usefu
 
 ## Result
 
-Record demonstrated behavior, rejected assumptions, exact evidence scope, and follow-up pressure on the Core relationship vocabulary.
+Completed on 2026-08-13. Core now represents two independently declared
+theories and one qualified `theoryBridge` with explicit shared-sort identities.
+Semantic checking rejects unknown participant theories, sorts, and operations,
+duplicate participant aliases, and law terms whose sorts have not been shared.
+The checked document normalizes into two Effect Graph nodes and one undirected
+bridge edge while Core declaration IDs remain the stable semantic identities.
+
+The Effect projection generates independent Account and Ledger model ports plus
+one bridge property suite. At seed `20260813`, the lawful pair passed 100 sampled
+cases. The inconsistent Ledger realization failed and shrank in one step to
+`accountId = 0n`, where Account observed `0n` and Ledger observed `1n`; replay
+path `0:0` and both observations are retained in the evidence manifest. The
+manifest classifies this as `property-tested` and explicitly reports universal
+agreement over all integers as unsupported by the TypeScript target.
+
+The tracer uses Effect's native `FileSystem`, `Path`, and
+`ChildProcessSpawner` requirements, `BunServices.layer`, and
+`BunRuntime.runMain`; no project wrapper duplicates those platform services.
+Implementation commit `53cd3b5` passed `just verify` from a detached clean
+worktree after `bun install --frozen-lockfile --ignore-scripts` installed 290
+packages.

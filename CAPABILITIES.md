@@ -9,7 +9,7 @@ flowchart LR
     M002["M002 · one theory + finite model<br/>complete"]
     M003["M003 · generated algebraic law suite<br/>complete"]
     M004["M004 · coalgebraic state preservation<br/>complete"]
-    M005["M005 · Account ↔ Ledger bridge law<br/>active"]
+    M005["M005 · Account ↔ Ledger bridge law<br/>complete"]
     M006["M006 · effect + capability boundary"]
     M007["M007 · graded evidence report"]
     M008["M008 · runtime trace observation"]
@@ -37,7 +37,7 @@ flowchart LR
 | theory and finite model        | Ask whether one finite model satisfies one law                | refined domain value              | M002         | complete |
 | algebraic law suite            | Find and minimize a law counterexample                        | theory and finite model           | M003         | complete |
 | coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | complete |
-| cross-theory bridge            | Expose an Account/Ledger disagreement in domain terms         | theory/model + state preservation | M005         | active   |
+| cross-theory bridge            | Expose an Account/Ledger disagreement in domain terms         | theory/model + state preservation | M005         | complete |
 | effectful capability boundary  | Require debit authority and typed failure                     | spine + state preservation        | M006         | planned  |
 | graded evidence                | Distinguish structure, tests, runtime checks, and assumptions | produced evidence classes         | M007         | planned  |
 | runtime observation            | Monitor one operation protocol over a trace                   | state preservation + evidence     | M008         | planned  |
