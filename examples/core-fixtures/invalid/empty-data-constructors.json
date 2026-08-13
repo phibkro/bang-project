@@ -1,0 +1,11 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "EmptyData",
+      "discriminator": "kind",
+      "constructors": []
+    }
+  ]
+}

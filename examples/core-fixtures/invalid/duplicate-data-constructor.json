@@ -1,0 +1,14 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "data",
+      "id": "DuplicateConstructor",
+      "discriminator": "kind",
+      "constructors": [
+        { "tag": "value", "fields": [] },
+        { "tag": "value", "fields": [] }
+      ]
+    }
+  ]
+}
