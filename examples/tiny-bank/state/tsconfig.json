@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-state-machine.test.ts",
+    "state-diagnostics.ts",
+    "../implementation/account-state-machine.ts",
+    "../../../generated/effect/AccountStateMachine.ts"
+  ]
+}

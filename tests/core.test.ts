@@ -120,3 +120,51 @@ describe("Core represented theory sorts", () => {
     expect(error.message).toContain("unknown built-in representation Decimal");
   });
 });
+
+describe("Core state-machine preservation contracts", () => {
+  test("accepts Account construction, transition requirements, and invariant", async () => {
+    const text = await Bun.file("examples/tiny-bank/core/account-state-machine.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const validated = Effect.runSync(validateCore(document));
+
+    expect(validated.declarations[0]?.id).toBe("Account");
+  });
+
+  test("rejects an unknown state-field observation", async () => {
+    const text = await Bun.file("examples/core-fixtures/invalid/unknown-state-field.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(
+      "invariant UnknownStateField.nonnegativeBalance references unknown state field missing",
+    );
+  });
+
+  test("rejects an ill-typed state predicate", async () => {
+    const text = await Bun.file(
+      "examples/core-fixtures/invalid/ill-typed-state-predicate.json",
+    ).text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(
+      "compares String with Integer; greaterThanOrEqual requires Integer operands",
+    );
+  });
+
+  test("rejects an initializer requirement that observes unavailable state", async () => {
+    const text = await Bun.file(
+      "examples/core-fixtures/invalid/initializer-observes-state.json",
+    ).text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(
+      "state operation InitializerObservesState.initialize requirement cannot observe state field balance",
+    );
+  });
+});
