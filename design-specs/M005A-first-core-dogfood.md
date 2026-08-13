@@ -229,3 +229,5 @@ concrete data-modeling pressure is reuse across multiple declarations and
 projection units; generic types, kinds, and a module calculus remain deferred
 until a user journey requires them. Implementation commit `4f06c2b` passed
 `just verify` on its clean committed tree.
+
+Hosted acceptance: [GitHub Actions run 31739733148](https://github.com/phibkro/bang-project/actions/runs/31739733148).
