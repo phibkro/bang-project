@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "integer-addition.test.ts",
+    "property-diagnostics.ts",
+    "../implementation/integer-addition.ts",
+    "../../../generated/effect/IntegerAdditionProperties.ts"
+  ]
+}

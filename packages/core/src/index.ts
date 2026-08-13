@@ -70,10 +70,19 @@ const TheoryLaw = Schema.Struct({
     right: TermSchema,
   }),
 });
+const TheorySort = Schema.Struct({
+  id: Identifier,
+  representation: Schema.optional(
+    Schema.Struct({
+      kind: Schema.Literal("builtin"),
+      type: TypeReference,
+    }),
+  ),
+});
 const TheoryDeclaration = Schema.Struct({
   kind: Schema.Literal("theory"),
   id: Identifier,
-  sorts: Schema.Array(Schema.Struct({ id: Identifier })),
+  sorts: Schema.Array(TheorySort),
   operations: Schema.Array(TheoryOperation),
   laws: Schema.Array(TheoryLaw),
 });
@@ -202,6 +211,14 @@ const validateTheory = (theory: TheoryDeclaration) =>
       theory.laws.map(({ id }) => id),
     );
     const sorts = new Set(theory.sorts.map(({ id }) => id));
+
+    for (const sort of theory.sorts) {
+      if (sort.representation !== undefined && !builtInTypes.has(sort.representation.type)) {
+        return yield* new SemanticError({
+          message: `theory ${theory.id} sort ${sort.id} references unknown built-in representation ${sort.representation.type}`,
+        });
+      }
+    }
 
     for (const operation of theory.operations) {
       yield* validateUnique(

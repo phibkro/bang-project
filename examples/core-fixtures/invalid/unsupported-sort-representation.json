@@ -1,0 +1,17 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "StringTheory",
+      "sorts": [
+        {
+          "id": "Value",
+          "representation": { "kind": "builtin", "type": "Decimal" }
+        }
+      ],
+      "operations": [],
+      "laws": []
+    }
+  ]
+}

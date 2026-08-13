@@ -1,0 +1,27 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "StringIdentity",
+      "sorts": [
+        {
+          "id": "Value",
+          "representation": { "kind": "builtin", "type": "String" }
+        }
+      ],
+      "operations": [{ "id": "identity", "parameters": [], "result": "Value" }],
+      "laws": [
+        {
+          "id": "reflexive",
+          "parameters": [{ "id": "value", "sort": "Value" }],
+          "proposition": {
+            "kind": "equal",
+            "left": { "kind": "variable", "id": "value" },
+            "right": { "kind": "variable", "id": "value" }
+          }
+        }
+      ]
+    }
+  ]
+}
