@@ -10,6 +10,7 @@ flowchart LR
     M003["M003 · generated algebraic law suite<br/>complete"]
     M004["M004 · coalgebraic state preservation<br/>complete"]
     M005["M005 · Account ↔ Ledger bridge law<br/>complete"]
+    M005A["M005A · first Core dogfood<br/>active"]
     M006["M006 · effect + capability boundary"]
     M007["M007 · graded evidence report"]
     M008["M008 · runtime trace observation"]
@@ -19,8 +20,9 @@ flowchart LR
     M001 --> M004
     M002 --> M005
     M004 --> M005
-    M000 --> M006
-    M004 --> M006
+    M005 --> M005A
+    M000 --> M005A
+    M005A --> M006
     M003 --> M007
     M005 --> M007
     M006 --> M007
@@ -38,6 +40,7 @@ flowchart LR
 | algebraic law suite            | Find and minimize a law counterexample                        | theory and finite model           | M003         | complete |
 | coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | complete |
 | cross-theory bridge            | Expose an Account/Ledger disagreement in domain terms         | theory/model + state preservation | M005         | complete |
+| first Core dogfood             | Detect recursive `BridgeTerm` drift in the BANG compiler      | bridge + algebraic data           | M005A        | active   |
 | effectful capability boundary  | Require debit authority and typed failure                     | spine + state preservation        | M006         | planned  |
 | graded evidence                | Distinguish structure, tests, runtime checks, and assumptions | produced evidence classes         | M007         | planned  |
 | runtime observation            | Monitor one operation protocol over a trace                   | state preservation + evidence     | M008         | planned  |
@@ -59,7 +62,10 @@ flowchart LR
     BR --> DF
 ```
 
-This slice should run after M005 and before effect/capability work expands the implementation boundary. Merely naming a current toy realization “BANG” would be ceremonial self-reference, not dogfooding.
+M005A is this slice. It specifies the real recursive `BridgeTerm` shape and
+evaluates the existing Core decoder through a generated conformance port. Merely
+naming a toy realization “BANG” would be ceremonial self-reference, not
+dogfooding.
 
 ## North-star pressure test
 
