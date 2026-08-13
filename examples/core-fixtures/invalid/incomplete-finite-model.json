@@ -1,0 +1,30 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "AccountLifecycle",
+      "sorts": [{ "id": "Status" }],
+      "operations": [
+        {
+          "id": "freeze",
+          "parameters": [{ "id": "status", "sort": "Status" }],
+          "result": "Status"
+        }
+      ],
+      "laws": []
+    },
+    {
+      "kind": "finiteModel",
+      "id": "IncompleteModel",
+      "theory": "AccountLifecycle",
+      "carriers": [{ "sort": "Status", "elements": ["Open", "Frozen"] }],
+      "operations": [
+        {
+          "operation": "freeze",
+          "rows": [{ "arguments": ["Open"], "result": "Frozen" }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-lifecycle-conformance.ts",
+    "../implementation/account-lifecycle-model.ts",
+    "../../../generated/effect/AccountLifecycleModel.ts"
+  ]
+}

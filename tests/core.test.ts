@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CoreDocumentFromJson, SemanticError, validateCore } from "@bang/core";
+import { CoreDocumentFromJson, evaluateFiniteModel, SemanticError, validateCore } from "@bang/core";
 import { Effect, Schema } from "effect";
 
 describe("Core service declaration", () => {
@@ -49,5 +49,52 @@ describe("Core refinement declaration", () => {
     const error = Effect.runSync(Effect.flip(validateCore(document)));
 
     expect(error.message).toContain("compares self : String with Integer");
+  });
+});
+
+describe("Core finite model satisfaction", () => {
+  test("exhaustively accepts the valid Account Lifecycle model", async () => {
+    const text = await Bun.file("examples/tiny-bank/core/account-lifecycle.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const result = Effect.runSync(evaluateFiniteModel(document, "AccountLifecycleValid"));
+
+    expect(result).toEqual({
+      satisfies: true,
+      theory: "AccountLifecycle",
+      model: "AccountLifecycleValid",
+      checkedAssignments: 3,
+    });
+  });
+
+  test("returns a structured counterexample for the broken model", async () => {
+    const text = await Bun.file("examples/tiny-bank/core/account-lifecycle.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const result = Effect.runSync(evaluateFiniteModel(document, "AccountLifecycleBroken"));
+
+    expect(result).toEqual({
+      satisfies: false,
+      theory: "AccountLifecycle",
+      model: "AccountLifecycleBroken",
+      checkedAssignments: 1,
+      counterexample: {
+        law: "freezeIdempotent",
+        assignment: [{ parameter: "status", element: "Open" }],
+        left: "Open",
+        right: "Frozen",
+      },
+    });
+  });
+
+  test("rejects an incomplete operation interpretation", async () => {
+    const text = await Bun.file(
+      "examples/core-fixtures/invalid/incomplete-finite-model.json",
+    ).text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain('operation freeze is incomplete at arguments ["Frozen"]');
   });
 });

@@ -1,0 +1,74 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "AccountLifecycle",
+      "sorts": [{ "id": "Status" }],
+      "operations": [
+        {
+          "id": "freeze",
+          "parameters": [{ "id": "status", "sort": "Status" }],
+          "result": "Status"
+        }
+      ],
+      "laws": [
+        {
+          "id": "freezeIdempotent",
+          "parameters": [{ "id": "status", "sort": "Status" }],
+          "proposition": {
+            "kind": "equal",
+            "left": {
+              "kind": "application",
+              "operation": "freeze",
+              "arguments": [
+                {
+                  "kind": "application",
+                  "operation": "freeze",
+                  "arguments": [{ "kind": "variable", "id": "status" }]
+                }
+              ]
+            },
+            "right": {
+              "kind": "application",
+              "operation": "freeze",
+              "arguments": [{ "kind": "variable", "id": "status" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "finiteModel",
+      "id": "AccountLifecycleValid",
+      "theory": "AccountLifecycle",
+      "carriers": [{ "sort": "Status", "elements": ["Open", "Frozen", "Closed"] }],
+      "operations": [
+        {
+          "operation": "freeze",
+          "rows": [
+            { "arguments": ["Open"], "result": "Frozen" },
+            { "arguments": ["Frozen"], "result": "Frozen" },
+            { "arguments": ["Closed"], "result": "Closed" }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "finiteModel",
+      "id": "AccountLifecycleBroken",
+      "theory": "AccountLifecycle",
+      "carriers": [{ "sort": "Status", "elements": ["Open", "Frozen", "Closed"] }],
+      "operations": [
+        {
+          "operation": "freeze",
+          "rows": [
+            { "arguments": ["Open"], "result": "Frozen" },
+            { "arguments": ["Frozen"], "result": "Open" },
+            { "arguments": ["Closed"], "result": "Closed" }
+          ]
+        }
+      ]
+    }
+  ]
+}
