@@ -1,0 +1,22 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "AccountBalance",
+      "sorts": [],
+      "operations": [],
+      "laws": []
+    },
+    {
+      "kind": "theoryBridge",
+      "id": "UnknownBridgeTheory",
+      "participants": [
+        { "id": "account", "theory": "AccountBalance" },
+        { "id": "ledger", "theory": "MissingLedger" }
+      ],
+      "sharedSorts": [],
+      "laws": []
+    }
+  ]
+}

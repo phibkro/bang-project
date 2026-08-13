@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { CoreDocumentFromJson, evaluateFiniteModel, SemanticError, validateCore } from "@bang/core";
-import { Effect, Schema } from "effect";
+import {
+  buildTheoryGraph,
+  CoreDocumentFromJson,
+  evaluateFiniteModel,
+  SemanticError,
+  validateCore,
+} from "@bang/core";
+import { Effect, Graph, Schema } from "effect";
 
 describe("Core service declaration", () => {
   test("decodes a valid declaration", async () => {
@@ -166,5 +172,66 @@ describe("Core state-machine preservation contracts", () => {
     expect(error.message).toContain(
       "state operation InitializerObservesState.initialize requirement cannot observe state field balance",
     );
+  });
+});
+
+describe("Core cross-theory bridge contracts", () => {
+  test("accepts explicit Account and Ledger sharing with one bridge law", async () => {
+    const text = await Bun.file("examples/tiny-bank/core/account-ledger-bridge.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const validated = Effect.runSync(validateCore(document));
+
+    expect(validated.declarations[2]?.id).toBe("AccountLedger");
+
+    const graph = Effect.runSync(buildTheoryGraph(validated));
+    expect(Graph.nodeCount(graph)).toBe(2);
+    expect(Graph.edgeCount(graph)).toBe(1);
+    expect(Array.from(Graph.nodes(graph), ([, node]) => node.theory).toSorted()).toEqual([
+      "AccountBalance",
+      "LedgerBalance",
+    ]);
+    expect(Array.from(Graph.edges(graph), ([, edge]) => edge.data)).toEqual([
+      {
+        kind: "bridge",
+        bridge: "AccountLedger",
+        sharedSorts: ["AccountId", "Balance"],
+        laws: ["balancesAgree"],
+      },
+    ]);
+  });
+
+  test.each([
+    [
+      "unknown participant theory",
+      "examples/core-fixtures/invalid/unknown-bridge-theory.json",
+      "participant ledger references unknown theory MissingLedger",
+    ],
+    [
+      "duplicate participant alias",
+      "examples/core-fixtures/invalid/duplicate-bridge-participant.json",
+      "participants contains duplicate identity account",
+    ],
+    [
+      "unknown qualified sort",
+      "examples/core-fixtures/invalid/unknown-bridge-sort.json",
+      "references unknown sort ledger.MissingAccountId",
+    ],
+    [
+      "unknown qualified operation",
+      "examples/core-fixtures/invalid/unknown-bridge-operation.json",
+      "references unknown operation account.missingBalance",
+    ],
+    [
+      "unshared result sort",
+      "examples/core-fixtures/invalid/unshared-bridge-result.json",
+      "operation account.balance result sort Balance is not shared by the bridge",
+    ],
+  ])("rejects %s", async (_case, path, diagnostic) => {
+    const document = Schema.decodeSync(CoreDocumentFromJson)(await Bun.file(path).text());
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain(diagnostic);
   });
 });
