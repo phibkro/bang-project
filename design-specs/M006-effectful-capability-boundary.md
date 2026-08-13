@@ -21,9 +21,10 @@ failure when the requested transition is outside the legal state relation.
 
 M006 adds one vertical connection between the already demonstrated state,
 effect, capability, and evidence axes. It does not add a general effect system
-or authorization policy language. [Decision 0004](../decisions/0004-defer-state-machine-runtime.md)
-keeps state-machine runtimes behind target projection until a runtime-observation
-mission exercises their additional semantics.
+or authorization policy language. [Decision 0004](../decisions/0004-select-effect-machine-projection.md)
+selects effect-machine as the preferred Effect state-machine adapter while
+keeping it behind target projection until a runtime-observation mission
+exercises its additional semantics.
 
 ## User journey
 
