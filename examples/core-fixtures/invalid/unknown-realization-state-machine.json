@@ -1,0 +1,13 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    { "kind": "capability", "id": "DebitAccount" },
+    {
+      "kind": "operationRealization",
+      "id": "UnknownMachineWithdrawal",
+      "operation": { "stateMachine": "MissingAccount", "operation": "withdraw" },
+      "requires": ["DebitAccount"],
+      "disabled": { "kind": "failure", "id": "WithdrawalRejected" }
+    }
+  ]
+}
