@@ -1,7 +1,7 @@
 ---
 id: M003
 title: Generated algebraic law suite
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - target-law-projection
@@ -117,3 +117,13 @@ Can one typed Core law tree drive both finite satisfaction and generated target 
 - conditional laws, Boolean connectives, or partial operations;
 - solver dispatch or proof export;
 - counterexample minimization outside FastCheck's declared shrinker.
+
+## Result
+
+Completed on 2026-08-13. The typed Core term tree now drives both M002 finite satisfaction and M003 target property predicates without introducing a second law representation. Effect projection generates an `@effect/vitest` `it.effect.prop` suite whose Schema inputs are converted to FastCheck arbitraries by Effect's own integration.
+
+The lawful realization passed 100 cases at seed `20260813`. The broken realization failed on its first generated case and shrank once to `value = 0n`, with replay path `0:0`. The evidence manifest records both outcomes as `property-tested`; it does not promote sampled success to proof or finite exhaustion.
+
+The mission also exposed a useful projection boundary: Core accepts any known built-in representation, while this first property adapter explicitly supports only `Integer`. Unknown Core representations and known-but-unsupported target representations fail at their respective owning layers.
+
+Hosted acceptance: [GitHub Actions run 31731699686](https://github.com/phibkro/bang-project/actions/runs/31731699686).

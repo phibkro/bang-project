@@ -2,7 +2,7 @@
 
 BANG specifies software systems as networks of related theories and projects their accumulated contracts into executable conformance boundaries.
 
-The first completed vertical missions are [M000 executable specification spine](design-specs/M000-executable-specification-spine.md), [M001 refined domain value](design-specs/M001-refined-domain-value.md), and [M002 one theory and one finite model](design-specs/M002-one-theory-one-model.md). [M003 generated algebraic law suite](design-specs/M003-generated-law-suite.md) is active. The [capability dependency map](CAPABILITIES.md) records the current route without treating unexercised architecture as settled.
+The first completed vertical missions are [M000 executable specification spine](design-specs/M000-executable-specification-spine.md), [M001 refined domain value](design-specs/M001-refined-domain-value.md), [M002 one theory and one finite model](design-specs/M002-one-theory-one-model.md), and [M003 generated algebraic law suite](design-specs/M003-generated-law-suite.md). The [capability dependency map](CAPABILITIES.md) records the current route without treating unexercised architecture as settled.
 
 This is the monorepo for the whole BANG project: specification language, Core, compilers, target projections, conformance tools, build system, theory and realization registry, documentation, and any future implementation language. See the [repository map](docs/repository-map.md). Subsystems become packages only under pressure from an active mission.
 
