@@ -5,7 +5,7 @@ This is the schedulable dependency projection for near-term product capabilities
 ```mermaid
 flowchart LR
     M000["M000 · executable Core → Effect spine<br/>complete"]
-    M001["M001 · refined domain value<br/>active"]
+    M001["M001 · refined domain value<br/>complete"]
     M002["M002 · one theory + finite model"]
     M003["M003 · generated algebraic law suite"]
     M004["M004 · coalgebraic state preservation"]
@@ -33,7 +33,7 @@ flowchart LR
 | Capability                     | User-feelable claim                                           | Requires                          | First tracer | Status   |
 | ------------------------------ | ------------------------------------------------------------- | --------------------------------- | ------------ | -------- |
 | Core-to-target spine           | Generate and type-check one independent Effect port           | —                                 | M000         | complete |
-| refined domain value           | Construct `Balance`, reject invalid values                    | Core-to-target spine              | M001         | active   |
+| refined domain value           | Construct `Balance`, reject invalid values                    | Core-to-target spine              | M001         | complete |
 | theory and finite model        | Ask whether one finite model satisfies one law                | refined domain value              | M002         | planned  |
 | algebraic law suite            | Find and minimize a law counterexample                        | theory and finite model           | M003         | planned  |
 | coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | planned  |
