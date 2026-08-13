@@ -1,0 +1,15 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "refinement",
+      "id": "InvalidName",
+      "base": "String",
+      "predicate": {
+        "kind": "greaterThanOrEqual",
+        "left": { "kind": "self" },
+        "right": { "kind": "integerLiteral", "value": "0" }
+      }
+    }
+  ]
+}

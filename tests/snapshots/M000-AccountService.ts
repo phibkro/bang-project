@@ -3,7 +3,7 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
 export interface AccountServiceShape {
-  readonly balance: (accountId: string) => Effect.Effect<number>;
+  readonly balance: (accountId: string) => Effect.Effect<bigint>;
 }
 
 export class AccountService extends Context.Service<AccountService, AccountServiceShape>()(

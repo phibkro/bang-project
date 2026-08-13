@@ -1,5 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { ServiceDeclaration } from "@bang/core";
 import { CoreDocumentFromJson, SemanticError, validateCore } from "@bang/core";
 import { projectEffectService } from "@bang/target-effect";
 import { Effect, Schema } from "effect";
@@ -27,7 +28,9 @@ const rejection = Effect.runSync(Effect.flip(validateCore(invalid)));
 if (!(rejection instanceof SemanticError)) throw new Error("unexpected negative fixture failure");
 console.log("PASS unknown type rejection");
 
-const service = validated.declarations[0];
+const service = validated.declarations.find(
+  (declaration): declaration is ServiceDeclaration => declaration.kind === "service",
+);
 if (service === undefined) throw new Error("valid fixture declared no service");
 
 const generated = projectEffectService(service);
