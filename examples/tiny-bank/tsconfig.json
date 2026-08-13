@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["implementation/**/*.ts", "../../generated/**/*.ts"]
+  "include": ["implementation/account-service.ts", "../../generated/effect/AccountService.ts"]
 }
