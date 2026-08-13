@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -11,5 +11,10 @@
     "typescript/consistent-type-imports": "error",
     "typescript/no-explicit-any": "error"
   },
-  "ignorePatterns": ["generated/**", ".bang/**", "node_modules/**"]
+  "ignorePatterns": [
+    "generated/**",
+    ".bang/**",
+    "fixtures/effect-lsp-invalid/**",
+    "node_modules/**"
+  ]
 }

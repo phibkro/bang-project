@@ -1,8 +1,8 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { CoreDocumentFromJson, SemanticError, validateCore } from "@bang/core";
+import { projectEffectService } from "@bang/target-effect";
 import { Effect, Schema } from "effect";
-import { CoreDocumentFromJson, SemanticError, validateCore } from "../src/core.ts";
-import { projectEffectService } from "../src/effect-projection.ts";
 
 const validFixture = "examples/tiny-bank/core/account-service.json";
 const invalidFixture = "examples/core-fixtures/invalid/unknown-type.json";
@@ -11,7 +11,7 @@ const snapshotPath = "tests/snapshots/M000-AccountService.ts";
 const evidencePath = ".bang/evidence/M000.json";
 
 const decode = async (path: string) =>
-  Schema.decodeUnknownSync(CoreDocumentFromJson)(await Bun.file(path).text());
+  Schema.decodeSync(CoreDocumentFromJson)(await Bun.file(path).text());
 
 await rm("generated", { recursive: true, force: true });
 await rm(".bang/evidence", { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import type { ServiceDeclaration } from "./core.ts";
+import type { ServiceDeclaration } from "@bang/core";
 
 const projectType = (reference: string): string => {
   switch (reference) {

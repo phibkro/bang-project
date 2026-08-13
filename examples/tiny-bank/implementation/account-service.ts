@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { AccountService } from "../../generated/effect/AccountService.ts";
+import { AccountService } from "../../../generated/effect/AccountService.ts";
 
 export const AccountServiceLive = Layer.succeed(
   AccountService,

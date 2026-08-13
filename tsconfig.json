@@ -1,4 +1,5 @@
 {
+  "$schema": "./node_modules/@effect/tsgo/schema.json",
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",
@@ -16,7 +17,32 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "floatingEffect": "error",
+          "lazyPromiseInEffectSync": "error",
+          "missingEffectContext": "error",
+          "missingEffectError": "error",
+          "missingLayerContext": "error",
+          "strictEffectProvide": "error",
+          "unsafeEffectTypeAssertion": "error"
+        },
+        "ignoreEffectSuggestionsInTscExitCode": true,
+        "ignoreEffectWarningsInTscExitCode": false,
+        "ignoreEffectErrorsInTscExitCode": false
+      }
+    ]
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "generated/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts",
+    "tools/**/*.ts",
+    "examples/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "generated/**/*.ts"
+  ]
 }

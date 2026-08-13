@@ -42,9 +42,9 @@ const validateUnique = (scope: string, values: ReadonlyArray<string>) =>
     const seen = new Set<string>();
     for (const value of values) {
       if (seen.has(value)) {
-        return yield* Effect.fail(
-          new SemanticError({ message: `${scope} contains duplicate identity ${value}` }),
-        );
+        return yield* new SemanticError({
+          message: `${scope} contains duplicate identity ${value}`,
+        });
       }
       seen.add(value);
     }
@@ -71,11 +71,9 @@ export const validateCore = (document: CoreDocument) =>
         const references = [...operation.parameters.map(({ type }) => type), operation.result];
         for (const reference of references) {
           if (!builtInTypes.has(reference)) {
-            return yield* Effect.fail(
-              new SemanticError({
-                message: `operation ${declaration.id}.${operation.id} references unknown type ${reference}`,
-              }),
-            );
+            return yield* new SemanticError({
+              message: `operation ${declaration.id}.${operation.id} references unknown type ${reference}`,
+            });
           }
         }
       }
