@@ -13,18 +13,20 @@
     "demo:m000": "bun run scripts/demo-m000.ts",
     "demo:m001": "bun run scripts/demo-m001.ts",
     "demo:m002": "bun run scripts/demo-m002.ts",
-    "dev": "bun --watch scripts/demo-m002.ts",
+    "demo:m003": "bun run scripts/demo-m003.ts",
+    "dev": "bun --watch scripts/demo-m003.ts",
     "effect:setup": "effect-tsgo patch --typescript --oxlint",
     "check:effect-lsp": "bun run scripts/check-effect-lsp.ts",
     "hooks:install": "bun run scripts/install-git-hooks.ts",
-    "test": "bun test",
+    "test": "bun test tests/core.test.ts && bun run test:m003",
+    "test:m003": "bun run scripts/prepare-m003.ts && tsc --noEmit --project examples/tiny-bank/property/tsconfig.json && vitest run examples/tiny-bank/property/integer-addition.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --deny-warnings .",
     "fix": "bun run scripts/fix.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "bun run effect:setup && bun run typecheck && bun run check:effect-lsp && bun run lint && bun run format:check",
-    "preview": "bun run demo:m000 && bun run demo:m001 && bun run demo:m002",
+    "preview": "bun run demo:m000 && bun run demo:m001 && bun run demo:m002 && bun run demo:m003",
     "verify": "bun run check && bun run test && bun run preview && bun run build",
     "prepare": "bun run effect:setup && bun run hooks:install"
   },
@@ -37,10 +39,12 @@
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
     "@effect/tsgo": "0.36.4",
+    "@effect/vitest": "4.0.0-rc.108",
     "@types/bun": "1.3.14",
     "oxfmt": "0.61.0",
     "oxlint": "1.77.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   }
 }

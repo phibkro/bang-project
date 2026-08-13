@@ -1,0 +1,44 @@
+{
+  "bangCore": 1,
+  "declarations": [
+    {
+      "kind": "theory",
+      "id": "IntegerAddition",
+      "sorts": [
+        {
+          "id": "Value",
+          "representation": { "kind": "builtin", "type": "Integer" }
+        }
+      ],
+      "operations": [
+        { "id": "zero", "parameters": [], "result": "Value" },
+        {
+          "id": "add",
+          "parameters": [
+            { "id": "left", "sort": "Value" },
+            { "id": "right", "sort": "Value" }
+          ],
+          "result": "Value"
+        }
+      ],
+      "laws": [
+        {
+          "id": "rightIdentity",
+          "parameters": [{ "id": "value", "sort": "Value" }],
+          "proposition": {
+            "kind": "equal",
+            "left": {
+              "kind": "application",
+              "operation": "add",
+              "arguments": [
+                { "kind": "variable", "id": "value" },
+                { "kind": "application", "operation": "zero", "arguments": [] }
+              ]
+            },
+            "right": { "kind": "variable", "id": "value" }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -98,3 +98,25 @@ describe("Core finite model satisfaction", () => {
     expect(error.message).toContain('operation freeze is incomplete at arguments ["Frozen"]');
   });
 });
+
+describe("Core represented theory sorts", () => {
+  test("accepts the represented IntegerAddition theory", async () => {
+    const text = await Bun.file("examples/tiny-bank/core/integer-addition.json").text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const validated = Effect.runSync(validateCore(document));
+
+    expect(validated.declarations[0]?.id).toBe("IntegerAddition");
+  });
+
+  test("rejects an unknown built-in carrier representation", async () => {
+    const text = await Bun.file(
+      "examples/core-fixtures/invalid/unsupported-sort-representation.json",
+    ).text();
+    const document = Schema.decodeSync(CoreDocumentFromJson)(text);
+
+    const error = Effect.runSync(Effect.flip(validateCore(document)));
+
+    expect(error.message).toContain("unknown built-in representation Decimal");
+  });
+});
