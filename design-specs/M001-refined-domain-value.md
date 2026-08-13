@@ -1,7 +1,7 @@
 ---
 id: M001
 title: Refined domain value
-status: active
+status: complete
 timebox: 4 focused sessions
 vision_claims:
   - value-modeling
@@ -94,3 +94,12 @@ Is the minimal `self` plus integer-literal predicate representation sufficient t
 - generated business logic;
 - claiming runtime checks or brands as proofs;
 - surface syntax beyond canonical Core JSON.
+
+## Result
+
+- GitHub clean-run evidence: <https://github.com/phibkro/bang-project/actions/runs/31729418981>
+- Core accepted `Balance` and rejected both an unknown carrier and a proposition whose `self` term had the wrong type.
+- The Effect projection produced an exact `bigint` carrier, nominal brand, and runtime-checked constructor.
+- The committed negative type fixture showed that ordinary `bigint` assignment is rejected; three runtime cases covered the lower boundary, a negative value, and a foreign number.
+- The original `number` mapping for M000's `Integer` was corrected to `bigint`. Canonical decimal strings now keep Core JSON integer literals independent of JSON-number precision.
+- The minimal predicate representation is sufficient for this one refinement. It does not yet justify a general expression calculus; M002 may extend it only if finite-model laws require more terms.
