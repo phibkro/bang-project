@@ -1,7 +1,7 @@
 ---
 id: T001
 title: Public repository delivery gates
-status: active
+status: complete
 timebox: 3 focused sessions
 vision_claims:
   - durable-public-history
@@ -52,3 +52,12 @@ Effect coding guidance comes from the official sibling checkout `../effect` at `
 - automated releases;
 - adopting unpublished Reef exports;
 - beginning the next BANG semantic mission.
+
+## Result
+
+- Public repository: <https://github.com/phibkro/bang-project>
+- Clean-run evidence: <https://github.com/phibkro/bang-project/actions/runs/31728798187>
+- Required check: `verify`, supplied by GitHub Actions and required on up-to-date `main`
+- Local positive evidence: `just verify`, valid Conventional Commit, and pre-push tests passed
+- Local negative evidence: malformed commit input and a partially staged pre-commit file were both rejected
+- Corrected assumption: root type-checking initially depended on an ignored generated M000 port; the independent implementation now has a dedicated generated-artifact type-check boundary
