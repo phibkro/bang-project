@@ -216,3 +216,5 @@ The tracer uses Effect's native `FileSystem`, `Path`, and
 Implementation commit `53cd3b5` passed `just verify` from a detached clean
 worktree after `bun install --frozen-lockfile --ignore-scripts` installed 290
 packages.
+
+Hosted acceptance: [GitHub Actions run 31738574761](https://github.com/phibkro/bang-project/actions/runs/31738574761).
