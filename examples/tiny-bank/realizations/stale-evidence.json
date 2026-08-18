@@ -1,0 +1,16 @@
+{
+  "bangClassification": 1,
+  "id": "tiny-bank-stale-evidence-classification",
+  "explanationSelection": "examples/tiny-bank/theories/exact-one-capability.json",
+  "evidencePath": "examples/tiny-bank/realizations/stale-m018.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "WithdrawAccountOnce"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "bangSemanticDatabase": 1,
+  "id": "tiny-bank-transfer",
+  "project": "examples/tiny-bank/project.json",
+  "entity": {
+    "id": "Account",
+    "stateMachine": "Account",
+    "initializer": "initialize",
+    "identityField": "accountId",
+    "balanceField": "balance"
+  },
+  "refinement": { "id": "Balance" },
+  "bridge": { "id": "AccountLedger", "sharedSort": "Balance" },
+  "compositionLinks": [
+    {
+      "id": "Balance.refinement-to-account-state",
+      "kind": "representation-compatible",
+      "from": "refinement:Balance",
+      "to": "stateMachine:Account.state.balance"
+    },
+    {
+      "id": "Balance.refinement-to-ledger-bridge",
+      "kind": "representation-compatible",
+      "from": "refinement:Balance",
+      "to": "theoryBridge:AccountLedger.sharedSort.Balance"
+    }
+  ],
+  "obligation": { "id": "AccountLedger.transferPreservesTotal", "variant": "lawful" },
+  "evidence": { "path": ".bang/evidence/M016.json" },
+  "command": { "id": "Transfer" },
+  "rejection": { "id": "TransferRejected" },
+  "accountQuery": {
+    "id": "AccountSummary",
+    "stateFields": ["balance"],
+    "capabilityAvailability": "DebitAccount"
+  },
+  "totalQuery": { "id": "TotalFunds" },
+  "accountSubscription": {
+    "id": "AccountSummarySubscription",
+    "query": "AccountSummary",
+    "mode": "snapshots",
+    "initialSnapshot": true
+  },
+  "totalSubscription": {
+    "id": "TotalFundsSubscription",
+    "query": "TotalFunds",
+    "mode": "snapshots",
+    "initialSnapshot": true
+  },
+  "target": { "database": "sqlite", "api": "effect-typescript" },
+  "scenario": {
+    "sourceAccountId": "account-a",
+    "targetAccountId": "account-b",
+    "sourceInitialBalance": "10",
+    "targetInitialBalance": "2",
+    "transferAmount": "4",
+    "rejectionAmount": "7"
+  }
+}

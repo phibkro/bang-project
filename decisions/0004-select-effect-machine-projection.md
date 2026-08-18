@@ -1,6 +1,6 @@
 # 0004 — Select effect-machine for Effect state-machine projection
 
-- **Status:** accepted
+- **Status:** superseded by [decision 0005](0005-post-m009-architecture-review.md)
 - **Date:** 2026-08-13
 
 ## Decision

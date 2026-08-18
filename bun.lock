@@ -9,8 +9,15 @@
         "effect": "4.0.0-rc.108",
       },
       "devDependencies": {
+        "@bang/bang": "workspace:*",
         "@bang/core": "workspace:*",
+        "@bang/evidence": "workspace:*",
+        "@bang/obligations": "workspace:*",
+        "@bang/surface": "workspace:*",
         "@bang/target-effect": "workspace:*",
+        "@bang/target-gleam": "workspace:*",
+        "@bang/target-rust": "workspace:*",
+        "@bang/theories": "workspace:*",
         "@commitlint/cli": "21.2.2",
         "@commitlint/config-conventional": "21.2.2",
         "@effect/tsgo": "0.36.4",
@@ -23,10 +30,54 @@
         "vitest": "4.1.10",
       },
     },
+    "apps/bang": {
+      "name": "@bang/bang",
+      "version": "0.0.0",
+      "bin": {
+        "bang": "./src/main.ts",
+      },
+      "dependencies": {
+        "@bang/core": "workspace:*",
+        "@bang/evidence": "workspace:*",
+        "@bang/surface": "workspace:*",
+        "@bang/target-effect": "workspace:*",
+        "@bang/target-gleam": "workspace:*",
+        "@bang/theories": "workspace:*",
+        "@effect/platform-bun": "4.0.0-rc.108",
+        "@effect/sql-sqlite-bun": "4.0.0-rc.108",
+        "effect": "4.0.0-rc.108",
+      },
+    },
     "packages/core": {
       "name": "@bang/core",
       "version": "0.0.0",
       "dependencies": {
+        "effect": "4.0.0-rc.108",
+      },
+    },
+    "packages/evidence": {
+      "name": "@bang/evidence",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+        "@bang/obligations": "workspace:*",
+        "@bang/surface": "workspace:*",
+        "effect": "4.0.0-rc.108",
+      },
+    },
+    "packages/obligations": {
+      "name": "@bang/obligations",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+        "effect": "4.0.0-rc.108",
+      },
+    },
+    "packages/surface": {
+      "name": "@bang/surface",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
         "effect": "4.0.0-rc.108",
       },
     },
@@ -35,6 +86,29 @@
       "version": "0.0.0",
       "dependencies": {
         "@bang/core": "workspace:*",
+        "effect": "4.0.0-rc.108",
+      },
+    },
+    "packages/target-gleam": {
+      "name": "@bang/target-gleam",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+      },
+    },
+    "packages/target-rust": {
+      "name": "@bang/target-rust",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+      },
+    },
+    "packages/theories": {
+      "name": "@bang/theories",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+        "effect": "4.0.0-rc.108",
       },
     },
   },
@@ -43,9 +117,23 @@
 
     "@babel/helper-validator-identifier": ["@babel/helper-validator-identifier@7.29.7", "", {}, "sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg=="],
 
+    "@bang/bang": ["@bang/bang@workspace:apps/bang"],
+
     "@bang/core": ["@bang/core@workspace:packages/core"],
 
+    "@bang/evidence": ["@bang/evidence@workspace:packages/evidence"],
+
+    "@bang/obligations": ["@bang/obligations@workspace:packages/obligations"],
+
+    "@bang/surface": ["@bang/surface@workspace:packages/surface"],
+
     "@bang/target-effect": ["@bang/target-effect@workspace:packages/target-effect"],
+
+    "@bang/target-gleam": ["@bang/target-gleam@workspace:packages/target-gleam"],
+
+    "@bang/target-rust": ["@bang/target-rust@workspace:packages/target-rust"],
+
+    "@bang/theories": ["@bang/theories@workspace:packages/theories"],
 
     "@commitlint/cli": ["@commitlint/cli@21.2.2", "", { "dependencies": { "@commitlint/config-conventional": "^21.2.2", "@commitlint/format": "^21.2.2", "@commitlint/lint": "^21.2.2", "@commitlint/load": "^21.2.2", "@commitlint/read": "^21.2.1", "@commitlint/types": "^21.2.0", "tinyexec": "^1.0.0", "yargs": "^18.0.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-a+6hQxIxnpdvSvS2apvttPNbEliYsVC3PqFYDiiB2kjbwIsQsj1urvQ4Tkf70pKYozPalKAuRQmm/GHwndduqA=="],
 
@@ -88,6 +176,8 @@
     "@effect/platform-bun": ["@effect/platform-bun@4.0.0-rc.108", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-rc.108" }, "peerDependencies": { "effect": "^4.0.0-rc.108" } }, "sha512-27RoALzmzx6Qp4LrPIE8bYJfHe+8ZaAO3xLhJMEE6mVA8fxcPh4HAGwBv09Nk2qTFVh578SlSCY5ojUlqeSJ4A=="],
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-rc.108", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.21.0" }, "peerDependencies": { "effect": "^4.0.0-rc.108" } }, "sha512-g5dSRR+tHzFcWav5A6zbug78oV8WPJL5BJqgKlKtow0cQ2IpULcLZaP2xCYR3RJDvz5SETREmPCJ+BNONIsalw=="],
+
+    "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-rc.108", "", { "peerDependencies": { "effect": "^4.0.0-rc.108" } }, "sha512-DfulBKzAyX7CwAT7Kk+/Ht7t6HggyBaOwJLPWortnyJGKmIImp4Jwn73M0ifwL3nubz7RgBm1Pf5YnZODwBJKw=="],
 
     "@effect/tsgo": ["@effect/tsgo@0.36.4", "", { "optionalDependencies": { "@effect/tsgo-darwin-arm64": "0.36.4", "@effect/tsgo-darwin-x64": "0.36.4", "@effect/tsgo-linux-arm": "0.36.4", "@effect/tsgo-linux-arm64": "0.36.4", "@effect/tsgo-linux-x64": "0.36.4", "@effect/tsgo-win32-arm64": "0.36.4", "@effect/tsgo-win32-x64": "0.36.4" }, "bin": { "effect-tsgo": "dist/effect-tsgo.cjs" } }, "sha512-fNmdUV6FgXnvIcG18AVS1SRXt7z9jsyBh5CKuJYmTsE+DgbLaWF0CevKHx7hQPcidDWRVmdJYfU66Jvc/ZEt6w=="],
 

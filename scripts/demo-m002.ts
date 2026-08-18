@@ -61,7 +61,7 @@ if (
 }
 console.log("PASS broken model counterexample (status = Open, left = Open, right = Frozen)");
 
-const generated = projectEffectFiniteModel(theory, model);
+const generated = Effect.runSync(projectEffectFiniteModel(validated, "AccountLifecycleValid"));
 const snapshot = await Bun.file(snapshotPath).text();
 if (generated !== snapshot) throw new Error(`generated model kit differs from ${snapshotPath}`);
 await mkdir(dirname(generatedPath), { recursive: true });

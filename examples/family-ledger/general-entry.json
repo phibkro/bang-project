@@ -1,0 +1,16 @@
+{
+  "transactionId": "adjustment-1",
+  "description": "Opening allocation",
+  "postings": [
+    {
+      "accountId": "cash",
+      "side": "debit",
+      "amount": "125"
+    },
+    {
+      "accountId": "salary",
+      "side": "credit",
+      "amount": "125"
+    }
+  ]
+}

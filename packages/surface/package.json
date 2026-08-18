@@ -1,0 +1,13 @@
+{
+  "name": "@bang/surface",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@bang/core": "workspace:*",
+    "effect": "4.0.0-rc.108"
+  }
+}

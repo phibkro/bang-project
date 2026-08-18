@@ -14,7 +14,7 @@
       "kind": "operationRealization",
       "id": "FailureCollisionWithdrawal",
       "operation": { "stateMachine": "Account", "operation": "withdraw" },
-      "requires": ["DebitAccount"],
+      "requires": [{ "capability": "DebitAccount", "quantity": { "kind": "unbounded" } }],
       "disabled": { "kind": "failure", "id": "DebitAccount" }
     }
   ]

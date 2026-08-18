@@ -1,6 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { RefinementDeclaration } from "@bang/core";
 import { CoreDocumentFromJson, SemanticError, validateCore } from "@bang/core";
 import { projectEffectRefinement } from "@bang/target-effect";
 import { Effect, Schema } from "effect";
@@ -30,10 +29,6 @@ const document = await decode(validFixture);
 console.log("PASS Balance Core decode");
 
 const validated = Effect.runSync(validateCore(document));
-const refinement = validated.declarations.find(
-  (declaration): declaration is RefinementDeclaration => declaration.kind === "refinement",
-);
-if (refinement === undefined) throw new Error("valid fixture declared no refinement");
 console.log("PASS Balance predicate typing");
 
 await expectSemanticRejection(unknownBaseFixture, "unknown base MissingInteger");
@@ -42,7 +37,7 @@ console.log("PASS unknown refinement base rejection");
 await expectSemanticRejection(illTypedFixture, "self : String with Integer");
 console.log("PASS ill-typed predicate rejection");
 
-const generated = projectEffectRefinement(refinement);
+const generated = Effect.runSync(projectEffectRefinement(validated, "Balance"));
 const snapshot = await Bun.file(snapshotPath).text();
 if (generated !== snapshot) throw new Error(`generated refinement differs from ${snapshotPath}`);
 

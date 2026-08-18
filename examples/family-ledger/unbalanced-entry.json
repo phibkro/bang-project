@@ -1,0 +1,16 @@
+{
+  "transactionId": "unbalanced-1",
+  "description": "Must not append",
+  "postings": [
+    {
+      "accountId": "cash",
+      "side": "debit",
+      "amount": "100"
+    },
+    {
+      "accountId": "salary",
+      "side": "credit",
+      "amount": "99"
+    }
+  ]
+}

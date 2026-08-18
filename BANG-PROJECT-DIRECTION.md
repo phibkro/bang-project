@@ -15,6 +15,58 @@ A BANG specification defines the accumulated contract an implementation must sat
 
 Full business-implementation generation is not the first product. It remains a later research path.
 
+## Product north star
+
+BANG will own a complete semantic compiler pipeline. Users will describe a domain with a small set of high-value facts.
+
+Checked Core and reusable theories will derive all warranted properties, obligations, and realization choices. BANG will explain each result and its authority.
+
+```text
+small domain specification
+  → checked and normalized Core
+  → derived properties and obligations
+  → applicable reusable theories
+  → admissible realization plans
+  → target projection
+  → generated or independent implementation
+  → qualified evidence
+```
+
+Core primitives state irreducible judgments. Reusable theories compose those judgments. Surface forms provide short notation for stable Core compositions.
+
+Target adapters project checked judgments. Evidence providers evaluate normalized obligations.
+
+External tools can consume versioned checked or normalized Core. They cannot redefine Core semantics or erase evidence qualifications.
+
+The roadmap toward this product remains provisional. Short vertical missions will test each capability before BANG makes it part of the compiler architecture.
+
+## Exploratory delivery focus
+
+[Decision 0011](decisions/0011-semantic-data-service-exploration.md) selects a semantic data service as the next product exploration.
+
+This exploration compiles a checked domain model into a database-backed reactive service. It uses an existing database and runtime.
+
+Users declare identities, relations, operations, observations, laws, capabilities, publication choices, and persistence choices. BANG derives only warranted artifacts.
+
+```text
+semantic domain model
+  → checked Core + reusable theories
+  → logical data model + interaction contract
+  → database schema + provider and client bindings
+  → independent handlers + target runtime
+  → qualified disposition and evidence report
+```
+
+The interaction contract separates commands, queries, and subscriptions. Clients receive declared observations instead of mutable implementation state.
+
+BANG can derive schemas, constraints, ports, codecs, transaction wrappers, and reactive bindings. Underdetermined business behavior remains an independent checked handler.
+
+The disposition report states where each law is enforced. Possible boundaries include types, proofs, database constraints, transactions, runtime checks, monitors, and tests.
+
+General logical consistency is not decidable for sufficiently expressive logics. BANG must distinguish a found model, a proved inconsistency, bounded failure, `unknown`, and `unsupported`.
+
+This focus does not make one database the semantic authority. It supplies one usable path through the general compiler architecture.
+
 ## Central separation
 
 ```text
@@ -94,20 +146,21 @@ The interaction surface grows combinatorially as independent theories are compos
 ## Compiler boundary
 
 ```text
-BANG source
+BANG source and libraries
   → normative Core JSON
-  → normalized theory graph
-  → obligations
+  → checked and normalized theory graph
+  → derived properties and obligations
+  → applicable realization profiles
   → target projection
   → conformance kit
-  → independent implementation
+  → generated or independent implementation
   → conformance evaluation
-  → evidence manifest
+  → qualified evidence manifest
 ```
 
 Core JSON is the canonical machine interchange. Surface syntax elaborates into Core. Libraries contain reusable theories and patterns. Programs select and compose theories and models. Generated target kits are derived artifacts.
 
-Effect TypeScript is the first target. Rust is the first portability test; Java follows. No target defines Core semantics, and every projection reports unsupported or weakened contracts.
+Effect TypeScript is the primary product target. Other targets add distinct semantic pressure. No target defines Core semantics or hides a weakened contract.
 
 ## Evidence classes
 
@@ -189,16 +242,92 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 4. M003 — generated property suite and minimized failure.
 5. M004 — state transition and invariant preservation.
 6. M005 — two theories and one bridge law.
-7. M006 — typed effect, failure, and capability boundary.
-8. M007 — graded evidence report.
-9. M008 — runtime trace observation.
-10. M009 — Rust projection from unchanged Core.
+7. M005A — first useful Core dogfood against the real `BridgeTerm` decoder.
+8. M006 — typed effect, failure, and capability boundary.
+9. M007 — graded evidence report.
+10. M008 — runtime trace observation.
+11. M009 — Rust projection from unchanged Core.
+12. M010 — replayable evidence manifest.
+13. M011 — bounded solver-backed relational obligation.
+14. M012 — accumulated Account/Ledger system report.
+15. M013 — Account source notation and deterministic Core lowering.
+16. M014 — one shipped `bang report <selection>` journey.
+17. M015 — entity ownership and typed messages.
+18. M016 — kernel-proof provider for one normalized relational obligation.
+19. M017 — Gleam/BEAM actor realization with explicit mailbox and supervision semantics.
+20. M018 — one checked exact-one capability quantity with atomic target consumption and qualified reuse evidence.
+21. M019 — one shipped command produces fresh conformance evidence against a real BANG compiler component.
+22. M020 — one persistent local family ledger with balanced immutable entries and journal-derived balances.
+23. M021 — construct-addressed TinyBank normalization with typed dependency closure and clean-run parity.
+24. M022 — one versioned semantic artifact with independent exact-one theory applicability and explanation.
+25. M023 — classify existing Effect and Gleam realizations against derived exact-one obligations with qualified evidence.
+26. M024 — trace one bounded two-owner protocol under ordered, duplicated, reordered, and dropped delivery attempts with explicit causal and coordination conclusions.
+27. M025 — evaluate one single-authority TinyBank project across reusable theory, realization classification, bounded channel analysis, and authored evidence policy.
+28. M026 — derive one persistent reactive TinyBank service with one SQLite schema, typed Effect bindings, and qualified law dispositions.
+29. M027 — compose an Account/AccountLedger transfer relation into one atomic two-row SQLite command with reactive Account and TotalFunds observations.
 
-The sequence is a hypothesis. Mission evidence may reveal a better architecture or order. Change it explicitly; do not drift implicitly.
+Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
+
+M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`.
+
+M027 shows that explicit representation links and one reusable relational obligation can coordinate an independent handler and an atomic SQLite transaction. The same journey derives reactive TotalFunds observations and qualified evidence without target-authored domain meaning.
+
+## Provisional full-compiler horizon
+
+The current horizon has this order:
+
+```text
+real BANG self-check
+  → construct-addressed normalization
+  → incremental derivation with clean-run parity
+  → versioned checked-Core extension boundary
+  → reusable theory applicability and explanation
+  → realization classification from domain laws
+  → nondeterministic channel and distributed realization tracer
+  → surface compression of repeated Core patterns
+  → project and library composition
+  → persistent reactive semantic data-service tracer
+  → law disposition across types, databases, transactions, and runtime evidence
+  → objective-relative realization planning
+  → generated or assembled implementation
+  → continuous conformance and evidence invalidation
+  → full compiler candidate
+```
+
+Mission evidence can split, merge, reorder, replace, or remove each future node. [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md) defines the compiler acceptance signals. [Decision 0011](decisions/0011-semantic-data-service-exploration.md) defines the new product exploration.
+
+Bounded temporal protocols, feedback controllers, and adaptation remain optional semantic branches. They require separate missions and do not block the product tracer.
+
+## Provisional ecosystem branches
+
+The semantic data service is a near-term product path. It does not close other BANG ecosystem paths.
+
+Future missions can activate:
+
+- programming-language compilers and host-language targets;
+- a reproducible build graph for generated artifacts;
+- package distribution for Core, theories, realizations, and evidence;
+- database and reactive-runtime target portfolios;
+- continuous evidence across packages, implementations, and targets.
+
+These branches remain independent hypotheses. A branch enters the product only when one vertical mission demonstrates its need.
 
 ## First-product non-goals
 
-BANG does not initially generate complete business implementations, prove every law, decide every logic, require totality, ban effects or infinite services, promise soundness across unsafe host code, equate bounded exploration with proof, define a universal ontology, optimize all physical layouts, or place polished surface syntax, Wasm, native code generation, a general solver framework, or verified synthesis on the critical path.
+BANG does not initially:
+
+- build a new storage engine;
+- infer one universal physical database layout;
+- expose every Core state field as a public API;
+- generate unrestricted CRUD operations;
+- generate complete business implementations;
+- prove every law or decide every logic;
+- require totality or ban effects and infinite services;
+- promise soundness across unsafe host code or external writes;
+- equate bounded exploration, runtime rejection, testing, and proof;
+- synthesize general coordination protocols;
+- define a universal ontology;
+- place a polished surface, Wasm, native code, or verified synthesis on the critical path.
 
 ## Active work rules
 

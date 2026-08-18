@@ -3,6 +3,7 @@ import {
   type OperationRealizationDeclaration,
   validateCore,
 } from "@bang/core";
+import { sourceToCore } from "@bang/surface";
 import { BunRuntime, BunServices } from "@effect/platform-bun";
 import { Console, Effect, FileSystem, Path, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -34,7 +35,7 @@ class DemoError extends Schema.TaggedError<DemoError>()("DemoError", {
   message: Schema.String,
 }) {}
 
-const fixture = "examples/tiny-bank/core/account-withdrawal-realization.json";
+const fixture = "examples/tiny-bank/account.bang";
 const evidencePath = ".bang/evidence/M006.json";
 const semanticInvalidFixtures = [
   [
@@ -90,8 +91,8 @@ const program = Effect.gen(function* () {
   const path = yield* Path.Path;
   yield* fileSystem.remove(evidencePath, { force: true });
 
-  const document = yield* Schema.decodeEffect(CoreDocumentFromJson)(yield* read(fixture));
-  yield* Console.log("PASS capability and operation-realization Core decode");
+  const document = yield* Effect.fromResult(sourceToCore(yield* read(fixture)));
+  yield* Console.log("PASS Account source parse and Core lowering");
   const checked = yield* validateCore(document);
   const realization = checked.declarations.find(
     (declaration): declaration is OperationRealizationDeclaration =>

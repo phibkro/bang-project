@@ -9,12 +9,14 @@
   "rules": {
     "eqeqeq": "error",
     "typescript/consistent-type-imports": "error",
-    "typescript/no-explicit-any": "error"
+    "typescript/no-explicit-any": "error",
+    "no-underscore-dangle": ["error", { "allow": ["_tag"] }]
   },
   "ignorePatterns": [
     "generated/**",
     ".bang/**",
     "fixtures/effect-lsp-invalid/**",
+    "**/build/**",
     "node_modules/**"
   ]
 }

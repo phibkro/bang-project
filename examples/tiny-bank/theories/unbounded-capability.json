@@ -1,0 +1,11 @@
+{
+  "bangExplanation": 1,
+  "id": "tiny-bank-unbounded-capability",
+  "sources": [
+    {
+      "path": "examples/tiny-bank/account.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:WithdrawAccount.requirement:DebitAccount"
+}

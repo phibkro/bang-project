@@ -1,0 +1,15 @@
+{
+  "name": "@bang/evidence",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@bang/core": "workspace:*",
+    "@bang/obligations": "workspace:*",
+    "@bang/surface": "workspace:*",
+    "effect": "4.0.0-rc.108"
+  }
+}

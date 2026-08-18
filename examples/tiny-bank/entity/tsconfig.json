@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-entity.ts",
+    "account-withdrawal-effect.ts",
+    "entity-diagnostics.ts",
+    "../../../generated/effect/AccountEntity.ts"
+  ]
+}

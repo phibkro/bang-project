@@ -1,0 +1,8 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "account-withdrawal-once-effect.ts",
+    "single-use-diagnostics.ts",
+    "../../../generated/effect/WithdrawAccountOnce.ts"
+  ]
+}

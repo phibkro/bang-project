@@ -30,10 +30,18 @@ test:
 verify:
     bun run verify
 
-# Re-run the current vertical demonstration as source changes.
+# Re-run the latest complete vertical demonstration as source changes.
 dev:
     bun run dev
 
-# Experience the current user-facing demonstration once.
+# Run all completed user-facing demonstrations once.
 preview:
     bun run preview
+
+# Run the single-use capability journey once.
+demo-m018:
+    bun run demo:m018
+
+# Run the focused M018 evidence and target checks.
+test-m018:
+    bun run test:m018

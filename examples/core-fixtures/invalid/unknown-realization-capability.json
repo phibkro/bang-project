@@ -13,7 +13,7 @@
       "kind": "operationRealization",
       "id": "UnknownCapabilityWithdrawal",
       "operation": { "stateMachine": "Account", "operation": "withdraw" },
-      "requires": ["MissingDebitAccount"],
+      "requires": [{ "capability": "MissingDebitAccount", "quantity": { "kind": "unbounded" } }],
       "disabled": { "kind": "failure", "id": "WithdrawalRejected" }
     }
   ]

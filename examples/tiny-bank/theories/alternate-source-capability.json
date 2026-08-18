@@ -1,0 +1,11 @@
+{
+  "bangExplanation": 1,
+  "id": "tiny-bank-alternate-source-capability",
+  "sources": [
+    {
+      "path": "examples/tiny-bank/normalization/baseline.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount"
+}

@@ -1,7 +1,8 @@
-import { mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { StateMachineDeclaration } from "@bang/core";
 import { CoreDocumentFromJson, validateCore } from "@bang/core";
+import { sourceToCore } from "@bang/surface";
+import { mkdir, rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { projectEffectStateMachine } from "@bang/target-effect";
 import { Effect, Schema } from "effect";
 
@@ -32,7 +33,7 @@ interface WithdrawCounterexample {
   readonly amount: string;
 }
 
-const fixture = "examples/tiny-bank/core/account-state-machine.json";
+const fixture = "examples/tiny-bank/account.bang";
 const unknownFieldFixture = "examples/core-fixtures/invalid/unknown-state-field.json";
 const illTypedFixture = "examples/core-fixtures/invalid/ill-typed-state-predicate.json";
 const initializerStateFixture = "examples/core-fixtures/invalid/initializer-observes-state.json";
@@ -57,14 +58,14 @@ const semanticErrorFor = async (path: string): Promise<string> => {
 
 await rm(evidencePath, { force: true });
 
-const document = await decode(fixture);
-console.log("PASS Account state-machine Core decode");
+const document = Effect.runSync(Effect.fromResult(sourceToCore(await Bun.file(fixture).text())));
+console.log("PASS Account source parse and Core lowering");
 const validated = Effect.runSync(validateCore(document));
 const machine = validated.declarations.find(
   (declaration): declaration is StateMachineDeclaration =>
     declaration.kind === "stateMachine" && declaration.id === "Account",
 );
-if (machine === undefined) throw new Error("Account fixture declared no state machine");
+if (machine === undefined) throw new Error("Account source declared no state machine");
 console.log("PASS state, initializer, transition requirements, and invariant typing");
 
 const unknownFieldError = await semanticErrorFor(unknownFieldFixture);
@@ -84,19 +85,16 @@ if (!initializerStateError.includes("cannot observe state field balance")) {
   throw new Error(`unexpected initializer-state diagnostic: ${initializerStateError}`);
 }
 console.log("PASS initializer pre-state observation rejection");
-
 const unsupportedDocument = await decode(unsupportedFixture);
-const unsupportedMachine = Effect.runSync(validateCore(unsupportedDocument)).declarations.find(
-  (declaration): declaration is StateMachineDeclaration => declaration.kind === "stateMachine",
+
+const unsupportedError = Effect.runSync(
+  Effect.flip(
+    projectEffectStateMachine(Effect.runSync(validateCore(unsupportedDocument)), "StringState"),
+  ),
 );
-if (unsupportedMachine === undefined) throw new Error("unsupported fixture declared no machine");
-let unsupportedRejected = false;
-try {
-  projectEffectStateMachine(unsupportedMachine);
-} catch (error) {
-  unsupportedRejected =
-    error instanceof TypeError && error.message.includes("requires Integer field");
-}
+const unsupportedRejected =
+  unsupportedError.reason === "unsupported-target" &&
+  unsupportedError.message.includes("requires Integer field");
 if (!unsupportedRejected) throw new Error("Effect accepted its unsupported String state field");
 console.log("PASS target-unsupported state representation rejection");
 

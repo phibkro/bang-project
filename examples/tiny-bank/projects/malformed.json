@@ -1,0 +1,49 @@
+{
+  "bangProject": 1,
+  "sources": [
+    { "id": "account", "path": "examples/tiny-bank/account.bang", "format": "bang-source" }
+  ],
+  "theories": [
+    {
+      "id": "exact-one-withdraw",
+      "theory": { "id": "ExactOneCapabilityExecution", "version": 1 },
+      "source": "account",
+      "requirement": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount"
+    }
+  ],
+  "targets": [
+    { "id": "effect", "adapter": "effect-typescript" },
+    { "id": "gleam", "adapter": "gleam-beam" }
+  ],
+  "realizationProfiles": [
+    {
+      "id": "withdraw-once-effect",
+      "theory": "exact-one-withdraw",
+      "target": "effect",
+      "realization": "WithdrawAccountOnce",
+      "evidence": "m018"
+    },
+    {
+      "id": "withdraw-once-gleam",
+      "theory": "exact-one-withdraw",
+      "target": "gleam",
+      "realization": "WithdrawAccountOnce",
+      "evidence": "m018"
+    }
+  ],
+  "evidence": [
+    { "id": "m018", "kind": "m018-single-use-capability", "path": ".bang/evidence/M018.json" }
+  ],
+  "channels": [
+    {
+      "id": "two-owner-transfer",
+      "theory": { "id": "BoundedChannelProtocol", "version": 1 },
+      "selection": "examples/tiny-bank/channels/two-owner.json"
+    }
+  ],
+  "evidencePolicy": {
+    "assumptions": "report",
+    "unresolved": "report",
+    "unsupportedByTarget": "report"
+  }
+}

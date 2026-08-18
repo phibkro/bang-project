@@ -2,6 +2,7 @@ import { Effect, Graph, HashMap, Option, Schema, SchemaIssue, SchemaTransformati
 
 const Identifier = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9]*$/)));
 const TypeReference = Schema.String;
+const PositiveDecimalInteger = Schema.String.pipe(Schema.check(Schema.isPattern(/^[1-9][0-9]*$/)));
 const DecimalInteger = Schema.String.pipe(Schema.check(Schema.isPattern(/^-?(?:0|[1-9][0-9]*)$/)));
 
 const Parameter = Schema.Struct({ id: Identifier, type: TypeReference });
@@ -291,6 +292,31 @@ const StateMachineDeclaration = Schema.Struct({
   ),
 });
 
+export interface UnboundedCapabilityQuantity {
+  readonly kind: "unbounded";
+}
+
+export interface ExactCapabilityQuantity {
+  readonly kind: "exactly";
+  readonly uses: string;
+}
+
+export type CapabilityQuantity = UnboundedCapabilityQuantity | ExactCapabilityQuantity;
+
+export interface CapabilityRequirement {
+  readonly capability: string;
+  readonly quantity: CapabilityQuantity;
+}
+
+const CapabilityQuantitySchema: Schema.Codec<CapabilityQuantity> = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("unbounded") }),
+  Schema.Struct({ kind: Schema.Literal("exactly"), uses: PositiveDecimalInteger }),
+]);
+const CapabilityRequirementSchema: Schema.Codec<CapabilityRequirement> = Schema.Struct({
+  capability: Identifier,
+  quantity: CapabilityQuantitySchema,
+});
+
 const CapabilityDeclaration = Schema.Struct({
   kind: Schema.Literal("capability"),
   id: Identifier,
@@ -303,7 +329,7 @@ const OperationRealizationDeclaration = Schema.Struct({
     stateMachine: Identifier,
     operation: Identifier,
   }),
-  requires: Schema.Array(Identifier),
+  requires: Schema.Array(CapabilityRequirementSchema),
   disabled: Schema.Struct({
     kind: Schema.Literal("failure"),
     id: Identifier,
@@ -348,12 +374,64 @@ const Declaration = Schema.Union([
 export const CoreDocument = Schema.Struct({
   bangCore: Schema.Literal(1),
   declarations: Schema.Array(Declaration),
+}).annotate({
+  parseOptions: { onExcessProperty: "preserve" },
 });
 export const CoreDocumentFromJson = Schema.fromJsonString(CoreDocument);
 
 export type CoreDocument = typeof CoreDocument.Type;
 const CheckedCoreDocumentSchema = CoreDocument.pipe(Schema.brand("CheckedCoreDocument"));
 export type CheckedCoreDocument = typeof CheckedCoreDocumentSchema.Type;
+
+export type StateInvariantRelation = "establishes" | "preserves";
+
+export interface StateInvariantObligation {
+  readonly id: string;
+  readonly stateMachine: string;
+  readonly operation: string;
+  readonly relation: StateInvariantRelation;
+  readonly invariant: string;
+}
+
+export const stateInvariantObligationId = (
+  stateMachine: string,
+  operation: string,
+  relation: StateInvariantRelation,
+  invariant: string,
+): string => `${stateMachine}.${operation}.${relation}.${invariant}`;
+
+export const deriveStateInvariantObligations = (
+  document: CheckedCoreDocument,
+): ReadonlyArray<StateInvariantObligation> => {
+  const obligations: Array<StateInvariantObligation> = [];
+  for (const declaration of document.declarations) {
+    if (declaration.kind !== "stateMachine") continue;
+    for (const operation of declaration.initializers) {
+      for (const invariant of declaration.invariants) {
+        obligations.push({
+          id: stateInvariantObligationId(declaration.id, operation.id, "establishes", invariant.id),
+          stateMachine: declaration.id,
+          operation: operation.id,
+          relation: "establishes",
+          invariant: invariant.id,
+        });
+      }
+    }
+    for (const operation of declaration.transitions) {
+      for (const invariant of declaration.invariants) {
+        obligations.push({
+          id: stateInvariantObligationId(declaration.id, operation.id, "preserves", invariant.id),
+          stateMachine: declaration.id,
+          operation: operation.id,
+          relation: "preserves",
+          invariant: invariant.id,
+        });
+      }
+    }
+  }
+  return obligations;
+};
+
 export type ServiceDeclaration = typeof ServiceDeclaration.Type;
 export type DataDeclaration = typeof DataDeclaration.Type;
 export type RefinementDeclaration = typeof RefinementDeclaration.Type;
@@ -804,6 +882,10 @@ const validateStateMachine = (machine: StateMachineDeclaration, knownTypes: Read
         `state operation ${machine.id}.${operation.id}`,
         operation.parameters.map(({ id }) => id),
       );
+      yield* validateUnique(
+        `state operation ${machine.id}.${operation.id} requirements`,
+        operation.requires.map((requirement) => JSON.stringify(requirement)),
+      );
       for (const parameter of operation.parameters) {
         if (!knownTypes.has(parameter.type)) {
           return yield* new SemanticError({
@@ -988,7 +1070,10 @@ const validateCoreSemantics = (document: CoreDocument) =>
         continue;
       }
       if (declaration.kind === "operationRealization") {
-        yield* validateUnique(`realization ${declaration.id} capabilities`, declaration.requires);
+        yield* validateUnique(
+          `realization ${declaration.id} capabilities`,
+          declaration.requires.map(({ capability }) => capability),
+        );
         if (declarationIdentities.has(declaration.disabled.id)) {
           return yield* new SemanticError({
             message: `realization ${declaration.id} failure ${declaration.disabled.id} conflicts with a declaration identity`,
@@ -1022,10 +1107,10 @@ const validateCoreSemantics = (document: CoreDocument) =>
             message: `realization ${declaration.id} references unknown transition ${machine.id}.${declaration.operation.operation}`,
           });
         }
-        for (const capability of declaration.requires) {
-          if (!capabilities.has(capability)) {
+        for (const requirement of declaration.requires) {
+          if (!capabilities.has(requirement.capability)) {
             return yield* new SemanticError({
-              message: `realization ${declaration.id} requires unknown capability ${capability}`,
+              message: `realization ${declaration.id} requires unknown capability ${requirement.capability}`,
             });
           }
         }
@@ -1254,3 +1339,6 @@ export const evaluateFiniteModel = (document: CoreDocument, modelId: string) =>
       checkedAssignments,
     } satisfies FiniteModelEvaluation;
   });
+
+export * from "./normalization.ts";
+export * from "./semantic-artifact.ts";

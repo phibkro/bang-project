@@ -1,0 +1,7 @@
+name = "tiny_bank_gleam_account"
+version = "0.1.0"
+target = "erlang"
+gleam = ">= 1.18.1 and < 2.0.0"
+
+[dependencies]
+account_entity = { path = "../../../generated/gleam/account-entity" }

@@ -1,0 +1,12 @@
+{
+  "bangExplanation": 1,
+  "id": "tiny-bank-unsafe-artifact-path",
+  "sources": [
+    {
+      "path": "examples/tiny-bank/account.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "artifactPath": "../unsafe-artifact.json"
+}
