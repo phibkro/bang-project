@@ -1,0 +1,35 @@
+{
+  "bangSemanticDatabase": 1,
+  "id": "tiny-bank-account",
+  "project": "examples/tiny-bank/project.json",
+  "entity": {
+    "id": "Account",
+    "stateMachine": "Account",
+    "initializer": "initialize",
+    "identityField": "accountId"
+  },
+  "command": {
+    "id": "WithdrawAccountOnce",
+    "realization": "WithdrawAccountOnce"
+  },
+  "query": {
+    "id": "AccountSummary",
+    "stateFields": ["balance"],
+    "capabilityAvailability": "DebitAccount"
+  },
+  "subscription": {
+    "id": "AccountSummarySubscription",
+    "query": "AccountSummary",
+    "mode": "snapshots",
+    "initialSnapshot": true
+  },
+  "target": {
+    "database": "sqlite",
+    "api": "effect-typescript"
+  },
+  "scenario": {
+    "accountId": "account-1",
+    "initialBalance": "01",
+    "withdrawAmount": "4"
+  }
+}

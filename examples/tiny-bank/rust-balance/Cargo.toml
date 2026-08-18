@@ -1,0 +1,6 @@
+[package]
+name = "tiny-bank-rust-balance"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]

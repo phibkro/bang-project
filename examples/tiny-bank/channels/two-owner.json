@@ -1,0 +1,120 @@
+{
+  "bangChannelSelection": 1,
+  "protocol": {
+    "id": "tiny-bank-two-owner",
+    "version": 1,
+    "owners": ["owner-a", "owner-b"],
+    "messages": [
+      {
+        "id": "prepare-t1",
+        "operation": "Prepare",
+        "transaction": "t1",
+        "sender": "owner-a",
+        "receiver": "owner-b",
+        "amount": 4
+      },
+      {
+        "id": "commit-t1",
+        "operation": "Commit",
+        "transaction": "t1",
+        "sender": "owner-a",
+        "receiver": "owner-b",
+        "causalParent": "prepare-t1"
+      },
+      {
+        "id": "ack-t1",
+        "operation": "Ack",
+        "transaction": "t1",
+        "sender": "owner-b",
+        "receiver": "owner-a",
+        "causalParent": "commit-t1"
+      }
+    ]
+  },
+  "schedules": [
+    {
+      "id": "ordered",
+      "steps": [
+        { "action": "deliver", "attemptId": "ordered-prepare-1", "messageId": "prepare-t1" },
+        { "action": "deliver", "attemptId": "ordered-commit-1", "messageId": "commit-t1" },
+        { "action": "deliver", "attemptId": "ordered-ack-1", "messageId": "ack-t1" }
+      ]
+    },
+    {
+      "id": "duplicate-prepare",
+      "steps": [
+        { "action": "deliver", "attemptId": "duplicate-prepare-1", "messageId": "prepare-t1" },
+        { "action": "deliver", "attemptId": "duplicate-prepare-2", "messageId": "prepare-t1" },
+        {
+          "action": "deliver",
+          "attemptId": "duplicate-prepare-commit-1",
+          "messageId": "commit-t1"
+        },
+        { "action": "deliver", "attemptId": "duplicate-prepare-ack-1", "messageId": "ack-t1" }
+      ]
+    },
+    {
+      "id": "duplicate-commit",
+      "steps": [
+        {
+          "action": "deliver",
+          "attemptId": "duplicate-commit-prepare-1",
+          "messageId": "prepare-t1"
+        },
+        { "action": "deliver", "attemptId": "duplicate-commit-1", "messageId": "commit-t1" },
+        { "action": "deliver", "attemptId": "duplicate-commit-2", "messageId": "commit-t1" },
+        { "action": "deliver", "attemptId": "duplicate-commit-ack-1", "messageId": "ack-t1" }
+      ]
+    },
+    {
+      "id": "commit-before-prepare",
+      "steps": [
+        {
+          "action": "deliver",
+          "attemptId": "commit-before-prepare-commit-1",
+          "messageId": "commit-t1"
+        },
+        {
+          "action": "deliver",
+          "attemptId": "commit-before-prepare-prepare-1",
+          "messageId": "prepare-t1"
+        },
+        { "action": "deliver", "attemptId": "commit-before-prepare-ack-1", "messageId": "ack-t1" }
+      ]
+    },
+    {
+      "id": "drop-ack",
+      "steps": [
+        { "action": "deliver", "attemptId": "drop-ack-prepare-1", "messageId": "prepare-t1" },
+        { "action": "deliver", "attemptId": "drop-ack-commit-1", "messageId": "commit-t1" },
+        { "action": "drop", "attemptId": "drop-ack-ack-1", "messageId": "ack-t1" }
+      ]
+    },
+    {
+      "id": "complete-without-ack",
+      "steps": [
+        {
+          "action": "deliver",
+          "attemptId": "complete-without-ack-prepare-1",
+          "messageId": "prepare-t1"
+        },
+        {
+          "action": "deliver",
+          "attemptId": "complete-without-ack-commit-1",
+          "messageId": "commit-t1"
+        },
+        { "action": "complete", "ownerId": "owner-a" }
+      ]
+    }
+  ],
+  "limitations": [
+    "no distributed exactly-once guarantee",
+    "no durable delivery or mailbox",
+    "no retry-safety or recovery guarantee",
+    "no scheduler or network fairness guarantee",
+    "no bounded latency, work, memory, or mailbox guarantee",
+    "no liveness or productivity guarantee",
+    "no behavior claim for unenumerated schedules",
+    "the deterministic scheduler is not a real network"
+  ]
+}

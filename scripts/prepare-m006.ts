@@ -1,10 +1,11 @@
-import { CoreDocumentFromJson, validateCore } from "@bang/core";
+import { validateCore } from "@bang/core";
+import { sourceToCore } from "@bang/surface";
 import { projectEffectOperationRealization } from "@bang/target-effect";
 import { BunRuntime, BunServices } from "@effect/platform-bun";
 import { Effect, FileSystem, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-const fixture = "examples/tiny-bank/core/account-withdrawal-realization.json";
+const fixture = "examples/tiny-bank/account.bang";
 const generatedPath = "generated/effect/WithdrawAccount.ts";
 const snapshotPath = "tests/snapshots/M006-WithdrawAccount.ts";
 
@@ -16,8 +17,8 @@ const program = Effect.scoped(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const document = yield* Schema.decodeEffect(CoreDocumentFromJson)(
-      yield* fileSystem.readFileString(fixture),
+    const document = yield* Effect.fromResult(
+      sourceToCore(yield* fileSystem.readFileString(fixture)),
     );
     const checked = yield* validateCore(document);
     const source = yield* projectEffectOperationRealization(checked, "WithdrawAccount");

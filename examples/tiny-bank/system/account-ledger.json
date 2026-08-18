@@ -1,0 +1,61 @@
+{
+  "bangSystem": 1,
+  "id": "TinyBankAccountLedger",
+  "sources": {
+    "refinement": {
+      "path": "examples/tiny-bank/core/balance.json",
+      "declaration": "Balance"
+    },
+    "state": {
+      "path": "examples/tiny-bank/account.bang",
+      "declaration": "Account"
+    },
+    "bridge": {
+      "path": "examples/tiny-bank/core/account-ledger-bridge.json",
+      "declaration": "AccountLedger"
+    }
+  },
+  "selection": {
+    "transition": "Account.withdraw",
+    "realization": "WithdrawAccount",
+    "capability": "DebitAccount",
+    "disabledFailure": "WithdrawalRejected",
+    "bridgeLaw": "AccountLedger.balancesAgree",
+    "participantModels": [
+      {
+        "participant": "account",
+        "theory": "AccountBalance",
+        "realization": "AccountBalance"
+      },
+      {
+        "participant": "ledger",
+        "theory": "LedgerBalance",
+        "realization": "LedgerBalance"
+      }
+    ],
+    "stateObligation": "Account.withdraw.preserves.nonnegativeBalance",
+    "relationalObligation": "AccountLedger.transferPreservesTotal"
+  },
+  "compositionLinks": [
+    {
+      "id": "Balance.refinement-to-account-state",
+      "kind": "representation-compatible",
+      "from": "refinement:Balance",
+      "to": "stateMachine:Account.state.balance"
+    },
+    {
+      "id": "Balance.refinement-to-ledger-bridge",
+      "kind": "representation-compatible",
+      "from": "refinement:Balance",
+      "to": "theoryBridge:AccountLedger.sharedSort.Balance"
+    }
+  ],
+  "evidence": {
+    "bridge": ".bang/evidence/M005.json",
+    "property": ".bang/evidence/M007.json",
+    "runtime": ".bang/evidence/M008.json",
+    "portability": ".bang/evidence/M009.json",
+    "replay": ".bang/evidence/M010.json",
+    "solver": ".bang/evidence/M011.json"
+  }
+}

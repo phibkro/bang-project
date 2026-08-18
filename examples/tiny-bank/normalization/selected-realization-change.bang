@@ -1,0 +1,30 @@
+machine Account {
+  state AccountState {
+    balance: Integer
+  }
+
+  initializer initialize(initialBalance: Integer) {
+    requires initialBalance >= 0
+  }
+
+  transition withdraw(amount: Integer) {
+    requires amount >= 0
+    requires balance >= amount
+  }
+
+  invariant nonnegativeBalance {
+    balance >= 0
+  }
+}
+
+capability DebitAccount
+
+realization WithdrawAccount binds Account.withdraw {
+  requires DebitAccount exactly 2
+  when disabled fail WithdrawalRejected
+}
+
+realization WithdrawAccountOnce binds Account.withdraw {
+  requires DebitAccount exactly 1
+  when disabled fail WithdrawalRejectedOnce
+}

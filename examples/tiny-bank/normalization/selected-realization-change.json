@@ -1,0 +1,24 @@
+{
+  "bangNormalization": 1,
+  "baseline": {
+    "sources": [
+      { "path": "examples/tiny-bank/normalization/baseline.bang", "format": "bang-source" },
+      {
+        "path": "examples/tiny-bank/normalization/bridge-baseline.json",
+        "format": "core-json"
+      }
+    ]
+  },
+  "candidate": {
+    "sources": [
+      {
+        "path": "examples/tiny-bank/normalization/selected-realization-change.bang",
+        "format": "bang-source"
+      },
+      {
+        "path": "examples/tiny-bank/normalization/bridge-baseline.json",
+        "format": "core-json"
+      }
+    ]
+  }
+}

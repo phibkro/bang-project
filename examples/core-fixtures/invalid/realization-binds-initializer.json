@@ -14,7 +14,7 @@
       "kind": "operationRealization",
       "id": "InitializerRealization",
       "operation": { "stateMachine": "Account", "operation": "initialize" },
-      "requires": ["DebitAccount"],
+      "requires": [{ "capability": "DebitAccount", "quantity": { "kind": "unbounded" } }],
       "disabled": { "kind": "failure", "id": "InitializationRejected" }
     }
   ]

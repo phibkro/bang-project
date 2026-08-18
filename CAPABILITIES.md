@@ -12,9 +12,28 @@ flowchart LR
     M005["M005 · Account ↔ Ledger bridge law<br/>complete"]
     M005A["M005A · first Core dogfood<br/>complete"]
     M006["M006 · effect + capability boundary<br/>complete"]
-    M007["M007 · graded evidence report"]
-    M008["M008 · runtime trace observation"]
-    M009["M009 · Rust portability projection"]
+    M007["M007 · graded evidence report<br/>complete"]
+    M008["M008 · runtime trace observation<br/>complete"]
+    M009["M009 · Rust portability projection<br/>complete"]
+    M010["M010 · replayable evidence manifest<br/>complete"]
+    M011["M011 · bounded solver-backed relational obligation<br/>complete"]
+    M012["M012 · accumulated system report<br/>complete"]
+    M013["M013 · Account source notation<br/>complete"]
+    M014["M014 · cohesive system CLI<br/>complete"]
+    M015["M015 · entity ownership and typed messages<br/>complete"]
+    M016["M016 · kernel-proof provider<br/>complete"]
+    M017["M017 · Gleam/BEAM actor realization<br/>complete"]
+    M018["M018 · single-use capability quantity<br/>complete"]
+    M019["M019 · real BANG self-check<br/>complete"]
+    M020["M020 · persistent family ledger<br/>complete"]
+    M021["M021 · construct-addressed normalization<br/>complete"]
+    M022["M022 · versioned theory explanation<br/>complete"]
+    M023["M023 · realization classification<br/>complete"]
+    M024["M024 · bounded two-owner channel trace<br/>complete"]
+    M025["M025 · single-authority project composition<br/>complete"]
+    M026["M026 · persistent reactive semantic database<br/>complete"]
+    M027["M027 · cross-entity atomic transfer<br/>complete"]
+
 
     M000 --> M001 --> M002 --> M003
     M001 --> M004
@@ -30,23 +49,140 @@ flowchart LR
     M007 --> M008
     M001 --> M009
     M007 --> M009
+    M007 --> M010
+    M010 --> M011
+    M005 --> M012
+    M006 --> M012
+    M007 --> M012
+    M008 --> M012
+    M009 --> M012
+    M010 --> M012
+    M011 --> M012
+    M012 --> M013
+    M012 --> M014
+    M013 --> M014
+    M004 --> M015
+    M006 --> M015
+    M008 --> M015
+    M010 --> M016
+    M011 --> M016
+    M012 --> M016
+    M014 --> M016
+    M015 --> M017
+    M006 --> M018
+    M007 --> M018
+    M015 --> M018
+    M007 --> M017
+    M005A --> M019
+    M007 --> M019
+    M014 --> M019
+    M014 --> M020
+    M015 --> M020
+    M019 --> M020
+    M013 --> M021
+    M019 --> M021
+    M020 --> M021
+    M018 --> M022
+    M019 --> M022
+    M021 --> M022
+    M018 --> M023
+    M022 --> M023
+    M015 --> M024
+    M017 --> M024
+    M021 --> M024
+    M022 --> M024
+    M023 --> M024
+    M014 --> M025
+    M018 --> M025
+    M021 --> M025
+    M022 --> M025
+    M023 --> M025
+    M024 --> M025
+    M015 --> M026
+    M018 --> M026
+    M020 --> M026
+    M021 --> M026
+    M022 --> M026
+    M025 --> M026
+    M005 --> M027
+    M011 --> M027
+    M012 --> M027
+    M016 --> M027
+    M025 --> M027
+    M026 --> M027
+
 ```
 
-| Capability                     | User-feelable claim                                           | Requires                          | First tracer | Status   |
-| ------------------------------ | ------------------------------------------------------------- | --------------------------------- | ------------ | -------- |
-| Core-to-target spine           | Generate and type-check one independent Effect port           | —                                 | M000         | complete |
-| refined domain value           | Construct `Balance`, reject invalid values                    | Core-to-target spine              | M001         | complete |
-| theory and finite model        | Ask whether one finite model satisfies one law                | refined domain value              | M002         | complete |
-| algebraic law suite            | Find and minimize a law counterexample                        | theory and finite model           | M003         | complete |
-| coalgebraic state preservation | Reject a transition that breaks an invariant                  | refined domain value              | M004         | complete |
-| cross-theory bridge            | Expose an Account/Ledger disagreement in domain terms         | theory/model + state preservation | M005         | complete |
-| first Core dogfood             | Detect recursive `BridgeTerm` drift in the BANG compiler      | bridge + algebraic data           | M005A        | complete |
-| effectful capability boundary  | Require debit authority and typed failure                     | spine + state preservation        | M006         | complete |
-| graded evidence                | Distinguish structure, tests, runtime checks, and assumptions | produced evidence classes         | M007         | planned  |
-| runtime observation            | Monitor one operation protocol over a trace                   | state preservation + evidence     | M008         | planned  |
-| target portability             | Reuse Core in a Rust conformance boundary                     | stable value Core + evidence      | M009         | planned  |
+| Capability                            | User-feelable claim                                                                                                 | Requires                                                                                                        | First tracer | Status   |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------ | -------- |
+| Core-to-target spine                  | Generate and type-check one independent Effect port                                                                 | —                                                                                                               | M000         | complete |
+| refined domain value                  | Construct `Balance`, reject invalid values                                                                          | Core-to-target spine                                                                                            | M001         | complete |
+| theory and finite model               | Ask whether one finite model satisfies one law                                                                      | refined domain value                                                                                            | M002         | complete |
+| algebraic law suite                   | Find and minimize a law counterexample                                                                              | theory and finite model                                                                                         | M003         | complete |
+| coalgebraic state preservation        | Reject a transition that breaks an invariant                                                                        | refined domain value                                                                                            | M004         | complete |
+| cross-theory bridge                   | Expose an Account/Ledger disagreement in domain terms                                                               | theory/model + state preservation                                                                               | M005         | complete |
+| first Core dogfood                    | Detect recursive `BridgeTerm` drift in the BANG compiler                                                            | bridge + algebraic data                                                                                         | M005A        | complete |
+| effectful capability boundary         | Require debit authority and typed failure                                                                           | spine + state preservation                                                                                      | M006         | complete |
+| graded evidence                       | Report sampled evidence with scope, trust, and invalidators                                                         | produced evidence classes                                                                                       | M007         | complete |
+| runtime observation                   | Classify one real operation trace against checked Core                                                              | state preservation + evidence                                                                                   | M008         | complete |
+| target portability                    | Reuse Core in a Rust conformance boundary                                                                           | stable value Core + evidence                                                                                    | M009         | complete |
+| replayable evidence                   | Reload, verify, and replay one saved property observation                                                           | graded evidence + state preservation                                                                            | M010         | complete |
+| bounded relational solver             | Ask a bounded transfer-conservation question and report solver output without claiming proof                        | cross-theory bridge + explicit bounds                                                                           | M011         | complete |
+| accumulated system report             | Select one Account/Ledger system and retain each checked contract and evidence scope                                | checked Core + qualified evidence                                                                               | M012         | complete |
+| Account source notation               | Author one Account behavior once and lower it to stable checked Core                                                | state preservation + capability + accumulated report                                                            | M013         | complete |
+| cohesive system CLI                   | Run one selected Account/Ledger report through a shipped command                                                    | accumulated report + Account source notation                                                                    | M014         | complete |
+| entity ownership and typed messages   | Create one Account entity and send typed withdrawals without a state argument                                       | state preservation + capability boundary + runtime observation                                                  | M015         | complete |
+| kernel-proof provider                 | Check one unbounded relational theorem and one explicit refutation in Lean                                          | replayable evidence + normalized relational obligation + accumulated report + cohesive CLI                      | M016         | complete |
+| Gleam/BEAM actor realization          | Run one typed Account actor under a real supervisor and report restart semantics                                    | entity ownership + graded evidence                                                                              | M017         | complete |
+| single-use capability quantity        | Issue one exact-one grant, consume it before one execution, and reject reuse without restoring state                | effectful capability boundary + graded evidence + entity ownership                                              | M018         | complete |
+| real BANG self-check                  | Produce fresh evidence against one real BANG compiler component through a shipped command                           | first Core dogfood + graded evidence + cohesive CLI                                                             | M019         | complete |
+| persistent family ledger              | Use one persistent balanced family ledger through separate shipped CLI invocations                                  | cohesive CLI + entity identity + real self-check                                                                | M020         | complete |
+| construct-addressed normalization     | Explain changed and reusable TinyBank conclusions after one semantic edit                                           | Account source notation + real self-check + persistent family ledger                                            | M021         | complete |
+| versioned theory explanation          | Explain why exact-one capability execution applies or fails through an independent artifact consumer                | single-use capability + real self-check + construct-addressed normalization                                     | M022         | complete |
+| realization classification            | Classify Effect and Gleam implementations against derived exact-one obligations with honest evidence                | versioned theory explanation + single-use capability evidence                                                   | M023         | complete |
+| bounded two-owner channel trace       | Explain ordered, duplicated, reordered, and dropped deliveries without conflating order, causality, or coordination | entity ownership + actor limitations + normalization + theory explanation + realization classification          | M024         | complete |
+| single-authority project composition  | Name TinyBank sources, theories, realization candidates, targets, channel analysis, and evidence policy once        | cohesive CLI + exact-one evidence + normalization + theory explanation + classification + channel trace         | M025         | complete |
+| persistent reactive semantic database | Derive one persistent typed command, query, and subscription service from one checked TinyBank model                | entity messages + exact-one capability + persistence + normalization + theory explanation + project composition | M026         | complete |
+| cross-entity atomic transfer          | Transfer between two Accounts atomically and observe both balances plus preserved TotalFunds reactively             | bridge composition + relational obligation + proof evidence + project composition + semantic database           | M027         | complete |
 
-Only the active mission may refine an edge or add a prerequisite. Later capabilities are hypotheses until a tracer bullet exercises them.
+M025 is complete through `bang project examples/tiny-bank/project.json`. Its tracer composes one project-owned source list and preserves all evidence distinctions.
+
+[Decision 0011](decisions/0011-semantic-data-service-exploration.md) defines the product exploration. [M026](design-specs/M026-semantic-database.md) completes its first vertical tracer.
+
+M026 is complete through `bang database examples/tiny-bank/database/account.json`. It derives one SQLite schema and one typed Effect provider and client boundary. It runs one persistent reactive journey and reports each law's enforcement mechanism.
+
+[M027](design-specs/M027-cross-entity-transfer.md) is complete through `bang database examples/tiny-bank/database/transfer.json`. It composes explicit representation links with a reusable transfer-preservation obligation. The journey uses an independent handler, one atomic SQLite transaction, and derived reactive observations.
+
+## Exploratory ecosystem frontier
+
+The semantic data-service tracer can test the model through one usable application path. Other ecosystem branches remain independent.
+
+```mermaid
+flowchart LR
+    CORE["checked Core + normalized identity"]
+    THEORY["reusable theories"]
+    PROJECT["project composition"]
+    DATA["semantic data-service tracer"]
+    DB["database target portfolio"]
+    API["reactive API bindings"]
+    DISP["law disposition"]
+    PKG["theory and artifact distribution"]
+    BUILD["reproducible build graph"]
+    PL["programming-language targets"]
+
+    CORE --> DATA
+    THEORY --> DATA
+    PROJECT --> DATA
+    DATA --> DB
+    DATA --> API
+    DATA --> DISP
+    THEORY --> PKG
+    CORE --> BUILD
+    CORE --> PL
+    PKG --> BUILD
+```
+
+The provisional compiler horizon remains in [BANG-PROJECT-DIRECTION.md](BANG-PROJECT-DIRECTION.md). [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md) records its acceptance signals.
 
 ## Dogfood dependency
 

@@ -1,0 +1,41 @@
+{
+  "bangChannelSelection": 1,
+  "protocol": {
+    "id": "tiny-bank-two-owner",
+    "version": 1,
+    "owners": ["owner-a", "owner-b"],
+    "messages": [
+      {
+        "id": "prepare-t1",
+        "operation": "Prepare",
+        "transaction": "t1",
+        "sender": "owner-a",
+        "receiver": "owner-b",
+        "amount": 4
+      },
+      {
+        "id": "commit-t1",
+        "operation": "Commit",
+        "transaction": "t1",
+        "sender": "owner-a",
+        "receiver": "owner-b",
+        "causalParent": "prepare-t1"
+      },
+      {
+        "id": "ack-t1",
+        "operation": "Ack",
+        "transaction": "t1",
+        "sender": "owner-b",
+        "receiver": "owner-a",
+        "causalParent": "commit-t1"
+      }
+    ]
+  },
+  "schedules": [
+    {
+      "id": "malformed-step",
+      "steps": [{ "action": "deliver", "messageId": "prepare-t1" }]
+    }
+  ],
+  "limitations": ["negative fixture"]
+}

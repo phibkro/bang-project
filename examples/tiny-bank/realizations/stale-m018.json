@@ -1,0 +1,124 @@
+{
+  "bangEvidence": 1,
+  "mission": "M018",
+  "version": 1,
+  "kind": "single-use-capability-runtime",
+  "source": {
+    "stateMachine": "Account",
+    "operation": "withdraw",
+    "realization": "WithdrawAccountOnce",
+    "capability": "DebitAccount",
+    "quantity": { "kind": "exactly", "uses": "1" },
+    "failure": "WithdrawalRejectedOnce"
+  },
+  "observation": {
+    "class": "runtime-checked",
+    "result": "passed",
+    "scope": "single-grant-two-call-trace",
+    "entityId": "account-1",
+    "initialState": { "balance": 10 },
+    "grantId": "grant-1",
+    "calls": [
+      {
+        "sequence": 0,
+        "invocationId": "withdraw-1",
+        "grantId": "grant-1",
+        "destination": "account-1",
+        "amount": 4,
+        "preState": { "balance": 10 },
+        "remainingUsesBefore": 1,
+        "outcome": {
+          "_tag": "Success",
+          "state": { "balance": 6 },
+          "remainingUses": 0,
+          "implementationCalls": 1
+        }
+      },
+      {
+        "sequence": 1,
+        "invocationId": "withdraw-2",
+        "grantId": "grant-1",
+        "destination": "account-1",
+        "amount": 1,
+        "preState": { "balance": 6 },
+        "remainingUsesBefore": 0,
+        "outcome": {
+          "_tag": "CapabilityUseRejected",
+          "failure": "DebitAccountGrantAlreadyConsumed",
+          "state": { "balance": 6 },
+          "remainingUses": 0,
+          "implementationCalls": 1
+        }
+      }
+    ],
+    "defect": {
+      "grantId": "defect-1",
+      "first": {
+        "sequence": 0,
+        "invocationId": "defect-withdraw-1",
+        "grantId": "defect-1",
+        "destination": "account-1",
+        "amount": 4,
+        "preState": { "balance": 10 },
+        "remainingUsesBefore": 1,
+        "outcome": {
+          "_tag": "Defect",
+          "failure": "implementation-defect",
+          "state": { "balance": 10 },
+          "remainingUses": 0,
+          "implementationCalls": 1
+        }
+      },
+      "reuse": {
+        "sequence": 1,
+        "invocationId": "defect-withdraw-2",
+        "grantId": "defect-1",
+        "destination": "account-1",
+        "amount": 1,
+        "preState": { "balance": 10 },
+        "remainingUsesBefore": 0,
+        "outcome": {
+          "_tag": "CapabilityUseRejected",
+          "failure": "DebitAccountGrantAlreadyConsumed",
+          "state": { "balance": 10 },
+          "remainingUses": 0,
+          "implementationCalls": 1
+        }
+      }
+    }
+  },
+  "provenance": {
+    "coreSource": {
+      "path": "examples/tiny-bank/account.bang",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "generatedBoundary": {
+      "path": "generated/effect/WithdrawAccountOnce.ts",
+      "sha256": "bdef50d7b7f26408ec8bc16efb35cbe578a25e03ee4ed86bdb6d82b9ef4890a4"
+    },
+    "realization": {
+      "path": "examples/tiny-bank/capability/account-withdrawal-once-effect.ts",
+      "sha256": "05e3dffcbd736ce8453331f6424edfd3774783c8dc63ca70db5153850ed4e2e2"
+    },
+    "evaluator": "scripts/demo-m018.ts"
+  },
+  "producer": { "identity": "bun run scripts/demo-m018.ts", "trust": "assumed-truthful" },
+  "qualification": {
+    "assumptions": [
+      "the selected checked realization and the independent implementation are the executed boundary",
+      "the diagnostic process reports the generated boundary without an unobserved bypass"
+    ],
+    "weakenings": [
+      "TypeScript and Effect cannot make the grant universally unforgeable",
+      "unsafe casts, foreign JavaScript, or direct implementation calls can bypass the boundary",
+      "this runtime journey observes one grant in one process and does not prove distributed exactly-once delivery",
+      "the target proves no lifetime, elapsed-time, memory, termination, fairness, or delivery guarantee"
+    ],
+    "lifetime": "valid while the checked Core source, generated boundary, realization, and evaluator remain unchanged",
+    "invalidators": [
+      "Core declaration, quantity, or failure identity changes",
+      "generated boundary or independent realization changes",
+      "runtime order, implementation call trace, or target dependency changes"
+    ]
+  }
+}

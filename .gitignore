@@ -2,3 +2,14 @@ node_modules/
 .bang/
 generated/
 dist/
+
+target/
+build/
+.serena/
+.m014-cli-test-*/
+.m014-cli-demo-*/
+erl_crash.dump
+.m019-check-*/
+.m025-project-test-*/
+.m026-database-*/
+.m027-transfer-*/

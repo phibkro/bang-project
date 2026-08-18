@@ -1,0 +1,17 @@
+{
+  "bangSelfCheck": 1,
+  "core": {
+    "path": "examples/bang-core/bridge-term-data.json",
+    "declaration": "BridgeTerm"
+  },
+  "target": {
+    "profile": "effect-typescript"
+  },
+  "implementation": {
+    "binding": "bang-core-bridge-term-drifted"
+  },
+  "evidence": {
+    "seed": 20260813,
+    "cases": 100
+  }
+}

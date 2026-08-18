@@ -1,7 +1,7 @@
 ---
 id: M005
 title: Two related theories and one bridge law
-status: completed
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - theory-composition

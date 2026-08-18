@@ -2,7 +2,14 @@ import { rm } from "node:fs/promises";
 
 const targets = [
   ["packages/core/src/index.ts", "dist/core"],
+  ["packages/surface/src/index.ts", "dist/surface"],
+  ["packages/evidence/src/index.ts", "dist/evidence"],
+  ["packages/obligations/src/index.ts", "dist/obligations"],
   ["packages/target-effect/src/index.ts", "dist/target-effect"],
+  ["packages/target-gleam/src/index.ts", "dist/target-gleam"],
+  ["packages/target-rust/src/index.ts", "dist/target-rust"],
+  ["packages/theories/src/index.ts", "dist/theories"],
+  ["apps/bang/src/main.ts", "dist/bang"],
 ] as const;
 
 await rm("dist", { recursive: true, force: true });
@@ -26,4 +33,6 @@ for (const result of results) {
   process.exit(1);
 }
 
-console.log("Built @bang/core and @bang/target-effect under dist/.");
+console.log(
+  "Built @bang/core, @bang/surface, @bang/evidence, @bang/obligations, @bang/target-effect, @bang/target-gleam, @bang/target-rust, @bang/theories, and the bang CLI under dist/.",
+);

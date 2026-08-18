@@ -14,7 +14,10 @@
       "kind": "operationRealization",
       "id": "DuplicateCapabilityWithdrawal",
       "operation": { "stateMachine": "Account", "operation": "withdraw" },
-      "requires": ["DebitAccount", "DebitAccount"],
+      "requires": [
+        { "capability": "DebitAccount", "quantity": { "kind": "unbounded" } },
+        { "capability": "DebitAccount", "quantity": { "kind": "exactly", "uses": "1" } }
+      ],
       "disabled": { "kind": "failure", "id": "WithdrawalRejected" }
     }
   ]

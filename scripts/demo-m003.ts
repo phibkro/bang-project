@@ -1,7 +1,7 @@
-import { mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { TheoryDeclaration } from "@bang/core";
 import { CoreDocumentFromJson, validateCore } from "@bang/core";
+import { mkdir, rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { projectEffectPropertySuite } from "@bang/target-effect";
 import { Effect, Schema } from "effect";
 
@@ -47,20 +47,15 @@ const theory = validated.declarations.find(
     declaration.kind === "theory" && declaration.id === "IntegerAddition",
 );
 if (theory === undefined) throw new Error("IntegerAddition fixture declared no theory");
-console.log("PASS represented Integer sort and law typing");
-
 const unsupportedDocument = await decode(unsupportedFixture);
-const unsupportedTheory = Effect.runSync(validateCore(unsupportedDocument)).declarations.find(
-  (declaration): declaration is TheoryDeclaration => declaration.kind === "theory",
+const unsupportedError = Effect.runSync(
+  Effect.flip(
+    projectEffectPropertySuite(Effect.runSync(validateCore(unsupportedDocument)), "StringIdentity"),
+  ),
 );
-if (unsupportedTheory === undefined) throw new Error("unsupported fixture declared no theory");
-let unsupportedRejected = false;
-try {
-  projectEffectPropertySuite(unsupportedTheory);
-} catch (error) {
-  unsupportedRejected =
-    error instanceof TypeError && error.message.includes("requires Integer representation");
-}
+const unsupportedRejected =
+  unsupportedError.reason === "unsupported-target" &&
+  unsupportedError.message.includes("requires Integer representation");
 if (!unsupportedRejected)
   throw new Error("Effect accepted its unsupported String property carrier");
 console.log("PASS target-unsupported represented sort rejection");
