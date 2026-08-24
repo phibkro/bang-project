@@ -1,7 +1,7 @@
 ---
 id: M034
 title: Continuous evidence invalidation
-status: active
+status: complete
 timebox: 2 focused sessions
 vision_claims:
   - continuous-evidence-invalidation
