@@ -10,15 +10,15 @@ This note explores one mathematical obligation. It is not a decision, not a spec
 
 This note becomes actionable only if a concrete mission blocker appears after M034 (continuous evidence invalidation). The blocker: the invalidation report must decide whether a changed source file changed meaning or only bytes. Digest comparison cannot make that call. It either over-invalidates on cosmetic edits or under-invalidates on semantic edits that preserve digests.
 
-If that pressure materializes, a compatibility proof would let the report classify change semantics — which obligations a edit preserves or breaks — instead of over-invalidating every byte difference. Absent that blocker, this note stays parked. Curiosity about bialgebraic semantics is not an activation trigger.
+If that pressure materializes, a compatibility proof would let the report classify change semantics — which obligations an edit preserves or breaks — instead of over-invalidating every byte difference. Absent that blocker, this note stays parked. Curiosity about bialgebraic semantics is not an activation trigger.
 
 ## Proposal
 
 The exact-one theory carries equational laws: algebra-side claims about constructed values. The generated Gleam actor carries transition behavior: coalgebra-side observations of evolving state. Today M031/M033 qualify their agreement with `runtime-checked` evidence — one bounded observation of one assembled escript.
 
-If that pressure materializes, a compatibility proof would let the report classify change semantics — which obligations an edit preserves or breaks — instead of over-invalidating every byte difference. Absent that blocker, this note stays parked. Curiosity about bialgebraic semantics is not an activation trigger.
+The proposal is an explicit compatibility obligation between those two sides, shaped as a distributive law λ : BF ⇒ FB in the sense of Turi and Plotkin's bialgebraic operational semantics: the behavioral functor applied to the algebraic structure factors through the observational structure, so the actor's transition behavior respects the equational laws by construction rather than by spot check.
 
-Discharging it would be the job of the existing kernel-proof provider (M016 lineage): prove once, per theory, that the actor's transition relation preserves the equational laws. The goal is to upgrade part of the qualification from `runtime-checked` toward `kernel-proven`, keeping the runtime probe as corroboration. This adds an evidence class; it discards none. The evidence manifest keeps both grades with distinct scope.
+Discharging it would be the job of the existing Lean kernel-proof provider (M016 lineage): prove once, per theory, that the actor's transition relation preserves the equational laws. The goal is to upgrade part of the qualification from `runtime-checked` toward `kernel-proven`, keeping the runtime probe as corroboration. This adds an evidence class; it discards none. The evidence manifest keeps both grades with distinct scope.
 
 ## Boundary conditions
 
