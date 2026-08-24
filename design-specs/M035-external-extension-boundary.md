@@ -1,7 +1,7 @@
 ---
 id: M035
 title: External extension boundary
-status: active
+status: complete
 timebox: 1 focused session
 vision_claims:
   - versioned-schema-publication

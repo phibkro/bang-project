@@ -17,7 +17,7 @@ bang/
 │   ├── planning/               strict objectives, target contributions, and deterministic realization plans
 │   └── theories/               reusable Schema-backed theory consumers
 ├── apps/                       user-facing executables
-│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, plan, assemble, audit, trace, project, database, and evolve commands
+│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, plan, assemble, audit, trace, project, database, evolve, and export-schemas commands
 ├── tools/                      repository/build/release tooling packages
 ├── examples/                   cumulative systems and conformance implementations
 ├── design-specs/               frozen mission and tooling contracts
@@ -54,6 +54,8 @@ M025 is complete through `bang project`. One project-owned selection composes th
 [M033](../design-specs/M033-selected-realization-assembly.md) adds `bang assemble`. It reruns the staged M032 plan, binds the M031-qualified Gleam boundary by SHA-256, exports a canonicalized Erlang escript with pinned toolchain materials, runs it once as a separate process, and compares the observation against M031 evidence. One transaction publishes the qualification, plan, project materials, artifact, and assembly record or restores all prior bytes. The published artifact runs through `escript` without BANG.
 
 [M034](../design-specs/M034-evidence-invalidation.md) adds `bang audit`. It resolves one published assembly record, inventories every recorded material across the closure records — assembly materials, plan report, target evidence records, semantic artifact, theory lock, and the recorded theory package — recomputes each SHA-256 through the Crypto service, and classifies every member by its equality class: decoded materials compare semantically (Core sources by construct-addressed normalization, the theory package by canonical semantic digest), opaque custody bytes compare exactly, and derived members resolve through their owning producer or fail comparison. Retirement closes transitively over recorded citation edges only; requalification reruns only retired producers through the staged M030–M033 journeys while preserving evidence classes; closure parity is verified before any commit and the fresh closure republishes in one atomic transaction.
+
+[M035](../design-specs/M035-external-extension-boundary.md) adds `bang export-schemas`. It generates one versioned publication under `dist/schemas/1/` — a digest-pinned manifest, three JSON Schema documents compiled from the live producer Schemas through Effect's JSON Schema generation, and consumer types with strict JSON decoders — replacing any same-version publication atomically with byte-identical output. The focused consumer journey copies only the publication and real artifact bytes into a temporary directory outside the workspace, runs a script importing solely publication entries plus node built-ins, verifies every recorded SHA-256 custody digest, strictly decodes the theory lock and evidence record, checks their agreement on theory identity, version, and package semantic digest, and prints one typed verdict; eight negative fixtures pin every rejection stage from publication custody through record agreement.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 
