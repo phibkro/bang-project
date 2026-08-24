@@ -67,7 +67,7 @@
     "test:m029": "bun run demo:m029 >/dev/null && bun test tests/cli.test.ts --test-name-pattern M029",
     "test:m031": "bun run demo:m031 >/dev/null && bun test tests/m031-evidence.test.ts tests/cli.test.ts --test-name-pattern M031",
     "test:m032": "bun run demo:m032 >/dev/null && bun test tests/m032-plan.test.ts",
-    "test:m033": "bun run demo:m033 >/dev/null && bun test tests/m033-assembly.test.ts",
+    "test:m033": "bun run demo:m033 >/dev/null && bun test tests/m033-assembly-unit.test.ts tests/m033-assembly.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --deny-warnings .",
     "fix": "bun run scripts/fix.ts",
