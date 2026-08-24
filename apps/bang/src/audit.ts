@@ -762,7 +762,12 @@ export const requalifyRetired = (
     const planSelection = report.planSelection;
     const staged = yield* compileSelectedPlanStaged(root, planSelection).pipe(
       Effect.mapError((error) =>
-        failure("requalification", planSelection, "planning-failed", error.message),
+        failure(
+          "requalification",
+          planSelection,
+          "planning-failed",
+          `${error.reason}: ${error.message}`,
+        ),
       ),
     );
     if (staged.report._tag !== "Selected") {
@@ -794,6 +799,58 @@ export const requalifyRetired = (
       ),
     );
     return { entries: staged.publicationEntries, freshReport: fresh.report };
+  });
+
+/**
+ * Pre-publish closure parity: compare the freshly staged publication bytes
+ * against the currently published bytes for every refreshed path. Comparing
+ * BEFORE the atomic commit means divergent bytes are never published — no
+ * rollback is needed, and every prior byte survives a parity failure.
+ * Spot-checked record paths (assembly report, artifact, evidence records) must
+ * stay byte-identical when their materials are unchanged; refreshed records
+ * must differ from the stale bytes only where retirement demands.
+ */
+export const verifyClosureParity = (
+  fileSystem: FileSystem.FileSystem,
+  path: Path.Path,
+  root: string,
+  freshEntries: ReadonlyArray<PublicationEntry>,
+): Effect.Effect<void, AuditFailure> =>
+  Effect.gen(function* () {
+    const spotCheckSuffixes = ["/report.json", "/bin/exact_one", "/evidence.json"] as const;
+    for (const entry of freshEntries) {
+      const isRecordPath = spotCheckSuffixes.some(
+        (suffix) => entry.path.endsWith(suffix) && !entry.path.includes("theory-locks"),
+      );
+      if (!isRecordPath) continue;
+      const absolutePublished = path.resolve(root, entry.path);
+      const exists = yield* fileSystem
+        .exists(absolutePublished)
+        .pipe(
+          Effect.mapError((error) =>
+            failure("parity", entry.path, "parity-divergence", errorMessage(error)),
+          ),
+        );
+      if (!exists) continue;
+      const publishedBytes = yield* fileSystem
+        .readFile(absolutePublished)
+        .pipe(
+          Effect.mapError((error) =>
+            failure("parity", entry.path, "parity-divergence", errorMessage(error)),
+          ),
+        );
+      const identical =
+        publishedBytes.length === entry.bytes.length &&
+        publishedBytes.every((byte, offset) => byte === entry.bytes[offset]);
+      if (!identical) {
+        return yield* failure(
+          "parity",
+          entry.path,
+          "parity-divergence",
+          "freshly staged record bytes diverge from the published closure for an unchanged material set",
+        );
+      }
+    }
   });
 
 const requalificationReason = (reason: string): AuditReason => {
@@ -1071,6 +1128,33 @@ export const resolveDerivedDrift = (
         resolved.push({ ...material, status: drifted ? "changed" : "unchanged" });
         continue;
       }
+      if (material.role === "theory-package") {
+        // The package's own equality rule is the M030 canonical semantic
+        // digest, not byte custody. Recompute it over the current bytes and
+        // compare with the digest recorded in the published closure.
+        const packageValue = yield* Schema.decodeEffect(ExactOneCapabilityExecutionPackageFromJson)(
+          yield* readText(fileSystem, path, root, material.path, "theory package"),
+          parseOptions,
+        ).pipe(
+          Effect.mapError((issue) =>
+            failure(
+              "comparison",
+              material.path,
+              "package-disagreement",
+              `invalid theory package: ${String(issue)}`,
+            ),
+          ),
+        );
+        const recomputedDigest = yield* digestExactOneCapabilityExecutionPackage(packageValue).pipe(
+          Effect.mapError((error) =>
+            failure("comparison", material.path, "package-disagreement", errorMessage(error)),
+          ),
+        );
+        const cosmeticOrChanged =
+          recomputedDigest === context.recordedPackageDigest ? "cosmetic" : "changed";
+        resolved.push({ ...material, status: cosmeticOrChanged });
+        continue;
+      }
       if (material.role === "semantic-artifact") {
         // The artifact's owning producer is source normalization; its
         // recomputed normalized constructs are compared against the embedded
@@ -1180,8 +1264,8 @@ export const formatInvalidationReport = (
 /**
  * Full M034 invalidation journey over one published assembly: inventory,
  * semantic diff, transitive retirement, scoped requalification of retired
- * producers through the staged journeys, one atomic republication, and
- * audit-parity verification. Valid payloads keep their bytes.
+ * producers through the staged journeys, pre-publish closure parity, and one
+ * atomic republication. Valid payloads keep their bytes.
  */
 export const runInvalidation = (
   root: string,
@@ -1236,6 +1320,9 @@ export const runInvalidation = (
         assemblySelectionPath,
       );
       requalifiedCount = retired.length;
+      // Parity runs BEFORE the commit: divergent staged bytes fail here and
+      // nothing is published, so every prior byte survives without rollback.
+      yield* verifyClosureParity(fileSystem, path, root, freshEntries);
       // The atomic publisher owns rollback on any partial failure. The fresh
       // staged closure carries the qualification, plan, artifact, lock, and
       // evidence bytes; unchanged paths keep their published payloads.
