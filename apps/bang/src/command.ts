@@ -23,6 +23,7 @@ import { compileSelectedPlan, formatPlanFailure } from "./plan.ts";
 import { compileSelectedAssembly, formatAssemblyFailure } from "./assemble.ts";
 import { compileSelectedSystemReport, formatBangReportFailure } from "./report.ts";
 import { compileSelectedTrace, formatTraceFailure } from "./trace.ts";
+import { runAudit, formatAuditFailure } from "./audit.ts";
 import { compileSelectedProject, formatProjectFailure } from "./project.ts";
 import {
   compileSelectedSemanticDatabase,
@@ -438,6 +439,22 @@ export const makeBangCommand = (root: string) => {
     ),
   );
 
+  const audit = Command.make(
+    "audit",
+    { assemblyId: Argument.string("assembly-id") },
+    ({ assemblyId }) =>
+      runAudit(root, assemblyId).pipe(
+        Effect.flatMap(({ text }) => Console.log(text)),
+        Effect.mapError(
+          (error) =>
+            new CliError.UserError({
+              cause: error,
+              userMessage: formatAuditFailure(error),
+            }),
+        ),
+      ),
+  );
+
   const assemble = Command.make(
     "assemble",
     { selection: Argument.string("selection") },
@@ -737,6 +754,7 @@ export const makeBangCommand = (root: string) => {
       explain,
       classify,
       plan,
+      audit,
       assemble,
       ledger,
     ]),
