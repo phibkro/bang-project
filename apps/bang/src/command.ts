@@ -1,4 +1,6 @@
 import { Console, Effect, FileSystem, Layer, Path, Schema } from "effect";
+import { type PlatformError } from "effect/PlatformError";
+
 import { Argument, CliError, Command, Flag } from "effect/unstable/cli";
 
 import {
@@ -35,6 +37,8 @@ import {
   runM027TransferCli,
   type M027SemanticDatabaseFailure,
 } from "./semantic-database-transfer.ts";
+import type { BangSchemaPublicationFailure } from "./export-schemas.ts";
+import { runExportSchemas } from "./export-schemas.ts";
 import {
   formatM028SemanticEvolutionFailure,
   runM028EvolutionCli,
@@ -140,6 +144,22 @@ const toCliError = (error: unknown): CliError.UserError => {
     cause: error,
     userMessage: formatLedgerFailure(ledgerFailure("storage-failure", "ledger storage failed")),
   });
+};
+
+const formatSchemaPublicationFailure = (
+  error: BangSchemaPublicationFailure | PlatformError,
+): string => {
+  if (error._tag === "BangSchemaPublicationFailure") {
+    return [
+      `stage: ${error.stage}`,
+      `path: ${error.path}`,
+      `reason: ${error.reason}`,
+      `message: ${error.message}`,
+    ].join("\n");
+  }
+  return ["stage: publication", "reason: publication-failed", `message: ${error.message}`].join(
+    "\n",
+  );
 };
 
 const decodeSchema = <A>(
@@ -470,6 +490,18 @@ export const makeBangCommand = (root: string) => {
         ),
       ),
   );
+  const exportSchemas = Command.make("export-schemas", {}, () =>
+    runExportSchemas(root).pipe(
+      Effect.flatMap((publicationDirectory) => Console.log(publicationDirectory)),
+      Effect.mapError(
+        (error) =>
+          new CliError.UserError({
+            cause: error,
+            userMessage: formatSchemaPublicationFailure(error),
+          }),
+      ),
+    ),
+  );
 
   const check = Command.make(
     "check",
@@ -755,6 +787,7 @@ export const makeBangCommand = (root: string) => {
       classify,
       plan,
       audit,
+      exportSchemas,
       assemble,
       ledger,
     ]),
