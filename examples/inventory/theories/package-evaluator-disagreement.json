@@ -1,0 +1,17 @@
+{
+  "bangExplanation": 1,
+  "id": "inventory-package-evaluator-disagreement",
+  "sources": [
+    {
+      "path": "examples/inventory/inventory.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:ReserveStockOnce.requirement:ReserveStock",
+  "theory": {
+    "path": "packages/theories/theory-packages/invalid/evaluator-disagreement.json",
+    "id": "ExactOneCapabilityExecution",
+    "version": 1,
+    "semanticDigest": "sha256:035e7e5a0fb3c020fe94da123f1148f0d00b38d0513265c19f6419336da185e6"
+  }
+}

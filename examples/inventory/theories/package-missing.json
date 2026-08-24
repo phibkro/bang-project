@@ -1,0 +1,17 @@
+{
+  "bangExplanation": 1,
+  "id": "inventory-package-missing",
+  "sources": [
+    {
+      "path": "examples/inventory/inventory.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:ReserveStockOnce.requirement:ReserveStock",
+  "theory": {
+    "path": "packages/theories/theory-packages/missing.json",
+    "id": "ExactOneCapabilityExecution",
+    "version": 1,
+    "semanticDigest": "sha256:f5688125437b19929b78f813b74a6595e09d92fdfd8ac6005066ff1cb3557071"
+  }
+}

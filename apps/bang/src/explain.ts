@@ -10,8 +10,17 @@ import {
 } from "@bang/core";
 import { sourceToCore } from "@bang/surface";
 import {
-  consumeExactOneCapabilityExecution,
+  encodeExactOneCapabilityExecutionLock,
+  makeExactOneCapabilityExecutionLock,
+  resolveExactOneCapabilityExecutionPackage,
+  TheoryPackageReferenceSchema,
+  verifyExactOneCapabilityExecutionPackageResult,
+  type ExactOneCapabilityExecutionLock,
   type ExactOneCapabilityExecutionResult,
+  type ResolvedExactOneCapabilityExecutionPackage,
+  type TheoryPackageFailureReason,
+  type TheoryPackageReference,
+  consumeExactOneCapabilityExecution,
 } from "@bang/theories";
 import { type Crypto, Effect, FileSystem, Path, Schema } from "effect";
 
@@ -74,12 +83,18 @@ const ArtifactPath = RepositoryRelativePath.pipe(
   ),
 );
 
+const ExplainTheoryReference = Schema.Struct({
+  ...TheoryPackageReferenceSchema.fields,
+  path: RepositoryRelativePath,
+}).annotate({ parseOptions });
+
 /** Strict JSON selection for one external M022 theory explanation. */
 const ExplainSelectionSchema = Schema.Struct({
   bangExplanation: Schema.Literal(1),
   id: ExplanationIdentity,
   sources: ExplainSources,
   requirement: RequirementAddress,
+  theory: Schema.optional(ExplainTheoryReference),
   artifactPath: Schema.optional(ArtifactPath),
 }).annotate({ parseOptions });
 
@@ -88,6 +103,7 @@ export type ExplainSelection = typeof ExplainSelectionSchema.Type;
 export type ExplainSource = typeof ExplainSource.Type;
 
 export type ExplanationStage =
+  | "package"
   | "selection"
   | "source-read"
   | "source-decode"
@@ -99,6 +115,7 @@ export type ExplanationStage =
 
 const ExplanationStageSchema = Schema.Literals([
   "selection",
+  "package",
   "source-read",
   "source-decode",
   "core-validation",
@@ -115,6 +132,7 @@ export class ExplanationFailure extends Schema.TaggedError<ExplanationFailure>()
     stage: ExplanationStageSchema,
     path: Schema.String,
     address: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String),
     message: Schema.String,
   },
 ) {}
@@ -144,13 +162,17 @@ const makeFailure = (
   stage: ExplanationStage,
   path: string,
   message: string,
-  address?: string,
+  fields: {
+    readonly address?: string | undefined;
+    readonly reason?: string | undefined;
+  } = {},
 ): ExplanationFailure =>
   new ExplanationFailure({
     stage,
     path,
     message,
-    ...(address === undefined ? {} : { address }),
+    ...(fields.address === undefined ? {} : { address: fields.address }),
+    ...(fields.reason === undefined ? {} : { reason: fields.reason }),
   });
 
 const readText = (filePath: string, stage: ExplanationStage) =>
@@ -159,6 +181,38 @@ const readText = (filePath: string, stage: ExplanationStage) =>
     return yield* fileSystem
       .readFileString(filePath)
       .pipe(Effect.mapError((error) => makeFailure(stage, filePath, errorMessage(error))));
+  });
+
+export interface PackageResolution {
+  readonly reference: TheoryPackageReference;
+  readonly resolved: ResolvedExactOneCapabilityExecutionPackage;
+}
+export interface PublishedPackageResolution extends PackageResolution {
+  readonly lock: ExactOneCapabilityExecutionLock;
+  readonly lockPath: string;
+  readonly encodedLock: string;
+}
+
+const resolveTheoryPackage = (root: string, reference: TheoryPackageReference) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const packagePath = path.resolve(root, reference.path);
+    const encoded = yield* fileSystem.readFileString(packagePath).pipe(
+      Effect.mapError((error) =>
+        makeFailure("package", packagePath, errorMessage(error), {
+          reason: "package-not-found",
+        }),
+      ),
+    );
+    const resolved = yield* resolveExactOneCapabilityExecutionPackage(encoded, reference).pipe(
+      Effect.mapError((error) =>
+        makeFailure("package", packagePath, error.message, {
+          reason: error.reason satisfies TheoryPackageFailureReason,
+        }),
+      ),
+    );
+    return { reference, resolved } satisfies PackageResolution;
   });
 
 const decodeCoreSource = (contents: string, sourcePath: string) =>
@@ -230,12 +284,9 @@ const validateDocument = (
           (left, right) =>
             left.offset - right.offset || right.declaration.length - left.declaration.length,
         )[0];
-      return makeFailure(
-        "core-validation",
-        source?.path ?? selectionPath,
-        message,
-        errorAddress(error),
-      );
+      return makeFailure("core-validation", source?.path ?? selectionPath, message, {
+        address: errorAddress(error),
+      });
     }),
   );
 
@@ -279,6 +330,77 @@ const writeArtifact = (root: string, selection: ExplainSelection, encoded: strin
     return artifactPath;
   });
 
+const publishTheoryLock = (root: string, selectionId: string, resolution: PackageResolution) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const lockPath = `.bang/theory-locks/${selectionId}.json`;
+      const resolvedLockPath = path.resolve(root, lockPath);
+      const lockDirectory = path.dirname(resolvedLockPath);
+      const lock = makeExactOneCapabilityExecutionLock(
+        selectionId,
+        resolution.reference.path,
+        resolution.resolved,
+      );
+      const encodedLock = `${encodeExactOneCapabilityExecutionLock(lock)}\n`;
+      yield* fileSystem
+        .makeDirectory(lockDirectory, { recursive: true })
+        .pipe(
+          Effect.mapError((error) =>
+            makeFailure(
+              "package",
+              resolvedLockPath,
+              `could not create theory lock directory: ${errorMessage(error)}`,
+            ),
+          ),
+        );
+      const temporaryPath = yield* fileSystem
+        .makeTempFileScoped({
+          directory: lockDirectory,
+          prefix: `.${selectionId}-`,
+          suffix: ".tmp",
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            makeFailure(
+              "package",
+              resolvedLockPath,
+              `could not create temporary theory lock: ${errorMessage(error)}`,
+            ),
+          ),
+        );
+      yield* fileSystem
+        .writeFileString(temporaryPath, encodedLock)
+        .pipe(
+          Effect.mapError((error) =>
+            makeFailure(
+              "package",
+              resolvedLockPath,
+              `could not write temporary theory lock: ${errorMessage(error)}`,
+            ),
+          ),
+        );
+      yield* fileSystem
+        .rename(temporaryPath, resolvedLockPath)
+        .pipe(
+          Effect.mapError((error) =>
+            makeFailure(
+              "package",
+              resolvedLockPath,
+              `could not publish theory lock: ${errorMessage(error)}`,
+            ),
+          ),
+        );
+      return {
+        ...resolution,
+        lock,
+        lockPath,
+        encodedLock,
+      } satisfies PublishedPackageResolution;
+    }),
+  );
+
 const formatPremise = (
   premise: ExactOneCapabilityExecutionResult["premises"][number],
 ): string[] => {
@@ -306,20 +428,36 @@ export const formatExplanationReport = (
   result: ExactOneCapabilityExecutionResult,
   artifact: SemanticArtifact,
   artifactPath: string,
+  packageResolution?: PublishedPackageResolution,
 ): string => {
   const provenance = [...new Set(artifact.provenance.map(({ path }) => path))].toSorted();
   const lines = [
-    "M022 versioned theory explanation",
+    packageResolution === undefined
+      ? "M022 versioned theory explanation"
+      : "M030 local versioned theory package consumption",
     `Artifact format: ${result.artifactFormat}`,
     `Artifact identity: ${result.artifactId}`,
     `Artifact path: ${artifactPath}`,
     `Material provenance: ${provenance.length === 0 ? "none" : provenance.join(", ")}`,
     `Invalidators: ${result.invalidators.length === 0 ? "none" : result.invalidators.join(", ")}`,
     `Theory: ${result.theory.id} version ${result.theory.version}`,
+  ];
+  if (packageResolution !== undefined) {
+    const packageValue = packageResolution.resolved.package;
+    lines.push(
+      `Theory package: ${packageValue.identity.id}@${packageValue.identity.version}`,
+      `Package source: ${packageResolution.reference.path}`,
+      `Semantic digest: ${packageResolution.resolved.semanticDigest}`,
+      `Evaluator: ${packageValue.evaluator.id} version ${packageValue.evaluator.version}`,
+      "Resolution: locked",
+      `Theory lock: ${packageResolution.lockPath}`,
+    );
+  }
+  lines.push(
     `Requirement: ${result.requirementAddress}`,
     `Result: ${result._tag === "Applicable" ? "applicable" : "not-applicable"}`,
     "",
-  ];
+  );
   for (const premise of result.premises) lines.push(...formatPremise(premise), "");
   if (result.obligations.length === 0) {
     lines.push("Obligations: none", "");
@@ -344,17 +482,33 @@ export interface ExplanationResult {
   readonly artifactPath: string;
   readonly encodedArtifact: string;
   readonly result: ExactOneCapabilityExecutionResult;
+  readonly packageResolution?: PublishedPackageResolution;
   readonly text: string;
+}
+
+/** M030 explanation state compiled entirely in memory for a later atomic publication. */
+export interface StagedExplanationResult {
+  readonly selection: ExplainSelection;
+  readonly artifact: SemanticArtifact;
+  readonly artifactPath: string;
+  readonly encodedArtifact: string;
+  readonly result: ExactOneCapabilityExecutionResult;
+  readonly packageResolution?: PackageResolution;
+  readonly theoryLock?: {
+    readonly lock: ExactOneCapabilityExecutionLock;
+    readonly lockPath: string;
+    readonly encodedLock: string;
+  };
 }
 
 const normalizeEncodedArtifact = (encoded: string): string =>
   encoded.endsWith("\n") ? encoded : `${encoded}\n`;
 
-export const compileSelectedExplanation = (
+const compileExplanationState = (
   root: string,
   selectionPath: string,
 ): Effect.Effect<
-  ExplanationResult,
+  StagedExplanationResult,
   ExplanationFailure,
   FileSystem.FileSystem | Path.Path | Crypto.Crypto
 > =>
@@ -375,6 +529,10 @@ export const compileSelectedExplanation = (
       ),
     );
 
+    const packageResolution =
+      selection.theory === undefined
+        ? undefined
+        : yield* resolveTheoryPackage(root, selection.theory);
     const loaded = yield* loadSources(root, selection.sources);
     const checked: CheckedCoreDocument = yield* validateDocument(
       loaded.document,
@@ -383,12 +541,9 @@ export const compileSelectedExplanation = (
     );
     const artifact = yield* produceSemanticArtifact(checked, loaded.provenance, selection.id).pipe(
       Effect.mapError((error) =>
-        makeFailure(
-          "artifact-build",
-          resolvedSelectionPath,
-          errorMessage(error),
-          errorAddress(error),
-        ),
+        makeFailure("artifact-build", resolvedSelectionPath, errorMessage(error), {
+          address: errorAddress(error),
+        }),
       ),
     );
     const encodedArtifact = normalizeEncodedArtifact(encodeSemanticArtifact(artifact));
@@ -403,22 +558,92 @@ export const compileSelectedExplanation = (
           reason === "invalid-artifact" || reason === "inconsistent-checked-core"
             ? "artifact-consume"
             : "theory";
-        return makeFailure(stage, resolvedSelectionPath, errorMessage(error), errorAddress(error));
+        return makeFailure(stage, resolvedSelectionPath, errorMessage(error), {
+          address: errorAddress(error),
+        });
       }),
     );
-    const artifactPath = yield* writeArtifact(root, selection, encodedArtifact);
+    if (packageResolution !== undefined) {
+      yield* verifyExactOneCapabilityExecutionPackageResult(
+        packageResolution.resolved.package,
+        result,
+      ).pipe(
+        Effect.mapError((error) =>
+          makeFailure("package", resolvedSelectionPath, error.message, {
+            reason: error.reason,
+          }),
+        ),
+      );
+    }
+
+    const artifactPath = resolveArtifactPath(root, selection, path);
+    const theoryLock =
+      packageResolution === undefined
+        ? undefined
+        : (() => {
+            const lockPath = `.bang/theory-locks/${selection.id}.json`;
+            const lock = makeExactOneCapabilityExecutionLock(
+              selection.id,
+              packageResolution.reference.path,
+              packageResolution.resolved,
+            );
+            return {
+              lock,
+              lockPath,
+              encodedLock: `${encodeExactOneCapabilityExecutionLock(lock)}\n`,
+            };
+          })();
     return {
       selection,
+      artifact,
       artifactPath,
       encodedArtifact,
       result,
-      text: formatExplanationReport(result, artifact, artifactPath),
+      ...(packageResolution === undefined ? {} : { packageResolution }),
+      ...(theoryLock === undefined ? {} : { theoryLock }),
+    } satisfies StagedExplanationResult;
+  });
+
+/** Compile M030 sources, package, artifact, and theory result without writing files. */
+export const compileSelectedExplanationStaged = (
+  root: string,
+  selectionPath: string,
+): Effect.Effect<
+  StagedExplanationResult,
+  ExplanationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> => compileExplanationState(root, selectionPath);
+
+export const compileSelectedExplanation = (
+  root: string,
+  selectionPath: string,
+): Effect.Effect<
+  ExplanationResult,
+  ExplanationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const staged = yield* compileExplanationState(root, selectionPath);
+    const publishedPackage =
+      staged.packageResolution === undefined
+        ? undefined
+        : yield* publishTheoryLock(root, staged.selection.id, staged.packageResolution);
+    const artifactPath = yield* writeArtifact(root, staged.selection, staged.encodedArtifact);
+    const artifactPackage = publishedPackage === undefined ? undefined : publishedPackage;
+    return {
+      selection: staged.selection,
+      artifactPath,
+      encodedArtifact: staged.encodedArtifact,
+      result: staged.result,
+      ...(artifactPackage === undefined ? {} : { packageResolution: artifactPackage }),
+      text: formatExplanationReport(staged.result, staged.artifact, artifactPath, artifactPackage),
     };
   });
 
 /** Format one M022 failure without a stack trace or partial report. */
 export const formatExplanationFailure = (error: ExplanationFailure): string => {
   const lines = [`stage: ${error.stage}`, `path: ${error.path}`];
+  if (error.reason !== undefined) lines.push(`reason: ${error.reason}`);
   if (error.address !== undefined) lines.push(`address: ${error.address}`);
   lines.push(`message: ${error.message}`);
   return lines.join("\n");

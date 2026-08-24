@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "tiny-bank-m031-duplicate-targets",
+  "explanationSelection": "examples/tiny-bank/theories/packaged-exact-one.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    }
+  ]
+}

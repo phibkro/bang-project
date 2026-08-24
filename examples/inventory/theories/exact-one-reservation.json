@@ -1,0 +1,11 @@
+{
+  "bangExplanation": 1,
+  "id": "inventory-exact-one-reservation",
+  "sources": [
+    {
+      "path": "examples/inventory/inventory.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:ReserveStockOnce.requirement:ReserveStock"
+}

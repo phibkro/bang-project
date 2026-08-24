@@ -1,0 +1,9 @@
+{
+  "bangAssembly": 1,
+  "id": "tiny-bank-assembly-effect-selected",
+  "planSelection": "examples/tiny-bank/plans/in-process-exact-one.json",
+  "artifact": {
+    "kind": "escript",
+    "entry": "main"
+  }
+}

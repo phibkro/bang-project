@@ -1,0 +1,20 @@
+{
+  "bangSemanticEvolution": 1,
+  "id": "tiny-bank-transfer-evolution",
+  "service": "examples/tiny-bank/database/transfer.json",
+  "baselineVersion": 1,
+  "candidateVersion": 2,
+  "candidate": {
+    "project": "examples/tiny-bank/evolution/project-transfer-compatible.json",
+    "accountSource": "examples/tiny-bank/evolution/account-compatible.bang"
+  },
+  "compatibility": {
+    "kind": "selected-service-closure"
+  },
+  "migration": {
+    "kind": "reuse-schema"
+  },
+  "scenario": {
+    "postEvolutionTransferAmount": "1"
+  }
+}

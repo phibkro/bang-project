@@ -10,6 +10,7 @@ import {
 import {
   classifyRealization,
   consumeExactOneCapabilityExecution,
+  decodeExactOneCapabilityExecutionPackage,
   decodeM023ClassificationResult,
   decodeM023RealizationProfile,
   M023_EXACT_ONE_OBLIGATION_IDS,
@@ -18,12 +19,16 @@ import {
   decodeM024ChannelSelection,
   encodeM023RealizationProfile,
   evaluateM024ChannelTrace,
+  encodeExactOneCapabilityExecutionLock,
   ExactOneCapabilityExecutionError,
+  ExactOneCapabilityExecutionPackage,
+  makeExactOneCapabilityExecutionLock,
   ExactOneCapabilityExecutionResultFromJson,
   M024ChannelReportFromJson,
   M024ChannelSelectionFromJson,
   M024ChannelTraceFromJson,
   M023RealizationClassificationError,
+  resolveExactOneCapabilityExecutionPackage,
   type ExactOneCapabilityExecutionResult,
   type M024ChannelObservation,
   type M024ChannelSelection,
@@ -31,6 +36,7 @@ import {
   type M023AssessmentDisposition,
   type M023EvidenceClass,
   type M023RealizationProfile,
+  verifyExactOneCapabilityExecutionPackageResult,
 } from "@bang/theories";
 import { Crypto, Effect, Result, Schema } from "effect";
 import { sourceToCore } from "@bang/surface";
@@ -948,5 +954,68 @@ describe("M024 bounded channel theory", () => {
     const report = await Effect.runPromise(evaluateM024ChannelTrace(selection, trace));
     expect(report.schedules[0]!.result).toBe("Satisfied");
     expect(report.schedules[0]!.obligations[2]!.status).toBe("Satisfied");
+  });
+});
+
+describe("M030 versioned local theory package", () => {
+  const packagePath = "packages/theories/theory-packages/exact-one-capability.json";
+  const semanticDigest = "sha256:f5688125437b19929b78f813b74a6595e09d92fdfd8ac6005066ff1cb3557071";
+
+  test("resolves the canonical package by identity, version, and digest", async () => {
+    const encoded = await Bun.file(packagePath).text();
+    const decoded = decodeExactOneCapabilityExecutionPackage(encoded);
+    expect(decoded).toEqual(ExactOneCapabilityExecutionPackage);
+
+    const resolved = await Effect.runPromise(
+      Effect.provideService(
+        resolveExactOneCapabilityExecutionPackage(encoded, {
+          path: packagePath,
+          id: "ExactOneCapabilityExecution",
+          version: 1,
+          semanticDigest,
+        }),
+        Crypto.Crypto,
+        normalizationCrypto,
+      ),
+    );
+    expect(resolved.semanticDigest).toBe(semanticDigest);
+    expect(resolved.package.evaluator.id).toBe("ExactOneCapabilityExecutionEvaluator");
+
+    const lock = makeExactOneCapabilityExecutionLock("m030-test", packagePath, resolved);
+    expect(JSON.parse(encodeExactOneCapabilityExecutionLock(lock))).toEqual(lock);
+  });
+
+  test("rejects a mismatched package digest before evaluation", async () => {
+    const encoded = await Bun.file(packagePath).text();
+    const error = await Effect.runPromise(
+      Effect.flip(
+        Effect.provideService(
+          resolveExactOneCapabilityExecutionPackage(encoded, {
+            path: packagePath,
+            id: "ExactOneCapabilityExecution",
+            version: 1,
+            semanticDigest:
+              "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          }),
+          Crypto.Crypto,
+          normalizationCrypto,
+        ),
+      ),
+    );
+    expect(error.reason).toBe("digest-mismatch");
+  });
+
+  test("rejects evaluator output that disagrees with package meaning", async () => {
+    const packageValue = decodeExactOneCapabilityExecutionPackage(
+      await Bun.file(
+        "packages/theories/theory-packages/invalid/evaluator-disagreement.json",
+      ).text(),
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(
+        verifyExactOneCapabilityExecutionPackageResult(packageValue, await makeTheoryResult()),
+      ),
+    );
+    expect(error.reason).toBe("evaluator-disagreement");
   });
 });

@@ -1,0 +1,17 @@
+{
+  "bangExplanation": 1,
+  "id": "tiny-bank-m031-package-digest-mismatch",
+  "sources": [
+    {
+      "path": "examples/tiny-bank/account.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "theory": {
+    "path": "packages/theories/theory-packages/exact-one-capability.json",
+    "id": "ExactOneCapabilityExecution",
+    "version": 1,
+    "semanticDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

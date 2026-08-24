@@ -1,0 +1,36 @@
+machine Inventory {
+  state InventoryState {
+    availableUnits: Integer
+    reservedUnits: Integer
+  }
+
+  initializer initialize(availableUnits: Integer, reservedUnits: Integer) {
+    requires availableUnits >= 0
+    requires reservedUnits >= 0
+  }
+
+  transition reserve(units: Integer) {
+    requires units >= 1
+    requires availableUnits >= units
+  }
+
+  invariant nonnegativeAvailable {
+    availableUnits >= 0
+  }
+
+  invariant nonnegativeReserved {
+    reservedUnits >= 0
+  }
+}
+
+capability ReserveStock
+
+realization ReserveStockMany binds Inventory.reserve {
+  requires ReserveStock unbounded
+  when disabled fail ReservationRejected
+}
+
+realization ReserveStockOnce binds Inventory.reserve {
+  requires ReserveStock exactly 1
+  when disabled fail ReservationRejectedOnce
+}

@@ -13,6 +13,7 @@
         "@bang/core": "workspace:*",
         "@bang/evidence": "workspace:*",
         "@bang/obligations": "workspace:*",
+        "@bang/planning": "workspace:*",
         "@bang/surface": "workspace:*",
         "@bang/target-effect": "workspace:*",
         "@bang/target-gleam": "workspace:*",
@@ -39,11 +40,11 @@
       "dependencies": {
         "@bang/core": "workspace:*",
         "@bang/evidence": "workspace:*",
+        "@bang/planning": "workspace:*",
         "@bang/surface": "workspace:*",
         "@bang/target-effect": "workspace:*",
         "@bang/target-gleam": "workspace:*",
         "@bang/theories": "workspace:*",
-        "@effect/platform-bun": "4.0.0-rc.108",
         "@effect/sql-sqlite-bun": "4.0.0-rc.108",
         "effect": "4.0.0-rc.108",
       },
@@ -73,6 +74,16 @@
         "effect": "4.0.0-rc.108",
       },
     },
+    "packages/planning": {
+      "name": "@bang/planning",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bang/core": "workspace:*",
+        "@bang/evidence": "workspace:*",
+        "@bang/theories": "workspace:*",
+        "effect": "4.0.0-rc.108",
+      },
+    },
     "packages/surface": {
       "name": "@bang/surface",
       "version": "0.0.0",
@@ -86,6 +97,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@bang/core": "workspace:*",
+        "@bang/evidence": "workspace:*",
+        "@bang/planning": "workspace:*",
+        "@bang/theories": "workspace:*",
         "effect": "4.0.0-rc.108",
       },
     },
@@ -94,6 +108,10 @@
       "version": "0.0.0",
       "dependencies": {
         "@bang/core": "workspace:*",
+        "@bang/evidence": "workspace:*",
+        "@bang/planning": "workspace:*",
+        "@bang/theories": "workspace:*",
+        "effect": "4.0.0-rc.108",
       },
     },
     "packages/target-rust": {
@@ -124,6 +142,8 @@
     "@bang/evidence": ["@bang/evidence@workspace:packages/evidence"],
 
     "@bang/obligations": ["@bang/obligations@workspace:packages/obligations"],
+
+    "@bang/planning": ["@bang/planning@workspace:packages/planning"],
 
     "@bang/surface": ["@bang/surface@workspace:packages/surface"],
 

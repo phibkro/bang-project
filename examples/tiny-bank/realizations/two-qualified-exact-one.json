@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "tiny-bank-two-qualified-exact-one",
+  "explanationSelection": "examples/tiny-bank/theories/packaged-exact-one.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    }
+  ]
+}

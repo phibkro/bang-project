@@ -49,14 +49,19 @@ The completed vertical missions are listed below. See the [capability dependency
 - [M025 single-authority project composition](design-specs/M025-single-authority-project.md).
 - [M026 persistent reactive semantic database](design-specs/M026-semantic-database.md).
 - [M027 cross-entity atomic transfer](design-specs/M027-cross-entity-transfer.md).
+- [M028 versioned semantic-service evolution](design-specs/M028-versioned-semantic-evolution.md).
+- [M029 second-domain reusable theory portability](design-specs/M029-second-domain-theory-portability.md).
+- [M030 local versioned theory package consumption](design-specs/M030-local-theory-package-consumption.md).
+- [M031 fresh two-target exact-one qualification](design-specs/M031-two-target-exact-one-qualification.md).
+- [M032 objective-relative realization planning](design-specs/M032-objective-relative-realization-planning.md).
 
 This monorepo contains the BANG specification language, Core, compilers, target projections, conformance tools, build tools, theories, and future realization packages. See the [repository map](docs/repository-map.md). A frozen mission must create pressure before a subsystem becomes a package.
 
 ## Current frontier
 
-M027 completes the cross-entity semantic-database frontier. One composed transfer relation coordinates an independent handler, an atomic two-row SQLite command, and reactive Account and TotalFunds observations.
+M032 completes the first objective-relative realization planning journey. BANG reruns the fresh Effect TypeScript and supervised Gleam/BEAM qualification probes before it plans.
 
-The journey preserves separate claims for Core structure, authored links, obligation derivation, proof evidence, target enforcement, runtime checks, and scenario observations. No successor mission is active.
+Explicit operational objectives select a warranted candidate. An objective that does not distinguish the candidates returns explicit incomparable plans. An unsupported objective returns a typed no-plan result.
 
 ## Experience the current capability
 
@@ -68,6 +73,12 @@ just preview
 ./node_modules/.bin/bang trace examples/tiny-bank/channels/two-owner.json
 ./node_modules/.bin/bang project examples/tiny-bank/project.json
 ./node_modules/.bin/bang database examples/tiny-bank/database/account.json
+./node_modules/.bin/bang evolve examples/tiny-bank/evolution/transfer-compatible.json
+./node_modules/.bin/bang explain examples/inventory/theories/exact-one-reservation.json
+./node_modules/.bin/bang explain examples/inventory/theories/packaged-exact-one.json
+./node_modules/.bin/bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json
+./node_modules/.bin/bang plan examples/tiny-bank/plans/supervised-exact-one.json
+./node_modules/.bin/bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json
 ```
 
 The `bang report <selection>` command loads the selected sources and six evidence records, validates the merged Core document, and prints one deterministic accumulated report. Typed failures retain the input stage and path. BANG source failures also retain the span, found token, and expected syntax. The earlier demonstrations carry unchanged Core through Effect TypeScript and Rust conformance boundaries, independent implementations, graded evidence, one real runtime trace, replayable property-test evidence, and one bounded solver-reported relational question. M009 reports Rust's `i128` weakening instead of claiming arbitrary-precision target equivalence. M010 verifies a deterministic four-file SHA-256 closure before replay. M011 reports bounded Z3 results without claiming proof. M012 preserves six typed evidence payloads. M013 lowers one Account source file to the four checked declarations used by six downstream journeys.
@@ -83,6 +94,20 @@ M024 is complete: run `bun run demo:m024`, or `bang trace examples/tiny-bank/cha
 M025 is complete. Run `bun run demo:m025`, or `bang project examples/tiny-bank/project.json`. The command selects TinyBank sources, theories, realization candidates, targets, channel analysis, and evidence policy once. The report preserves theory, realization, channel, and evidence distinctions through one project-owned composition root.
 
 M026 is complete. Run `bun run demo:m026`, or `bang database examples/tiny-bank/database/account.json`. The command derives, type-checks, runs, reopens, and reports one persistent reactive service.
+
+M027 is complete. Run `bun run demo:m027`, or `bang database examples/tiny-bank/database/transfer.json`, for the atomic two-Account transfer and reactive TotalFunds journey.
+
+M028 is complete. Run `bun run demo:m028`, or `bang evolve examples/tiny-bank/evolution/transfer-compatible.json`. The command compares normalized Core, classifies the selected service closure, confirms byte-identical SQL and Effect projections, cuts version metadata from 1 to 2 atomically, exercises the candidate service, and reopens the same SQLite file. The breaking fixture at `examples/tiny-bank/evolution/transfer-breaking.json` reports its invalidating addresses and emits no generated artifacts.
+
+M029 is complete. Run `bun run demo:m029`, or `bang explain examples/inventory/theories/exact-one-reservation.json`, to observe domain-neutral applicability across TinyBank and Inventory.
+
+M030 is complete. Run `bun run demo:m030`, or `bang explain examples/inventory/theories/packaged-exact-one.json`. The selection resolves and verifies the local versioned package, checks evaluator agreement, and publishes `.bang/theory-locks/inventory-packaged-exact-one.json` deterministically. Negative fixtures cover digest and version mismatch, missing packages, unsupported evaluators, and evaluator disagreement.
+
+M031 is complete. Run `bun run demo:m031`, or `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. The command runs fresh Effect and supervised Gleam/BEAM exact-one probes, verifies separate target evidence, reports two qualified profiles, and publishes the artifact, lock, projections, evidence, and report deterministically only after all checks succeed.
+
+M032 is complete. Run `bun run demo:m032`, or `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. The command stages fresh M031 qualification, derives target-owned planning contributions from checked evidence, and publishes one atomic closure. The four fixtures select Gleam, select Effect, return incomparable plans, and return no plan.
+
+M033 is complete. Run `bun run demo:m033`, or `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. The command reruns the staged plan, binds the M031-qualified Gleam boundary by digest, exports one canonical escript under the pinned toolchain, executes it once as a separate process, and compares the observation with M031 evidence. One transaction publishes the qualification, plan, project materials, artifact, and assembly record. `escript .bang/assemblies/tiny-bank-supervised-exact-one/bin/exact_one` runs without BANG or the Gleam compiler. Seven negative selection fixtures plus focused unit failure cases cover non-selected plans, malformed selections, material mismatch, failed execution, and late publication restoration.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 

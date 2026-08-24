@@ -929,12 +929,22 @@ const decodeReport = (
     ),
   );
 
-/** Compile one project-owned M025 selection without loading child M022/M023 selections. */
-export const compileSelectedProject = (
+export interface M025ProjectArtifactCompileResult {
+  readonly selection: M025ProjectSelection;
+  readonly artifact: CheckedSemanticArtifact;
+  readonly encodedArtifact: string;
+  readonly resolvedSelectionPath: string;
+}
+
+/**
+ * Compile and independently consume one project semantic artifact without applying
+ * project-level theory, target, or evidence policies.
+ */
+export const compileSelectedProjectArtifact = (
   root: string,
   selectionPath: string,
 ): Effect.Effect<
-  M025ProjectCompileResult,
+  M025ProjectArtifactCompileResult,
   M025ProjectFailure,
   FileSystem.FileSystem | Path.Path | Crypto.Crypto
 > =>
@@ -989,6 +999,30 @@ export const compileSelectedProject = (
         }),
       );
     }
+    return {
+      selection,
+      artifact: consumedArtifact,
+      encodedArtifact,
+      resolvedSelectionPath,
+    };
+  });
+
+/** Compile one project-owned M025 selection without loading child M022/M023 selections. */
+export const compileSelectedProject = (
+  root: string,
+  selectionPath: string,
+): Effect.Effect<
+  M025ProjectCompileResult,
+  M025ProjectFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const {
+      selection,
+      artifact: consumedArtifact,
+      encodedArtifact,
+      resolvedSelectionPath,
+    } = yield* compileSelectedProjectArtifact(root, selectionPath);
 
     const theoryApplication = selection.theories[0];
     if (theoryApplication === undefined) {

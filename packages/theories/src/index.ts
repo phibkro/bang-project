@@ -1,20 +1,17 @@
 import {
   consumeSemanticArtifact,
+  encodeCanonicalJson,
   type CapabilityRequirement,
   type CheckedSemanticArtifact,
   type OperationRealizationDeclaration,
 } from "@bang/core";
-import { type Crypto, Effect, Schema } from "effect";
+import { Crypto, Effect, Encoding, Schema } from "effect";
+import exactOneCapabilityExecutionPackageJson from "../theory-packages/exact-one-capability.json";
 
 const TheoryIdentitySchema = Schema.Struct({
   id: Schema.Literal("ExactOneCapabilityExecution"),
   version: Schema.Literal(1),
 });
-
-export const ExactOneCapabilityExecutionTheory = {
-  id: "ExactOneCapabilityExecution",
-  version: 1,
-} as const;
 
 export type ExactOneCapabilityExecutionDerivation =
   | "authored"
@@ -22,6 +19,220 @@ export type ExactOneCapabilityExecutionDerivation =
   | "theory-derived";
 
 const DerivationSchema = Schema.Literals(["authored", "structurally-derived", "theory-derived"]);
+
+const parseOptions = { onExcessProperty: "error" } as const;
+const SemanticDigestSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value) => /^sha256:[0-9a-f]{64}$/u.test(value), {
+      expected: "a sha256-prefixed lowercase hexadecimal digest",
+    }),
+  ),
+);
+const PackageIdentitySchema = Schema.Struct({
+  id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  version: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))),
+});
+const EvaluatorIdentitySchema = PackageIdentitySchema;
+const PackagePremiseSchema = Schema.Struct({
+  id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  derivation: Schema.Literals(["authored", "structurally-derived"]),
+});
+const PackageObligationSchema = Schema.Struct({
+  id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  statement: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  derivation: Schema.Literal("theory-derived"),
+});
+
+export const ExactOneCapabilityExecutionPackageSchema = Schema.Struct({
+  bangTheoryPackage: Schema.Literal(1),
+  identity: PackageIdentitySchema,
+  evaluator: EvaluatorIdentitySchema,
+  subject: Schema.Literal("operation-realization-capability-requirement"),
+  quantity: Schema.Struct({
+    kind: Schema.Literal("exactly"),
+    uses: Schema.Literal("1"),
+  }),
+  premises: Schema.NonEmptyArray(PackagePremiseSchema),
+  obligations: Schema.NonEmptyArray(PackageObligationSchema),
+  evidence: Schema.Struct({
+    status: Schema.Literal("unresolved"),
+    scope: Schema.Literal("theory-derived-obligations"),
+  }),
+  limitations: Schema.NonEmptyArray(Schema.String.pipe(Schema.check(Schema.isNonEmpty()))),
+  invalidation: Schema.Literal("premise-provenance"),
+}).annotate({ parseOptions });
+
+export type ExactOneCapabilityExecutionPackage =
+  typeof ExactOneCapabilityExecutionPackageSchema.Type;
+export const ExactOneCapabilityExecutionPackageFromJson = Schema.fromJsonString(
+  ExactOneCapabilityExecutionPackageSchema,
+);
+export const decodeExactOneCapabilityExecutionPackage = Schema.decodeUnknownSync(
+  ExactOneCapabilityExecutionPackageFromJson,
+);
+export const ExactOneCapabilityExecutionPackage = Schema.decodeUnknownSync(
+  ExactOneCapabilityExecutionPackageSchema,
+)(exactOneCapabilityExecutionPackageJson, parseOptions);
+export const ExactOneCapabilityExecutionTheory = Schema.decodeUnknownSync(TheoryIdentitySchema)(
+  ExactOneCapabilityExecutionPackage.identity,
+);
+
+export const TheoryPackageReferenceSchema = Schema.Struct({
+  path: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  version: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))),
+  semanticDigest: SemanticDigestSchema,
+}).annotate({ parseOptions });
+export type TheoryPackageReference = typeof TheoryPackageReferenceSchema.Type;
+
+const TheoryPackageLockSchema = Schema.Struct({
+  bangTheoryLock: Schema.Literal(1),
+  selectionId: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  package: Schema.Struct({
+    path: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+    identity: PackageIdentitySchema,
+    semanticDigest: SemanticDigestSchema,
+    evaluator: EvaluatorIdentitySchema,
+  }),
+}).annotate({ parseOptions });
+export const ExactOneCapabilityExecutionLockSchema = TheoryPackageLockSchema;
+export type ExactOneCapabilityExecutionLock = typeof TheoryPackageLockSchema.Type;
+export const ExactOneCapabilityExecutionLockFromJson =
+  Schema.fromJsonString(TheoryPackageLockSchema);
+
+const packageFailureReasons = Schema.Literals([
+  "invalid-package",
+  "identity-mismatch",
+  "version-mismatch",
+  "digest-mismatch",
+  "unsupported-evaluator",
+  "evaluator-disagreement",
+]);
+export type TheoryPackageFailureReason = typeof packageFailureReasons.Type;
+export class TheoryPackageError extends Schema.TaggedError<TheoryPackageError>()(
+  "TheoryPackageError",
+  {
+    reason: packageFailureReasons,
+    identity: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
+const packageFailure = (
+  reason: TheoryPackageFailureReason,
+  message: string,
+  identity?: string,
+): TheoryPackageError =>
+  new TheoryPackageError({
+    reason,
+    message,
+    ...(identity === undefined ? {} : { identity }),
+  });
+
+export const encodeExactOneCapabilityExecutionPackage = (
+  packageValue: ExactOneCapabilityExecutionPackage,
+): string => encodeCanonicalJson(packageValue);
+
+export const digestExactOneCapabilityExecutionPackage = Effect.fn(
+  "digestExactOneCapabilityExecutionPackage",
+)(function* (packageValue: ExactOneCapabilityExecutionPackage) {
+  const crypto = yield* Crypto.Crypto;
+  const digest = yield* crypto
+    .digest(
+      "SHA-256",
+      new TextEncoder().encode(encodeExactOneCapabilityExecutionPackage(packageValue)),
+    )
+    .pipe(
+      Effect.mapError(() =>
+        packageFailure("invalid-package", "could not compute the theory package digest"),
+      ),
+    );
+  return `sha256:${Encoding.encodeHex(digest)}`;
+});
+
+export interface ResolvedExactOneCapabilityExecutionPackage {
+  readonly package: ExactOneCapabilityExecutionPackage;
+  readonly semanticDigest: string;
+}
+
+export const resolveExactOneCapabilityExecutionPackage = Effect.fn(
+  "resolveExactOneCapabilityExecutionPackage",
+)(function* (encoded: string, expected: TheoryPackageReference) {
+  const packageValue = yield* Schema.decodeEffect(ExactOneCapabilityExecutionPackageFromJson)(
+    encoded,
+    parseOptions,
+  ).pipe(
+    Effect.mapError((issue) =>
+      packageFailure("invalid-package", `invalid theory package: ${String(issue)}`),
+    ),
+  );
+  const identity = `${packageValue.identity.id}@${packageValue.identity.version}`;
+  if (packageValue.identity.id !== expected.id) {
+    return yield* packageFailure(
+      "identity-mismatch",
+      `expected theory package ${expected.id}, received ${packageValue.identity.id}`,
+      identity,
+    );
+  }
+  if (packageValue.identity.version !== expected.version) {
+    return yield* packageFailure(
+      "version-mismatch",
+      `expected theory package version ${expected.version}, received ${packageValue.identity.version}`,
+      identity,
+    );
+  }
+  const semanticDigest = yield* digestExactOneCapabilityExecutionPackage(packageValue);
+  if (semanticDigest !== expected.semanticDigest) {
+    return yield* packageFailure(
+      "digest-mismatch",
+      `expected semantic digest ${expected.semanticDigest}, received ${semanticDigest}`,
+      identity,
+    );
+  }
+  if (
+    packageValue.evaluator.id !== "ExactOneCapabilityExecutionEvaluator" ||
+    packageValue.evaluator.version !== 1
+  ) {
+    return yield* packageFailure(
+      "unsupported-evaluator",
+      `unsupported evaluator ${packageValue.evaluator.id}@${packageValue.evaluator.version}`,
+      identity,
+    );
+  }
+  if (
+    encodeExactOneCapabilityExecutionPackage(packageValue) !==
+    encodeExactOneCapabilityExecutionPackage(ExactOneCapabilityExecutionPackage)
+  ) {
+    return yield* packageFailure(
+      "evaluator-disagreement",
+      `package ${identity} does not match the supported evaluator declaration`,
+      identity,
+    );
+  }
+  return {
+    package: packageValue,
+    semanticDigest,
+  } satisfies ResolvedExactOneCapabilityExecutionPackage;
+});
+
+export const makeExactOneCapabilityExecutionLock = (
+  selectionId: string,
+  packagePath: string,
+  resolved: ResolvedExactOneCapabilityExecutionPackage,
+): ExactOneCapabilityExecutionLock => ({
+  bangTheoryLock: 1,
+  selectionId,
+  package: {
+    path: packagePath,
+    identity: resolved.package.identity,
+    semanticDigest: resolved.semanticDigest,
+    evaluator: resolved.package.evaluator,
+  },
+});
+
+export const encodeExactOneCapabilityExecutionLock = (
+  lock: ExactOneCapabilityExecutionLock,
+): string => encodeCanonicalJson(lock);
 
 const PremiseSchema = Schema.Struct({
   id: Schema.String,
@@ -63,16 +274,6 @@ const EvidenceSchema = Schema.Struct({
 export type ExactOneCapabilityExecutionEvidence = typeof EvidenceSchema.Type;
 export const ExactOneCapabilityExecutionEvidenceSchema = EvidenceSchema;
 
-const limitationStatements = [
-  "termination is not established",
-  "productivity is not established",
-  "memory or work bounds are not established",
-  "capability lifetime is not established",
-  "fairness is not established",
-  "message delivery is not established",
-  "distributed exactly-once execution is not established",
-] as const;
-
 const LimitationsSchema = Schema.Array(Schema.String);
 
 export type ExactOneCapabilityExecutionLimitations = typeof LimitationsSchema.Type;
@@ -111,6 +312,62 @@ export type ExactOneCapabilityExecutionResult = typeof ExactOneCapabilityExecuti
 export const ExactOneCapabilityExecutionResultFromJson = Schema.fromJsonString(
   ExactOneCapabilityExecutionResultSchema,
 );
+
+const packageResultProjection = (
+  result: ExactOneCapabilityExecutionResult,
+): {
+  readonly identity: ExactOneCapabilityExecutionResult["theory"];
+  readonly premises: ReadonlyArray<{
+    readonly id: string;
+    readonly derivation: ExactOneCapabilityExecutionDerivation;
+  }>;
+  readonly obligations: ReadonlyArray<{
+    readonly id: string;
+    readonly statement: string;
+    readonly derivation: "theory-derived";
+  }>;
+  readonly evidence: ExactOneCapabilityExecutionEvidence;
+  readonly limitations: ReadonlyArray<string>;
+} => ({
+  identity: result.theory,
+  premises: result.premises.map(({ id, derivation }) => ({ id, derivation })),
+  obligations: result.obligations.map(({ id, statement, derivation }) => ({
+    id,
+    statement,
+    derivation,
+  })),
+  evidence: result.evidence,
+  limitations: result.limitations,
+});
+
+const packageDeclarationProjection = (
+  packageValue: ExactOneCapabilityExecutionPackage,
+  applicable: boolean,
+) => ({
+  identity: packageValue.identity,
+  premises: packageValue.premises,
+  obligations: applicable ? packageValue.obligations : [],
+  evidence: packageValue.evidence,
+  limitations: packageValue.limitations,
+});
+
+export const verifyExactOneCapabilityExecutionPackageResult = Effect.fn(
+  "verifyExactOneCapabilityExecutionPackageResult",
+)(function* (
+  packageValue: ExactOneCapabilityExecutionPackage,
+  result: ExactOneCapabilityExecutionResult,
+) {
+  if (
+    encodeCanonicalJson(packageResultProjection(result)) !==
+    encodeCanonicalJson(packageDeclarationProjection(packageValue, result._tag === "Applicable"))
+  ) {
+    return yield* packageFailure(
+      "evaluator-disagreement",
+      `evaluator result disagrees with package ${packageValue.identity.id}@${packageValue.identity.version}`,
+      `${packageValue.identity.id}@${packageValue.identity.version}`,
+    );
+  }
+});
 
 const errorReasons = Schema.Literals([
   "invalid-artifact",
@@ -248,44 +505,25 @@ type NotApplicableResult = Extract<
   { readonly _tag: "NotApplicable" }
 >;
 
+const runtimeObligation = (
+  obligation: ExactOneCapabilityExecutionPackage["obligations"][number],
+): ExactOneCapabilityExecutionObligation => ({
+  ...obligation,
+  provenance: "theory-derived",
+  evidence: "unresolved",
+});
+
 const obligations: readonly [
   ExactOneCapabilityExecutionObligation,
   ...ExactOneCapabilityExecutionObligation[],
 ] = [
-  {
-    id: "ExactOneCapabilityExecution.obligation.check-before-consumption",
-    statement: "check the destination and transition before consumption",
-    provenance: "theory-derived",
-    derivation: "theory-derived",
-    evidence: "unresolved",
-  },
-  {
-    id: "ExactOneCapabilityExecution.obligation.consume-atomically-before-execution",
-    statement: "consume one use atomically before operation execution",
-    provenance: "theory-derived",
-    derivation: "theory-derived",
-    evidence: "unresolved",
-  },
-  {
-    id: "ExactOneCapabilityExecution.obligation.reject-reuse-before-execution",
-    statement: "reject reuse before operation execution",
-    provenance: "theory-derived",
-    derivation: "theory-derived",
-    evidence: "unresolved",
-  },
-  {
-    id: "ExactOneCapabilityExecution.obligation.no-restore-after-start",
-    statement: "do not restore a use after an execution attempt starts",
-    provenance: "theory-derived",
-    derivation: "theory-derived",
-    evidence: "unresolved",
-  },
+  runtimeObligation(ExactOneCapabilityExecutionPackage.obligations[0]),
+  ...ExactOneCapabilityExecutionPackage.obligations.slice(1).map(runtimeObligation),
 ];
 
-const limitations = [...limitationStatements];
+const limitations = [...ExactOneCapabilityExecutionPackage.limitations];
 const evidence: ExactOneCapabilityExecutionEvidence = {
-  status: "unresolved",
-  scope: "theory-derived-obligations",
+  ...ExactOneCapabilityExecutionPackage.evidence,
 };
 
 const invalidatorsFor = (

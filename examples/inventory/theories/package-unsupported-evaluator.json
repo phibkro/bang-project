@@ -1,0 +1,17 @@
+{
+  "bangExplanation": 1,
+  "id": "inventory-package-unsupported-evaluator",
+  "sources": [
+    {
+      "path": "examples/inventory/inventory.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:ReserveStockOnce.requirement:ReserveStock",
+  "theory": {
+    "path": "packages/theories/theory-packages/invalid/unsupported-evaluator.json",
+    "id": "ExactOneCapabilityExecution",
+    "version": 1,
+    "semanticDigest": "sha256:d82ca89bb715aa44c079543fe105d828f0f2e82751c888e3530cdb76af98000a"
+  }
+}
