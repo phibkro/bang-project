@@ -1,3 +1,10 @@
+import type { CheckedM031TargetQualificationEvidence } from "@bang/evidence";
+import {
+  makePlanningContribution,
+  type PlanningContribution,
+  type PlanningError,
+} from "@bang/planning";
+import type { M023ClassificationResult } from "@bang/theories";
 import type {
   BridgeTerm,
   CheckedCoreDocument,
@@ -2240,3 +2247,31 @@ export const projectEffectEntityOperationRealization = Effect.fn(
     );
   }
 });
+
+export interface EffectPlanningContributionInput {
+  readonly qualification: M023ClassificationResult;
+  readonly evidence: CheckedM031TargetQualificationEvidence;
+}
+
+/** Map checked M031 Effect evidence into the target-owned planning contribution. */
+export const makeEffectPlanningContribution = (
+  input: EffectPlanningContributionInput,
+): Effect.Effect<PlanningContribution, PlanningError> =>
+  makePlanningContribution({
+    target: "effect-typescript",
+    qualification: input.qualification,
+    evidence: input.evidence,
+    claims: [
+      { family: "runtime-model", disposition: "established", value: "in-process" },
+      {
+        family: "restart",
+        disposition: "unresolved",
+        reason: "M031 does not observe restart",
+      },
+      {
+        family: "grant-restart",
+        disposition: "unresolved",
+        reason: "M031 does not observe restart",
+      },
+    ],
+  });

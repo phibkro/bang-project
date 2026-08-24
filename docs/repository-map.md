@@ -14,9 +14,10 @@ bang/
 │   ├── target-effect/          Effect TypeScript projection, including the M018 single-use boundary
 │   ├── target-gleam/           Gleam/BEAM actor projection
 │   ├── target-rust/            Rust projection
+│   ├── planning/               strict objectives, target contributions, and deterministic realization plans
 │   └── theories/               reusable Schema-backed theory consumers
 ├── apps/                       user-facing executables
-│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, trace, project, and database commands
+│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, plan, assemble, trace, project, database, and evolve commands
 ├── tools/                      repository/build/release tooling packages
 ├── examples/                   cumulative systems and conformance implementations
 ├── design-specs/               frozen mission and tooling contracts
@@ -36,9 +37,21 @@ The M024 tracer distinguishes logical messages, delivery attempts, observed orde
 
 M025 is complete through `bang project`. One project-owned selection composes the exact-one theory, Effect and Gleam classifications, bounded channel analysis, and authored evidence policy. It does not use a hidden source list.
 
-[Decision 0011](../decisions/0011-semantic-data-service-exploration.md) defines the current exploration. [M026](../design-specs/M026-semantic-database.md) completes its first persistent reactive tracer. [M027](../design-specs/M027-cross-entity-transfer.md) completes its cross-entity tracer.
+[Decision 0011](../decisions/0011-semantic-data-service-exploration.md) defines the current exploration. [M026](../design-specs/M026-semantic-database.md) completes its first persistent reactive tracer. [M027](../design-specs/M027-cross-entity-transfer.md) completes its cross-entity tracer. [M028](../design-specs/M028-versioned-semantic-evolution.md) completes its first versioned evolution tracer.
 
-`bang database` derives a SQLite schema and typed Effect boundary from a checked project. M027 adds explicit composition links, a reusable transfer obligation, one atomic transaction, and reactive Account and TotalFunds observations.
+`bang database` derives a SQLite schema and typed Effect boundary from a checked project. M027 adds explicit composition links, a reusable transfer obligation, one atomic transaction, and reactive Account and TotalFunds observations. `bang evolve` compares baseline and candidate normalized Core, classifies dependency-scoped compatibility, preserves or rejects qualified evidence, and updates semantic-version metadata atomically without changing Account rows during cutover.
+
+[Decision 0012](../decisions/0012-semantic-process-architecture-and-reuse-boundary.md) defines the compiler process boundary. Semantic processes stay in BANG packages. External tools connect through typed provider, target, runtime, and artifact adapters.
+
+[M029](../design-specs/M029-second-domain-theory-portability.md) applies the unchanged exact-one theory to a second domain through `bang explain`. Inventory and TinyBank use the same artifact, premise, obligation, and report boundaries. No Inventory identifier enters reusable compiler or theory code.
+
+[M030](../design-specs/M030-local-theory-package-consumption.md) makes that theory a canonical local package under `packages/theories/theory-packages/`. `bang explain` verifies its identity, version, semantic digest, evaluator support, and evaluator agreement before atomically publishing a deterministic lock under `.bang/theory-locks/`.
+
+[M031](../design-specs/M031-two-target-exact-one-qualification.md) adds a version-two `bang classify` journey. It stages M030 package consumption, executes fresh Effect and supervised Gleam/BEAM exact-one probes, validates independent target evidence, and publishes the full qualification closure only after both classifications succeed. M023's version-one classification and M017's unbounded actor projection remain unchanged.
+
+[M032](../design-specs/M032-objective-relative-realization-planning.md) adds `bang plan`. It reruns the fresh M031 qualification pipeline, consumes checked target-owned contributions, and matches explicit operational demands without scoring or hidden defaults. Selected, incomparable, and no-plan results preserve premises, evidence scope, assumptions, weakenings, lifetime, and invalidators. One transaction publishes the qualification and plan closure or restores all prior bytes.
+
+[M033](../design-specs/M033-selected-realization-assembly.md) adds `bang assemble`. It reruns the staged M032 plan, binds the M031-qualified Gleam boundary by SHA-256, exports a canonicalized Erlang escript with pinned toolchain materials, runs it once as a separate process, and compares the observation against M031 evidence. One transaction publishes the qualification, plan, project materials, artifact, and assembly record or restores all prior bytes. The published artifact runs through `escript` without BANG.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

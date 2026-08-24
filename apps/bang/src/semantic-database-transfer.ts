@@ -493,7 +493,7 @@ const limitations = [
   "SQLite evidence does not establish replication, crash recovery, or hardware durability.",
 ] as const;
 
-const verifyEvidence = Effect.fn("M027.verifyEvidence")(function* (
+export const verifyM027Evidence = Effect.fn("M027.verifyEvidence")(function* (
   root: string,
   selection: M027SemanticDatabaseSelection,
   plan: M027TransferPlan,
@@ -764,7 +764,7 @@ export const compileSelectedM027Transfer = (
         selection,
         resolvedSelectionPath,
       ).pipe(Effect.mapError(mapTargetFailure));
-      yield* verifyEvidence(root, selection, plan);
+      yield* verifyM027Evidence(root, selection, plan);
 
       const schemaSource = renderM027Sql(plan);
       const bindingSource = renderM027EffectBindings(plan);

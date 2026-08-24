@@ -1,0 +1,9 @@
+{
+  "bangAssembly": 1,
+  "id": "tiny-bank-assembly-incomparable",
+  "planSelection": "examples/tiny-bank/plans/exact-one-only.json",
+  "artifact": {
+    "kind": "escript",
+    "entry": "main"
+  }
+}

@@ -851,7 +851,7 @@ const dispatchTransfer = (
   );
 };
 
-const makeM027DatabaseProviderLayer = (
+export const makeM027DatabaseProviderLayer = (
   plan: M027TransferPlan,
   databasePath: string,
   handler: M027TransferHandler,

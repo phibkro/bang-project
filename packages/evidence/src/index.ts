@@ -1,5 +1,6 @@
 import {
   deriveStateInvariantObligations,
+  encodeCanonicalJson,
   type CheckedCoreDocument,
   type StateInvariantObligation,
   validateCore,
@@ -4766,3 +4767,969 @@ export const formatM019SelfCheckReport = (manifest: M019SelfCheckEvidenceManifes
   ];
   return lines.join("\n");
 };
+/**
+ * M031's target-owned exact-one qualification evidence boundary.
+ *
+ * This envelope deliberately does not reuse M018's manifest. M018 remains the
+ * historical single-use trace, while M031 records one fresh, target-specific
+ * probe for each heterogeneous realization. The target reports bounded
+ * observations; this module checks their shape, identities, and internal
+ * consistency without promoting them to a universal proof.
+ */
+const M031Identifier = Schema.String.pipe(Schema.check(Schema.isNonEmpty()));
+
+const M031RepositoryPath = Schema.String.pipe(
+  Schema.check(Schema.isNonEmpty()),
+  Schema.check(
+    Schema.makeFilter(
+      (value) =>
+        !value.includes("\\") &&
+        !value.includes("\u0000") &&
+        !value.startsWith("/") &&
+        !/^[A-Za-z]:[\\/]/u.test(value) &&
+        value
+          .split("/")
+          .every((segment) => segment.length > 0 && segment !== "." && segment !== ".."),
+      { expected: "a repository-relative path without traversal or machine-specific prefixes" },
+    ),
+  ),
+);
+
+const M031Sha256 = Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u)));
+
+const M031SemanticDigest = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value) => /^sha256:[0-9a-f]{64}$/u.test(value), {
+      expected: "a sha256-prefixed lowercase hexadecimal digest",
+    }),
+  ),
+);
+
+const M031TargetIdSchema = Schema.Literals(["effect-typescript", "gleam-beam"]);
+export type M031TargetId = typeof M031TargetIdSchema.Type;
+
+const M031TheoryIdentitySchema = Schema.Struct({
+  id: Schema.Literal("ExactOneCapabilityExecution"),
+  version: Schema.Literal(1),
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+const M031PackageIdentitySchema = Schema.Struct({
+  id: Schema.Literal("ExactOneCapabilityExecution"),
+  version: Schema.Literal(1),
+  semanticDigest: M031SemanticDigest,
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+const M031TraceEntrySchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (value) => {
+        const separator = value.indexOf(">");
+        return (
+          separator > 0 &&
+          separator === value.lastIndexOf(">") &&
+          separator < value.length - 1 &&
+          !value.includes("\u0000")
+        );
+      },
+      {
+        expected: "a deterministic before>after observation",
+      },
+    ),
+  ),
+);
+
+const M031TraceSchema = Schema.Struct({
+  valid: M031TraceEntrySchema,
+  reuse: M031TraceEntrySchema,
+  competing: M031TraceEntrySchema,
+  wrongDestination: M031TraceEntrySchema,
+  disabled: M031TraceEntrySchema,
+  defect: M031TraceEntrySchema,
+  stale: M031TraceEntrySchema,
+  replacement: M031TraceEntrySchema,
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+const m031TracePair = (value: string): readonly [number, number] | undefined => {
+  const match = /^([0-9]+)>([0-9]+)$/u.exec(value);
+  if (match === null) return undefined;
+  const before = Number.parseInt(match[1]!, 10);
+  const after = Number.parseInt(match[2]!, 10);
+  return Number.isSafeInteger(before) && Number.isSafeInteger(after) ? [before, after] : undefined;
+};
+
+const M031ActorRestartObservationSchema = Schema.Struct({
+  oldGrantRejected: Schema.Boolean,
+  freshGrantDistinct: Schema.Boolean,
+  replacementGrantAccepted: Schema.Boolean,
+  supervised: Schema.Boolean,
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+/**
+ * Normalized observations emitted by both M031 target probes.
+ *
+ * The booleans identify each bounded journey. The competing counts make
+ * "exactly one" checkable instead of trusting one summary bit. State and
+ * remaining-use traces retain every before/after observation in a
+ * target-neutral, deterministic representation.
+ */
+const M031ObservationsSchema = Schema.Struct({
+  target: M031TargetIdSchema,
+  realization: Schema.Literal("WithdrawAccountOnce"),
+  entity: Schema.Literal("account-1"),
+  validCall: Schema.Boolean,
+  reuse: Schema.Boolean,
+  competing: Schema.Boolean,
+  competingSuccesses: Schema.Natural,
+  competingRejections: Schema.Natural,
+  wrongDestination: Schema.Boolean,
+  disabled: Schema.Boolean,
+  defect: Schema.Boolean,
+  stateTrace: M031TraceSchema,
+  remainingTrace: M031TraceSchema,
+  actorRestart: Schema.optional(M031ActorRestartObservationSchema),
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+export const M031TargetQualificationObservations = M031ObservationsSchema;
+export type M031TargetQualificationObservations = typeof M031ObservationsSchema.Type;
+
+const M031MaterialSchema = Schema.Struct({
+  role: M031Identifier,
+  path: M031RepositoryPath,
+  sha256: M031Sha256,
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+export const M031TargetQualificationMaterial = M031MaterialSchema;
+export type M031TargetQualificationMaterial = typeof M031MaterialSchema.Type;
+
+const M031ProducerSchema = Schema.Struct({
+  identity: M031Identifier,
+  version: M031Identifier,
+  targetId: M031TargetIdSchema,
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+export const M031TargetQualificationProducer = M031ProducerSchema;
+export type M031TargetQualificationProducer = typeof M031ProducerSchema.Type;
+
+const M031QualificationText = Schema.String.pipe(Schema.check(Schema.isNonEmpty()));
+
+export const M031TargetQualificationEvidenceSchema = Schema.Struct({
+  bangTargetQualificationEvidence: Schema.Literal(1),
+  selectionId: M031Identifier,
+  targetId: M031TargetIdSchema,
+  realizationId: Schema.Literal("WithdrawAccountOnce"),
+  artifactId: M031Identifier,
+  artifactFormat: Schema.Literal("bangSemanticArtifact:1"),
+  theory: M031TheoryIdentitySchema,
+  package: M031PackageIdentitySchema,
+  requirementAddress: M031Identifier,
+  observations: M031ObservationsSchema,
+  materials: Schema.NonEmptyArray(M031MaterialSchema),
+  producer: M031ProducerSchema,
+  assumptions: Schema.NonEmptyArray(M031QualificationText),
+  weakenings: Schema.NonEmptyArray(M031QualificationText),
+  limitations: Schema.NonEmptyArray(M031QualificationText),
+  lifetime: M031QualificationText,
+  invalidators: Schema.NonEmptyArray(M031QualificationText),
+}).annotate({
+  parseOptions: { onExcessProperty: "error" },
+});
+
+/** The strict, versioned M031 target qualification evidence manifest. */
+export const M031TargetQualificationEvidence = M031TargetQualificationEvidenceSchema;
+export type M031TargetQualificationEvidence = typeof M031TargetQualificationEvidenceSchema.Type;
+
+/** Explicit manifest spelling for callers that use the historical M018 name. */
+export const M031TargetQualificationEvidenceManifest = M031TargetQualificationEvidenceSchema;
+export type M031TargetQualificationEvidenceManifest =
+  typeof M031TargetQualificationEvidenceSchema.Type;
+
+/** The strict JSON string boundary for one M031 target evidence record. */
+export const M031TargetQualificationEvidenceFromJson = Schema.fromJsonString(
+  M031TargetQualificationEvidenceSchema,
+);
+export const M031TargetQualificationEvidenceManifestFromJson =
+  M031TargetQualificationEvidenceFromJson;
+
+const CheckedM031TargetQualificationEvidenceSchema = M031TargetQualificationEvidenceSchema.pipe(
+  Schema.brand("CheckedM031TargetQualificationEvidence"),
+);
+
+/** A target evidence record whose bounded observations and identities were checked. */
+export type CheckedM031TargetQualificationEvidence =
+  typeof CheckedM031TargetQualificationEvidenceSchema.Type;
+
+export type M031TargetQualificationEvidenceFailureReason =
+  | "invalid-manifest"
+  | "identity-mismatch"
+  | "target-mismatch"
+  | "core-identity-mismatch"
+  | "package-mismatch"
+  | "package-digest-mismatch"
+  | "result-mismatch"
+  | "observation-missing"
+  | "contradictory-observation"
+  | "shared-evidence"
+  | "duplicate-material"
+  | "unsafe-material"
+  | "missing-target-metadata"
+  | "stale-material";
+
+/** Typed failures emitted by the M031 target evidence boundary. */
+export class M031TargetQualificationEvidenceError extends Schema.TaggedError<M031TargetQualificationEvidenceError>()(
+  "M031TargetQualificationEvidenceError",
+  {
+    reason: Schema.Literals([
+      "invalid-manifest",
+      "identity-mismatch",
+      "target-mismatch",
+      "core-identity-mismatch",
+      "package-mismatch",
+      "package-digest-mismatch",
+      "result-mismatch",
+      "observation-missing",
+      "contradictory-observation",
+      "shared-evidence",
+      "duplicate-material",
+      "unsafe-material",
+      "missing-target-metadata",
+      "stale-material",
+    ]),
+    identity: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+const m031EvidenceError = (
+  reason: M031TargetQualificationEvidenceFailureReason,
+  identity: string,
+  message: string,
+): M031TargetQualificationEvidenceError =>
+  new M031TargetQualificationEvidenceError({ reason, identity, message });
+
+/** Identity fields copied from an applicable exact-one theory result. */
+export interface M031TargetQualificationResultIdentity {
+  readonly artifactId: string;
+  readonly artifactFormat: "bangSemanticArtifact:1";
+  readonly theory: {
+    readonly id: "ExactOneCapabilityExecution";
+    readonly version: 1;
+  };
+  readonly requirementAddress: string;
+}
+
+/**
+ * Optional authority supplied by the application at the checked boundary.
+ * Omitting a field is useful for a producer-only probe check; supplying it
+ * makes identity drift explicit and rejects a record that belongs elsewhere.
+ */
+export interface M031TargetQualificationEvidenceContext {
+  readonly selectionId?: string;
+  readonly targetId?: M031TargetId;
+  readonly realizationId?: "WithdrawAccountOnce";
+  readonly artifactId?: string;
+  readonly artifactFormat?: "bangSemanticArtifact:1";
+  readonly theory?: {
+    readonly id: string;
+    readonly version: number;
+  };
+  readonly package?: {
+    readonly id: string;
+    readonly version: number;
+    readonly semanticDigest: string;
+  };
+  readonly packageSemanticDigest?: string;
+  readonly requirementAddress?: string;
+  readonly result?: M031TargetQualificationResultIdentity;
+  readonly core?: CheckedCoreDocument;
+}
+
+const m031ExpectedRequirementAddress = (realizationId: string): string =>
+  `operationRealization:${realizationId}.requirement:DebitAccount`;
+
+const m031CheckMaterialUniqueness = (
+  manifest: M031TargetQualificationEvidence,
+): M031TargetQualificationEvidenceError | undefined => {
+  const roles = new Set<string>();
+  const paths = new Set<string>();
+  for (const material of manifest.materials) {
+    if (roles.has(material.role) || paths.has(material.path)) {
+      return m031EvidenceError(
+        "duplicate-material",
+        material.path,
+        `M031 material role and path must each be unique: ${material.role}`,
+      );
+    }
+    roles.add(material.role);
+    paths.add(material.path);
+  }
+  return undefined;
+};
+
+const m031CheckTargetMaterialPaths = (
+  manifest: M031TargetQualificationEvidence,
+): M031TargetQualificationEvidenceError | undefined => {
+  for (const material of manifest.materials) {
+    const path = material.path.toLowerCase();
+    if (
+      manifest.targetId === "effect-typescript" &&
+      (path.includes("gleam") || path.includes("gleam-beam"))
+    ) {
+      return m031EvidenceError(
+        "target-mismatch",
+        material.path,
+        "Effect M031 evidence cannot use a Gleam target material",
+      );
+    }
+    if (
+      manifest.targetId === "gleam-beam" &&
+      (path.includes("target-effect") || path.includes("effect-typescript"))
+    ) {
+      return m031EvidenceError(
+        "target-mismatch",
+        material.path,
+        "Gleam M031 evidence cannot use an Effect target material",
+      );
+    }
+  }
+  return undefined;
+};
+
+const m031CheckObservations = (
+  manifest: M031TargetQualificationEvidence,
+): M031TargetQualificationEvidenceError | undefined => {
+  const observation = manifest.observations;
+  if (
+    observation.target !== manifest.targetId ||
+    observation.realization !== manifest.realizationId ||
+    observation.entity !== "account-1"
+  ) {
+    return m031EvidenceError(
+      "target-mismatch",
+      "observations",
+      "M031 observations must identify the selected target, realization, and Account entity",
+    );
+  }
+  if (
+    !observation.validCall ||
+    !observation.reuse ||
+    !observation.competing ||
+    !observation.wrongDestination ||
+    !observation.disabled ||
+    !observation.defect
+  ) {
+    return m031EvidenceError(
+      "contradictory-observation",
+      "observations",
+      "M031 evidence must report every bounded exact-one journey as passed",
+    );
+  }
+  if (observation.competingSuccesses !== 1 || observation.competingRejections !== 1) {
+    return m031EvidenceError(
+      "contradictory-observation",
+      "observations.competing",
+      "M031 competing calls must record exactly one success and one rejection",
+    );
+  }
+  const stateTraceValues = Object.values(observation.stateTrace);
+  const remainingTraceValues = Object.values(observation.remainingTrace);
+  if (
+    stateTraceValues.some((value) => m031TracePair(value) === undefined) ||
+    remainingTraceValues.some((value) => m031TracePair(value) === undefined)
+  ) {
+    return m031EvidenceError(
+      "contradictory-observation",
+      "observations",
+      "M031 state and remaining-use traces must contain numeric before>after pairs",
+    );
+  }
+  const expectedRemaining: ReadonlyArray<
+    readonly [keyof typeof observation.remainingTrace, number, number]
+  > = [
+    ["valid", 1, 0],
+    ["reuse", 0, 0],
+    ["competing", 1, 0],
+    ["wrongDestination", 1, 1],
+    ["disabled", 1, 1],
+    ["defect", 1, 0],
+    ["stale", 0, 0],
+    ["replacement", 1, manifest.targetId === "gleam-beam" ? 0 : 1],
+  ];
+  for (const [name, expectedBefore, expectedAfter] of expectedRemaining) {
+    const pair = m031TracePair(observation.remainingTrace[name]);
+    if (pair === undefined || pair[0] !== expectedBefore || pair[1] !== expectedAfter) {
+      return m031EvidenceError(
+        "contradictory-observation",
+        `observations.remainingTrace.${name}`,
+        `M031 ${name} remaining-use trace must be ${expectedBefore}>${expectedAfter}`,
+      );
+    }
+  }
+  const restart = observation.actorRestart;
+  if (manifest.targetId === "gleam-beam") {
+    if (restart === undefined) {
+      return m031EvidenceError(
+        "observation-missing",
+        "observations.actorRestart",
+        "Gleam M031 evidence must record supervised actor replacement",
+      );
+    }
+    if (
+      !restart.oldGrantRejected ||
+      !restart.freshGrantDistinct ||
+      !restart.replacementGrantAccepted ||
+      !restart.supervised
+    ) {
+      return m031EvidenceError(
+        "contradictory-observation",
+        "observations.actorRestart",
+        "Gleam M031 evidence must reject the old grant, supervise replacement, and accept a distinct fresh grant",
+      );
+    }
+  } else if (restart !== undefined) {
+    return m031EvidenceError(
+      "target-mismatch",
+      "observations.actorRestart",
+      "Effect M031 evidence must not contain Gleam actor-restart observations",
+    );
+  }
+  return undefined;
+};
+
+const m031CheckCore = (
+  manifest: M031TargetQualificationEvidence,
+  core: CheckedCoreDocument,
+): M031TargetQualificationEvidenceError | undefined => {
+  const stateMachine = core.declarations.find(
+    (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+  );
+  if (stateMachine?.kind !== "stateMachine") {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      "stateMachine:Account",
+      "M031 evidence requires the checked Account state machine",
+    );
+  }
+  const operation = stateMachine.transitions.find(({ id }) => id === "withdraw");
+  if (operation === undefined) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      "operation:Account.withdraw",
+      "M031 evidence requires Account.withdraw",
+    );
+  }
+  const capability = core.declarations.find(
+    (declaration) => declaration.kind === "capability" && declaration.id === "DebitAccount",
+  );
+  if (capability?.kind !== "capability") {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      "capability:DebitAccount",
+      "M031 evidence requires the checked DebitAccount capability",
+    );
+  }
+  const realization = core.declarations.find(
+    (declaration) =>
+      declaration.kind === "operationRealization" && declaration.id === manifest.realizationId,
+  );
+  if (realization?.kind !== "operationRealization") {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `operationRealization:${manifest.realizationId}`,
+      "M031 evidence references an unknown checked operation realization",
+    );
+  }
+  const requirement = realization.requires.find(
+    ({ capability: requiredCapability }) => requiredCapability === "DebitAccount",
+  );
+  if (
+    requirement === undefined ||
+    realization.operation.stateMachine !== "Account" ||
+    realization.operation.operation !== "withdraw" ||
+    realization.disabled.kind !== "failure" ||
+    realization.disabled.id !== "WithdrawalRejectedOnce" ||
+    requirement.quantity.kind !== "exactly" ||
+    requirement.quantity.uses !== "1"
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `operationRealization:${manifest.realizationId}`,
+      "M031 evidence does not match the checked WithdrawAccountOnce exact-one binding",
+    );
+  }
+  return undefined;
+};
+
+const m031CheckContext = (
+  manifest: M031TargetQualificationEvidence,
+  context: M031TargetQualificationEvidenceContext,
+): M031TargetQualificationEvidenceError | undefined => {
+  const identityChecks: ReadonlyArray<
+    readonly [
+      string,
+      string | number | undefined,
+      string | number | undefined,
+      M031TargetQualificationEvidenceFailureReason,
+    ]
+  > = [
+    ["selectionId", manifest.selectionId, context.selectionId, "identity-mismatch"],
+    ["targetId", manifest.targetId, context.targetId, "target-mismatch"],
+    ["realizationId", manifest.realizationId, context.realizationId, "identity-mismatch"],
+    ["artifactId", manifest.artifactId, context.artifactId, "identity-mismatch"],
+    ["artifactFormat", manifest.artifactFormat, context.artifactFormat, "identity-mismatch"],
+    [
+      "requirementAddress",
+      manifest.requirementAddress,
+      context.requirementAddress,
+      "identity-mismatch",
+    ],
+  ];
+  for (const [field, actual, expected, reason] of identityChecks) {
+    if (expected !== undefined && actual !== expected) {
+      return m031EvidenceError(
+        reason,
+        field,
+        `M031 evidence ${field} does not match its authority`,
+      );
+    }
+  }
+  if (
+    context.theory !== undefined &&
+    (manifest.theory.id !== context.theory.id || manifest.theory.version !== context.theory.version)
+  ) {
+    return m031EvidenceError(
+      "identity-mismatch",
+      "theory",
+      "M031 evidence theory identity differs from the checked result",
+    );
+  }
+  if (context.package !== undefined) {
+    if (
+      manifest.package.id !== context.package.id ||
+      manifest.package.version !== context.package.version ||
+      manifest.package.semanticDigest !== context.package.semanticDigest
+    ) {
+      return m031EvidenceError(
+        "package-mismatch",
+        "package",
+        "M031 evidence package identity or semantic digest differs from the resolved package",
+      );
+    }
+  }
+  if (
+    context.packageSemanticDigest !== undefined &&
+    manifest.package.semanticDigest !== context.packageSemanticDigest
+  ) {
+    return m031EvidenceError(
+      "package-digest-mismatch",
+      "package.semanticDigest",
+      "M031 evidence package semantic digest differs from the resolved package",
+    );
+  }
+  if (context.result !== undefined) {
+    if (
+      manifest.artifactId !== context.result.artifactId ||
+      manifest.artifactFormat !== context.result.artifactFormat ||
+      manifest.theory.id !== context.result.theory.id ||
+      manifest.theory.version !== context.result.theory.version ||
+      manifest.requirementAddress !== context.result.requirementAddress
+    ) {
+      return m031EvidenceError(
+        "result-mismatch",
+        "result",
+        "M031 evidence does not belong to the checked theory result",
+      );
+    }
+  }
+  if (context.core !== undefined) {
+    const coreError = m031CheckCore(manifest, context.core);
+    if (coreError !== undefined) return coreError;
+  }
+  return undefined;
+};
+
+const decodeM031TargetQualificationEvidenceValue = (
+  value: unknown,
+): Effect.Effect<M031TargetQualificationEvidence, M031TargetQualificationEvidenceError> =>
+  Schema.decodeUnknownEffect(M031TargetQualificationEvidenceSchema)(value, {
+    onExcessProperty: "error",
+  }).pipe(
+    Effect.mapError((issue) =>
+      m031EvidenceError(
+        "invalid-manifest",
+        "M031TargetQualificationEvidence",
+        `invalid M031 target qualification evidence: ${String(issue)}`,
+      ),
+    ),
+    Effect.flatMap((manifest) => {
+      const materialError = m031CheckMaterialUniqueness(manifest);
+      if (materialError !== undefined) return Effect.fail(materialError);
+      const targetMaterialError = m031CheckTargetMaterialPaths(manifest);
+      if (targetMaterialError !== undefined) return Effect.fail(targetMaterialError);
+      const observationError = m031CheckObservations(manifest);
+      if (observationError !== undefined) return Effect.fail(observationError);
+      if (manifest.producer.targetId !== manifest.targetId) {
+        return Effect.fail(
+          m031EvidenceError(
+            "target-mismatch",
+            "producer.targetId",
+            "M031 producer target does not match the evidence target",
+          ),
+        );
+      }
+      if (manifest.requirementAddress !== m031ExpectedRequirementAddress(manifest.realizationId)) {
+        return Effect.fail(
+          m031EvidenceError(
+            "identity-mismatch",
+            "requirementAddress",
+            "M031 evidence must select the DebitAccount requirement of WithdrawAccountOnce",
+          ),
+        );
+      }
+      return Effect.succeed(manifest);
+    }),
+  );
+
+/** Decode strict M031 JSON or an already parsed evidence record. */
+export const decodeM031TargetQualificationEvidence = (
+  input: unknown,
+): Effect.Effect<M031TargetQualificationEvidence, M031TargetQualificationEvidenceError> =>
+  typeof input === "string"
+    ? Schema.decodeUnknownEffect(M031TargetQualificationEvidenceFromJson)(input, {
+        onExcessProperty: "error",
+      }).pipe(
+        Effect.mapError((issue) =>
+          m031EvidenceError(
+            "invalid-manifest",
+            "M031TargetQualificationEvidence",
+            `invalid M031 target qualification evidence JSON: ${String(issue)}`,
+          ),
+        ),
+        Effect.flatMap((manifest) => decodeM031TargetQualificationEvidenceValue(manifest)),
+      )
+    : decodeM031TargetQualificationEvidenceValue(input);
+
+/** Validate M031 evidence and brand it after identity checks. */
+export const checkM031TargetQualificationEvidence = (
+  manifest: M031TargetQualificationEvidence,
+  context: M031TargetQualificationEvidenceContext = {},
+): Effect.Effect<CheckedM031TargetQualificationEvidence, M031TargetQualificationEvidenceError> =>
+  Effect.gen(function* () {
+    const decoded = yield* decodeM031TargetQualificationEvidenceValue(manifest);
+    const contextError = m031CheckContext(decoded, context);
+    if (contextError !== undefined) return yield* contextError;
+    return yield* Schema.decodeEffect(CheckedM031TargetQualificationEvidenceSchema)(decoded).pipe(
+      Effect.mapError((issue) =>
+        m031EvidenceError(
+          "invalid-manifest",
+          "CheckedM031TargetQualificationEvidence",
+          `invalid checked M031 target qualification evidence: ${String(issue)}`,
+        ),
+      ),
+    );
+  });
+
+/** Convenience form matching the historical M018 Core-check signature. */
+export const checkM031TargetQualificationEvidenceAgainstCore = (
+  manifest: M031TargetQualificationEvidence,
+  core: CheckedCoreDocument,
+  context: Omit<M031TargetQualificationEvidenceContext, "core"> = {},
+): Effect.Effect<CheckedM031TargetQualificationEvidence, M031TargetQualificationEvidenceError> =>
+  checkM031TargetQualificationEvidence(manifest, { ...context, core });
+
+/** Check the ordered Effect/Gleam pair without allowing shared target evidence. */
+export const checkM031TargetQualificationEvidenceSet = Effect.fn(
+  "checkM031TargetQualificationEvidenceSet",
+)(function* (
+  manifests: ReadonlyArray<M031TargetQualificationEvidence>,
+  context: Omit<M031TargetQualificationEvidenceContext, "targetId"> = {},
+): Effect.fn.Return<
+  ReadonlyArray<CheckedM031TargetQualificationEvidence>,
+  M031TargetQualificationEvidenceError
+> {
+  if (manifests.length !== 2) {
+    return yield* m031EvidenceError(
+      "shared-evidence",
+      "manifests",
+      "M031 qualification requires exactly one Effect and one Gleam evidence record",
+    );
+  }
+  if (manifests[0]?.targetId !== "effect-typescript" || manifests[1]?.targetId !== "gleam-beam") {
+    return yield* m031EvidenceError(
+      "target-mismatch",
+      "manifests.targetId",
+      "M031 target evidence must be ordered Effect TypeScript followed by Gleam/BEAM",
+    );
+  }
+  const checked: Array<CheckedM031TargetQualificationEvidence> = [];
+  for (const manifest of manifests) {
+    checked.push(
+      yield* checkM031TargetQualificationEvidence(manifest, {
+        ...context,
+        targetId: manifest.targetId,
+      }),
+    );
+  }
+  const effect = checked.find(({ targetId }) => targetId === "effect-typescript");
+  const gleam = checked.find(({ targetId }) => targetId === "gleam-beam");
+  if (effect === undefined || gleam === undefined) {
+    return yield* m031EvidenceError(
+      "shared-evidence",
+      "manifests.targetId",
+      "M031 qualification evidence must contain distinct Effect and Gleam targets",
+    );
+  }
+  if (
+    effect.selectionId !== gleam.selectionId ||
+    effect.artifactId !== gleam.artifactId ||
+    effect.artifactFormat !== gleam.artifactFormat ||
+    effect.theory.id !== gleam.theory.id ||
+    effect.theory.version !== gleam.theory.version ||
+    effect.package.semanticDigest !== gleam.package.semanticDigest ||
+    effect.requirementAddress !== gleam.requirementAddress
+  ) {
+    return yield* m031EvidenceError(
+      "identity-mismatch",
+      "manifests",
+      "M031 target evidence records must share the checked selection, artifact, package, and requirement identity",
+    );
+  }
+  const gleamPaths = new Set(gleam.materials.map(({ path }) => path));
+  for (const material of effect.materials) {
+    if (!gleamPaths.has(material.path)) continue;
+    const sharedRole = material.role.toLowerCase();
+    if (
+      !sharedRole.includes("core") &&
+      !sharedRole.includes("package") &&
+      !sharedRole.includes("theory")
+    ) {
+      return yield* m031EvidenceError(
+        "shared-evidence",
+        material.path,
+        "M031 target evidence must not share target-specific material paths",
+      );
+    }
+  }
+  return checked;
+});
+
+/**
+ * Verify every repository material against its recorded SHA-256 digest.
+ * PIDs and temporary directories never enter this boundary: only stable,
+ * repository-relative material references are accepted by the schema.
+ */
+export const verifyM031TargetQualificationEvidenceMaterials = Effect.fn(
+  "verifyM031TargetQualificationEvidenceMaterials",
+)(function* (
+  manifest: M031TargetQualificationEvidence,
+): Effect.fn.Return<
+  M031TargetQualificationEvidence,
+  M031TargetQualificationEvidenceError,
+  FileSystem.FileSystem | Crypto.Crypto
+> {
+  const decoded = yield* decodeM031TargetQualificationEvidenceValue(manifest);
+  const fileSystem = yield* FileSystem.FileSystem;
+  for (const material of decoded.materials) {
+    const bytes = yield* fileSystem
+      .readFile(material.path)
+      .pipe(
+        Effect.mapError(() =>
+          m031EvidenceError(
+            "stale-material",
+            material.path,
+            `M031 material is unavailable: ${material.path}`,
+          ),
+        ),
+      );
+    const observedDigest = yield* digestM010Bytes(bytes).pipe(
+      Effect.mapError(() =>
+        m031EvidenceError(
+          "stale-material",
+          material.path,
+          `M031 could not digest material ${material.path}`,
+        ),
+      ),
+    );
+    if (observedDigest !== material.sha256) {
+      return yield* m031EvidenceError(
+        "stale-material",
+        material.path,
+        `M031 material digest differs for ${material.path}`,
+      );
+    }
+  }
+  return decoded;
+});
+
+/** Verify generated or temporary material bytes before atomic publication. */
+export const verifyM031TargetQualificationEvidenceMaterialBytes = Effect.fn(
+  "verifyM031TargetQualificationEvidenceMaterialBytes",
+)(function* (
+  manifest: M031TargetQualificationEvidence,
+  materialBytes: Readonly<Record<string, Uint8Array>>,
+): Effect.fn.Return<
+  M031TargetQualificationEvidence,
+  M031TargetQualificationEvidenceError,
+  Crypto.Crypto
+> {
+  const decoded = yield* decodeM031TargetQualificationEvidenceValue(manifest);
+  for (const material of decoded.materials) {
+    const bytes = materialBytes[material.path];
+    if (bytes === undefined) {
+      return yield* m031EvidenceError(
+        "stale-material",
+        material.path,
+        `M031 generated material bytes are unavailable: ${material.path}`,
+      );
+    }
+    const observedDigest = yield* digestM010Bytes(bytes).pipe(
+      Effect.mapError(() =>
+        m031EvidenceError(
+          "stale-material",
+          material.path,
+          `M031 could not digest generated material ${material.path}`,
+        ),
+      ),
+    );
+    if (observedDigest !== material.sha256) {
+      return yield* m031EvidenceError(
+        "stale-material",
+        material.path,
+        `M031 generated material digest differs for ${material.path}`,
+      );
+    }
+  }
+  return decoded;
+});
+
+/** Verify the package bytes against the semantic digest retained by evidence. */
+export const verifyM031TargetQualificationEvidencePackageDigest = Effect.fn(
+  "verifyM031TargetQualificationEvidencePackageDigest",
+)(function* (
+  encodedPackage: string,
+  expectedDigest: string,
+): Effect.fn.Return<void, M031TargetQualificationEvidenceError, Crypto.Crypto> {
+  if (!/^sha256:[0-9a-f]{64}$/u.test(expectedDigest)) {
+    return yield* m031EvidenceError(
+      "package-digest-mismatch",
+      "package.semanticDigest",
+      "M031 expected package digest is not a sha256-prefixed lowercase digest",
+    );
+  }
+  const observed = yield* digestM010Bytes(new TextEncoder().encode(encodedPackage)).pipe(
+    Effect.mapError(() =>
+      m031EvidenceError(
+        "package-digest-mismatch",
+        "package",
+        "M031 could not compute the package semantic digest",
+      ),
+    ),
+  );
+  if (`sha256:${observed}` !== expectedDigest) {
+    return yield* m031EvidenceError(
+      "package-digest-mismatch",
+      "package.semanticDigest",
+      "M031 package semantic digest differs from the recorded digest",
+    );
+  }
+});
+
+const m031SortedStrings = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...values].toSorted();
+
+/**
+ * Encode M031 evidence with canonical object-key ordering and stable
+ * set-like metadata/material ordering. This is synchronous because encoding
+ * a checked in-memory record has no external authority or failure path.
+ */
+export const encodeM031TargetQualificationEvidence = (
+  manifest: M031TargetQualificationEvidence,
+): string =>
+  encodeCanonicalJson({
+    ...manifest,
+    materials: [...manifest.materials].toSorted(
+      (left, right) => left.role.localeCompare(right.role) || left.path.localeCompare(right.path),
+    ),
+    assumptions: m031SortedStrings(manifest.assumptions),
+    weakenings: m031SortedStrings(manifest.weakenings),
+    limitations: m031SortedStrings(manifest.limitations),
+    invalidators: m031SortedStrings(manifest.invalidators),
+  });
+
+const m031FormatList = (values: ReadonlyArray<string>): string =>
+  values.length === 0 ? "none" : [...values].toSorted().join("; ");
+
+const m031FormatTrace = (trace: typeof M031TraceSchema.Type): string =>
+  [
+    `valid=${trace.valid}`,
+    `reuse=${trace.reuse}`,
+    `competing=${trace.competing}`,
+    `wrongDestination=${trace.wrongDestination}`,
+    `disabled=${trace.disabled}`,
+    `defect=${trace.defect}`,
+    `stale=${trace.stale}`,
+    `replacement=${trace.replacement}`,
+  ].join("; ");
+
+/** Format checked M031 evidence without claiming universal exact-once behavior. */
+export const formatM031TargetQualificationEvidenceReport = (
+  manifest: M031TargetQualificationEvidence,
+): string => {
+  const observation = manifest.observations;
+  const materials = [...manifest.materials]
+    .toSorted(
+      (left, right) => left.role.localeCompare(right.role) || left.path.localeCompare(right.path),
+    )
+    .map(({ role, path, sha256 }) => `Material ${role}: ${path} [${sha256}]`);
+  const lines = [
+    "M031 target qualification evidence",
+    `Selection: ${manifest.selectionId}`,
+    `Target: ${manifest.targetId}; realization ${manifest.realizationId}; entity ${observation.entity}`,
+    `Artifact: ${manifest.artifactId} (${manifest.artifactFormat})`,
+    `Theory: ${manifest.theory.id} v${manifest.theory.version}`,
+    `Package: ${manifest.package.id} v${manifest.package.version} [${manifest.package.semanticDigest}]`,
+    `Requirement: ${manifest.requirementAddress}`,
+    "Bounded observations:",
+    `  valid call consumes grant: ${observation.validCall}`,
+    `  reuse rejected before handler: ${observation.reuse}`,
+    `  competing calls have one success and one rejection: ${observation.competing} (${observation.competingSuccesses}/${observation.competingRejections})`,
+    `  wrong destination preserves grant: ${observation.wrongDestination}`,
+    `  disabled transition preserves grant: ${observation.disabled}`,
+    `  defect does not restore grant: ${observation.defect}`,
+    `  state trace: ${m031FormatTrace(observation.stateTrace)}`,
+    `  remaining-use trace: ${m031FormatTrace(observation.remainingTrace)}`,
+    `  actor restart: ${
+      observation.actorRestart === undefined
+        ? "not applicable"
+        : `old grant rejected=${observation.actorRestart.oldGrantRejected}; fresh grant distinct=${observation.actorRestart.freshGrantDistinct}; replacement accepted=${observation.actorRestart.replacementGrantAccepted}; supervised=${observation.actorRestart.supervised}`
+    }`,
+    ...materials,
+    `Producer: ${manifest.producer.identity} v${manifest.producer.version} (${manifest.producer.targetId})`,
+    `Assumptions: ${m031FormatList(manifest.assumptions)}`,
+    `Weakenings: ${m031FormatList(manifest.weakenings)}`,
+    `Limitations: ${m031FormatList(manifest.limitations)}`,
+    `Lifetime: ${manifest.lifetime}`,
+    `Invalidators: ${m031FormatList(manifest.invalidators)}`,
+  ];
+  return lines.join("\n");
+};
+
+/** Explicit manifest aliases for applications migrating from M018 naming. */
+export const decodeM031TargetQualificationEvidenceManifest = decodeM031TargetQualificationEvidence;
+export const checkM031TargetQualificationEvidenceManifest = checkM031TargetQualificationEvidence;
+export const verifyM031TargetQualificationEvidenceManifestMaterials =
+  verifyM031TargetQualificationEvidenceMaterials;
+export const encodeM031TargetQualificationEvidenceManifest = encodeM031TargetQualificationEvidence;

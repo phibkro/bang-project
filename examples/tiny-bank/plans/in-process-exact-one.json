@@ -1,0 +1,12 @@
+{
+  "bangPlanning": 1,
+  "id": "tiny-bank-in-process-exact-one",
+  "qualificationSelection": "examples/tiny-bank/realizations/two-qualified-exact-one.json",
+  "requirementAddress": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "demands": [
+    {
+      "family": "runtime-model",
+      "value": "in-process"
+    }
+  ]
+}

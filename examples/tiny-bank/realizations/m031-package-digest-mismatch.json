@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "tiny-bank-m031-package-digest-mismatch",
+  "explanationSelection": "examples/tiny-bank/theories/m031-package-digest-mismatch.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    }
+  ]
+}

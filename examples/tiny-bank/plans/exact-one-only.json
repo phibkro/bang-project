@@ -1,0 +1,7 @@
+{
+  "bangPlanning": 1,
+  "id": "tiny-bank-exact-one-only",
+  "qualificationSelection": "examples/tiny-bank/realizations/two-qualified-exact-one.json",
+  "requirementAddress": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "demands": []
+}

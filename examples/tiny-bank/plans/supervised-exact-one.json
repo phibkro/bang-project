@@ -1,0 +1,20 @@
+{
+  "bangPlanning": 1,
+  "id": "tiny-bank-supervised-exact-one",
+  "qualificationSelection": "examples/tiny-bank/realizations/two-qualified-exact-one.json",
+  "requirementAddress": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "demands": [
+    {
+      "family": "runtime-model",
+      "value": "supervised-actor"
+    },
+    {
+      "family": "restart",
+      "value": "supervised-restart"
+    },
+    {
+      "family": "grant-restart",
+      "value": "invalidated-on-restart"
+    }
+  ]
+}

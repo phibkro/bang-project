@@ -311,6 +311,144 @@ describe("M022 shipped theory explanation CLI", () => {
   });
 });
 
+describe("M029 second-domain theory portability CLI", () => {
+  const applicableSelection = "examples/inventory/theories/exact-one-reservation.json";
+  const unboundedSelection = "examples/inventory/theories/unbounded-reservation.json";
+  const unknownSelection = "examples/inventory/theories/unknown-reservation.json";
+  const artifactPath = join(root, ".bang/artifacts/inventory-exact-one-reservation.json");
+
+  test("applies the unchanged exact-one theory to Inventory deterministically", async () => {
+    const first = await runCli(applicableSelection, "explain");
+    const firstArtifact = await Bun.file(artifactPath).bytes();
+    const second = await runCli(applicableSelection, "explain");
+    const secondArtifact = await Bun.file(artifactPath).bytes();
+
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(first.stderr).toBe("");
+    expect(second.stderr).toBe("");
+    expect(first.stdout).toBe(second.stdout);
+    expect(firstArtifact).toEqual(secondArtifact);
+    expect(first.stdout).toContain("Material provenance: examples/inventory/inventory.bang");
+    expect(first.stdout).toContain(
+      "Requirement: operationRealization:ReserveStockOnce.requirement:ReserveStock",
+    );
+    expect(first.stdout).toContain("stateMachine:Inventory.transition:reserve");
+    expect(first.stdout).toContain("Result: applicable");
+    expect(first.stdout.match(/^Premise:/gm)).toHaveLength(4);
+    expect(first.stdout.match(/^Status: satisfied$/gm)).toHaveLength(4);
+    expect(first.stdout.match(/^Obligation:/gm)).toHaveLength(4);
+    expect(first.stdout).toContain("Evidence status: unresolved");
+  });
+
+  test("does not derive exact-one obligations for unbounded Inventory use", async () => {
+    const result = await runCli(unboundedSelection, "explain");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(
+      "Requirement: operationRealization:ReserveStockMany.requirement:ReserveStock",
+    );
+    expect(result.stdout).toContain("Result: not-applicable");
+    expect(result.stdout).toContain("Status: failed");
+    expect(result.stdout).toContain("Obligations: none");
+    expect(result.stdout).not.toMatch(/^Obligation:/m);
+  });
+
+  test("rejects an unknown Inventory requirement without a partial report", async () => {
+    const result = await runCli(unknownSelection, "explain");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/stage:\s*theory/i);
+    expect(result.stderr).toContain("MissingReservation");
+  });
+});
+
+describe("M030 local versioned theory package CLI", () => {
+  const tinyBankSelection = "examples/tiny-bank/theories/packaged-exact-one.json";
+  const inventorySelection = "examples/inventory/theories/packaged-exact-one.json";
+  const unboundedSelection = "examples/inventory/theories/packaged-unbounded.json";
+
+  test("resolves, verifies, and locks one package across two domains deterministically", async () => {
+    const first = await runCli(inventorySelection, "explain");
+    const artifactPath = join(root, ".bang/artifacts/inventory-packaged-exact-one.json");
+    const lockPath = join(root, ".bang/theory-locks/inventory-packaged-exact-one.json");
+    const firstArtifact = await Bun.file(artifactPath).bytes();
+    const firstLock = await Bun.file(lockPath).bytes();
+    const second = await runCli(inventorySelection, "explain");
+    const secondArtifact = await Bun.file(artifactPath).bytes();
+    const secondLock = await Bun.file(lockPath).bytes();
+    const tinyBank = await runCli(tinyBankSelection, "explain");
+
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(tinyBank.exitCode).toBe(0);
+    expect(first.stderr).toBe("");
+    expect(second.stderr).toBe("");
+    expect(tinyBank.stderr).toBe("");
+    expect(first.stdout).toBe(second.stdout);
+    expect(firstArtifact).toEqual(secondArtifact);
+    expect(firstLock).toEqual(secondLock);
+    for (const output of [first.stdout, tinyBank.stdout]) {
+      expect(output).toContain("Theory package: ExactOneCapabilityExecution@1");
+      expect(output).toContain(
+        "Semantic digest: sha256:f5688125437b19929b78f813b74a6595e09d92fdfd8ac6005066ff1cb3557071",
+      );
+      expect(output).toContain("Evaluator: ExactOneCapabilityExecutionEvaluator version 1");
+      expect(output).toContain("Resolution: locked");
+      expect(output.match(/^Premise:/gm)).toHaveLength(4);
+      expect(output.match(/^Obligation:/gm)).toHaveLength(4);
+    }
+    expect(first.stdout).toContain(
+      "Package source: packages/theories/theory-packages/exact-one-capability.json",
+    );
+    expect(tinyBank.stdout).toContain(
+      "Requirement: operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+    );
+  });
+
+  test("preserves the package's not-applicable conclusion for unbounded use", async () => {
+    const result = await runCli(unboundedSelection, "explain");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Theory package: ExactOneCapabilityExecution@1");
+    expect(result.stdout).toContain("Result: not-applicable");
+    expect(result.stdout).toContain("Obligations: none");
+  });
+
+  test("rejects package failures without artifacts, locks, or partial stdout", async () => {
+    const packageFailureFixtures = [
+      ["package-digest-mismatch", "digest-mismatch"],
+      ["package-version-mismatch", "version-mismatch"],
+      ["package-missing", "package-not-found"],
+      ["package-unsupported-evaluator", "unsupported-evaluator"],
+      ["package-evaluator-disagreement", "evaluator-disagreement"],
+    ] as const;
+
+    await Promise.all(
+      packageFailureFixtures.map(async ([id, reason]) => {
+        const artifactPath = join(root, `.bang/artifacts/inventory-${id}.json`);
+        const lockPath = join(root, `.bang/theory-locks/inventory-${id}.json`);
+        await Promise.all([rm(artifactPath, { force: true }), rm(lockPath, { force: true })]);
+        const result = await runCli(`examples/inventory/theories/${id}.json`, "explain");
+
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toMatch(/stage:\s*package/i);
+        expect(result.stderr).toContain(`reason: ${reason}`);
+        const [artifactExists, lockExists] = await Promise.all([
+          Bun.file(artifactPath).exists(),
+          Bun.file(lockPath).exists(),
+        ]);
+        expect(artifactExists).toBe(false);
+        expect(lockExists).toBe(false);
+      }),
+    );
+  });
+});
+
 describe("M023 shipped realization classification CLI", () => {
   const canonicalClassification = "examples/tiny-bank/realizations/exact-one.json";
 
@@ -485,6 +623,70 @@ describe("M023 shipped realization classification CLI", () => {
     expect(result.stderr).toContain("stage: artifact");
     expect(result.stderr).toContain("reason: inapplicable-theory");
     expect(result.stderr).toContain("selected M022 theory result is not applicable");
+  });
+});
+
+describe("M031 fresh two-target exact-one qualification CLI", () => {
+  const canonical = "examples/tiny-bank/realizations/two-qualified-exact-one.json";
+  const persistentPaths = [
+    ".bang/artifacts/tiny-bank-packaged-exact-one.json",
+    ".bang/theory-locks/tiny-bank-packaged-exact-one.json",
+    ".bang/qualifications/tiny-bank-two-qualified-exact-one/effect-typescript/boundary.ts",
+    ".bang/qualifications/tiny-bank-two-qualified-exact-one/effect-typescript/evidence.json",
+    ".bang/qualifications/tiny-bank-two-qualified-exact-one/gleam-beam/src/bang/account_entity.gleam",
+    ".bang/qualifications/tiny-bank-two-qualified-exact-one/gleam-beam/evidence.json",
+    ".bang/qualifications/tiny-bank-two-qualified-exact-one/report.json",
+  ] as const;
+
+  const readPersistentBytes = async (): Promise<ReadonlyArray<Uint8Array>> =>
+    Promise.all(persistentPaths.map((path) => Bun.file(join(root, path)).bytes()));
+
+  test("reports two qualified targets and deterministic qualification bytes", async () => {
+    const first = await runCli(canonical, "classify");
+    const firstBytes = await readPersistentBytes();
+    const second = await runCli(canonical, "classify");
+    const secondBytes = await readPersistentBytes();
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(first.stderr).toBe("");
+    expect(second.stderr).toBe("");
+    expect(first.stdout).toBe(second.stdout);
+    expect(first.stdout).toContain("effect-typescript -> qualified");
+    expect(first.stdout).toContain("gleam-beam -> qualified");
+    expect(first.stdout).toContain("BANG M031 Effect exact-one probe");
+    expect(first.stdout).toContain("BANG M031 Gleam BEAM exact-one probe");
+    for (const obligationId of m023ObligationIds) {
+      expect(
+        first.stdout.split("\n").filter((line) => line.startsWith(`- ${obligationId}: `)),
+      ).toHaveLength(2);
+    }
+    expect(firstBytes).toHaveLength(secondBytes.length);
+    for (const [index, bytes] of firstBytes.entries()) {
+      expect(Buffer.from(bytes).equals(Buffer.from(secondBytes[index]!))).toBe(true);
+    }
+  }, 30_000);
+
+  test.each([
+    ["m031-duplicate-targets.json", "invalid-target-set"],
+    ["m031-reordered-targets.json", "invalid-target-set"],
+    ["m031-realization-mismatch.json", "invalid-target-selection"],
+  ] as const)("rejects %s before probes and publication", async (fixture, reason) => {
+    const result = await runCli(`examples/tiny-bank/realizations/${fixture}`, "classify");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("stage: selection");
+    expect(result.stderr).toContain(`reason: ${reason}`);
+  });
+
+  test("rejects a packaged theory digest mismatch without stdout", async () => {
+    const result = await runCli(
+      "examples/tiny-bank/realizations/m031-package-digest-mismatch.json",
+      "classify",
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("stage: package");
+    expect(result.stderr).toContain("reason: digest-mismatch");
   });
 });
 

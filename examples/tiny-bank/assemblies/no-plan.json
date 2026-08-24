@@ -1,0 +1,9 @@
+{
+  "bangAssembly": 1,
+  "id": "tiny-bank-assembly-no-plan",
+  "planSelection": "examples/tiny-bank/plans/grant-survives-restart.json",
+  "artifact": {
+    "kind": "escript",
+    "entry": "main"
+  }
+}

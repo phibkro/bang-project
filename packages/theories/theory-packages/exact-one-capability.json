@@ -1,0 +1,70 @@
+{
+  "bangTheoryPackage": 1,
+  "identity": {
+    "id": "ExactOneCapabilityExecution",
+    "version": 1
+  },
+  "evaluator": {
+    "id": "ExactOneCapabilityExecutionEvaluator",
+    "version": 1
+  },
+  "subject": "operation-realization-capability-requirement",
+  "quantity": {
+    "kind": "exactly",
+    "uses": "1"
+  },
+  "premises": [
+    {
+      "id": "ExactOneCapabilityExecution.premise.realization-exists",
+      "derivation": "structurally-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.premise.operation-binding-checked",
+      "derivation": "structurally-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.premise.capability-exists",
+      "derivation": "structurally-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.premise.exact-one-authored-quantity",
+      "derivation": "authored"
+    }
+  ],
+  "obligations": [
+    {
+      "id": "ExactOneCapabilityExecution.obligation.check-before-consumption",
+      "statement": "check the destination and transition before consumption",
+      "derivation": "theory-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.obligation.consume-atomically-before-execution",
+      "statement": "consume one use atomically before operation execution",
+      "derivation": "theory-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.obligation.reject-reuse-before-execution",
+      "statement": "reject reuse before operation execution",
+      "derivation": "theory-derived"
+    },
+    {
+      "id": "ExactOneCapabilityExecution.obligation.no-restore-after-start",
+      "statement": "do not restore a use after an execution attempt starts",
+      "derivation": "theory-derived"
+    }
+  ],
+  "evidence": {
+    "status": "unresolved",
+    "scope": "theory-derived-obligations"
+  },
+  "limitations": [
+    "termination is not established",
+    "productivity is not established",
+    "memory or work bounds are not established",
+    "capability lifetime is not established",
+    "fairness is not established",
+    "message delivery is not established",
+    "distributed exactly-once execution is not established"
+  ],
+  "invalidation": "premise-provenance"
+}

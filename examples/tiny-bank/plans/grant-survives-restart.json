@@ -1,0 +1,12 @@
+{
+  "bangPlanning": 1,
+  "id": "tiny-bank-grant-survives-restart",
+  "qualificationSelection": "examples/tiny-bank/realizations/two-qualified-exact-one.json",
+  "requirementAddress": "operationRealization:WithdrawAccountOnce.requirement:DebitAccount",
+  "demands": [
+    {
+      "family": "grant-restart",
+      "value": "survives-restart"
+    }
+  ]
+}

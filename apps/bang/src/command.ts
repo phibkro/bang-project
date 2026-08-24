@@ -19,6 +19,8 @@ import { compileSelectedSelfCheck, formatBangCheckFailure } from "./check.ts";
 import { compileSelectedNormalization, formatNormalizationFailure } from "./normalize.ts";
 import { compileSelectedExplanation, formatExplanationFailure } from "./explain.ts";
 import { compileSelectedClassification, formatClassificationFailure } from "./classify.ts";
+import { compileSelectedPlan, formatPlanFailure } from "./plan.ts";
+import { compileSelectedAssembly, formatAssemblyFailure } from "./assemble.ts";
 import { compileSelectedSystemReport, formatBangReportFailure } from "./report.ts";
 import { compileSelectedTrace, formatTraceFailure } from "./trace.ts";
 import { compileSelectedProject, formatProjectFailure } from "./project.ts";
@@ -32,6 +34,10 @@ import {
   runM027TransferCli,
   type M027SemanticDatabaseFailure,
 } from "./semantic-database-transfer.ts";
+import {
+  formatM028SemanticEvolutionFailure,
+  runM028EvolutionCli,
+} from "./semantic-database-evolution.ts";
 
 const m027RouteProbeFromJson = Schema.fromJsonString(
   Schema.Struct({
@@ -304,6 +310,25 @@ export const makeBangCommand = (root: string) => {
       ),
   );
 
+  const evolve = Command.make(
+    "evolve",
+    {
+      selection: Argument.string("selection"),
+      outputDirectory: Flag.string("output-dir").pipe(Flag.withDefault(".bang/semantic-evolution")),
+    },
+    ({ outputDirectory, selection }) =>
+      runM028EvolutionCli(root, selection, outputDirectory).pipe(
+        Effect.flatMap((text) => Console.log(text)),
+        Effect.mapError(
+          (error) =>
+            new CliError.UserError({
+              cause: error,
+              userMessage: formatM028SemanticEvolutionFailure(error),
+            }),
+        ),
+      ),
+  );
+
   const project = Command.make(
     "project",
     { selection: Argument.string("selection") },
@@ -395,6 +420,35 @@ export const makeBangCommand = (root: string) => {
             new CliError.UserError({
               cause: error,
               userMessage: formatClassificationFailure(error),
+            }),
+        ),
+      ),
+  );
+
+  const plan = Command.make("plan", { selection: Argument.string("selection") }, ({ selection }) =>
+    compileSelectedPlan(root, selection).pipe(
+      Effect.flatMap(({ text }) => Console.log(text)),
+      Effect.mapError(
+        (error) =>
+          new CliError.UserError({
+            cause: error,
+            userMessage: formatPlanFailure(error),
+          }),
+      ),
+    ),
+  );
+
+  const assemble = Command.make(
+    "assemble",
+    { selection: Argument.string("selection") },
+    ({ selection }) =>
+      compileSelectedAssembly(root, selection).pipe(
+        Effect.flatMap(({ text }) => Console.log(text)),
+        Effect.mapError(
+          (error) =>
+            new CliError.UserError({
+              cause: error,
+              userMessage: formatAssemblyFailure(error),
             }),
         ),
       ),
@@ -674,6 +728,7 @@ export const makeBangCommand = (root: string) => {
   return bang.pipe(
     Command.withSubcommands([
       database,
+      evolve,
       project,
       trace,
       report,
@@ -681,6 +736,8 @@ export const makeBangCommand = (root: string) => {
       check,
       explain,
       classify,
+      plan,
+      assemble,
       ledger,
     ]),
   );

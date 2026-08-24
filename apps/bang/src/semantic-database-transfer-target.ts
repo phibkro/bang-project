@@ -356,7 +356,7 @@ const address = {
   invariant: (machine: string, id: string): string => `stateMachine:${machine}.invariant:${id}`,
   refinement: (id: string): string => `refinement:${id}`,
   bridge: (id: string): string => `theoryBridge:${id}`,
-  sharedSort: (bridge: string, sort: string): string => `theoryBridge:${bridge}.sharedSort.${sort}`,
+  sharedSort: (bridge: string, sort: string): string => `theoryBridge:${bridge}.sharedSort:${sort}`,
   composition: (id: string): string => `compositionLink:${id}`,
   obligation: (id: string): string => `obligation:${id}`,
   evidence: (path: string): string => `evidence:${path}`,
@@ -521,6 +521,7 @@ export const deriveM027TransferPlan = Effect.fn("deriveM027TransferPlan")(functi
   artifact: CheckedSemanticArtifact,
   selection: M027SemanticDatabaseSelection,
   path: string,
+  accountSourcePath = "examples/tiny-bank/account.bang",
 ): Effect.fn.Return<M027TransferPlan, M027TargetFailure> {
   if (
     artifact.bangSemanticArtifact !== 1 ||
@@ -541,7 +542,7 @@ export const deriveM027TransferPlan = Effect.fn("deriveM027TransferPlan")(functi
   const provenanceFor = (declaration: string, sourcePath: string) =>
     provenance.filter((entry) => entry.declaration === declaration && entry.path === sourcePath);
   if (
-    provenanceFor("Account", "examples/tiny-bank/account.bang").length !== 1 ||
+    provenanceFor("Account", accountSourcePath).length !== 1 ||
     provenanceFor("Balance", "examples/tiny-bank/core/balance.json").length !== 1 ||
     provenanceFor("AccountLedger", "examples/tiny-bank/core/account-ledger-bridge.json").length !==
       1

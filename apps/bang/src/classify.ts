@@ -1,16 +1,31 @@
-import { consumeSemanticArtifact, type CheckedSemanticArtifact } from "@bang/core";
+import {
+  consumeSemanticArtifact,
+  encodeCanonicalJson,
+  type CheckedSemanticArtifact,
+} from "@bang/core";
 import {
   checkM018SingleUseCapabilityEvidenceManifest,
   decodeM018SingleUseCapabilityEvidenceManifest,
   verifyM018SingleUseCapabilityEvidenceMaterials,
+  checkM031TargetQualificationEvidence,
+  checkM031TargetQualificationEvidenceSet,
+  decodeM031TargetQualificationEvidence,
+  encodeM031TargetQualificationEvidence,
+  verifyM031TargetQualificationEvidenceMaterialBytes,
+  verifyM031TargetQualificationEvidencePackageDigest,
   type CheckedM018SingleUseCapabilityEvidenceManifest,
+  type CheckedM031TargetQualificationEvidence,
 } from "@bang/evidence";
 import { projectEffectSingleUseOperationRealization } from "@bang/target-effect";
-import { projectGleamEntityOperationRealization } from "@bang/target-gleam";
+import {
+  projectGleamEntityOperationRealization,
+  projectGleamExactOneOperationRealization,
+} from "@bang/target-gleam";
 import {
   classifyExactOneCapabilityExecution,
   decodeM023ClassificationResult,
   decodeM023RealizationProfile,
+  encodeExactOneCapabilityExecutionPackage,
   encodeM023ClassificationResult,
   encodeM023RealizationProfile,
   M023_EXACT_ONE_OBLIGATION_IDS,
@@ -21,9 +36,17 @@ import type {
   M023ClassificationResult,
   M023RealizationProfile,
 } from "@bang/theories";
-import { type Crypto, Effect, FileSystem, Path, Schema } from "effect";
+import { Crypto, Effect, Encoding, FileSystem, Path, Schema, Stream, type Scope } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { compileSelectedExplanation } from "./explain.ts";
+import { publishAtomically, type PublicationEntry } from "./publication.ts";
+export { PublicationEntrySchema, PublicationFailure, publishAtomically } from "./publication.ts";
+export type { PublicationEntry } from "./publication.ts";
+import {
+  compileSelectedExplanation,
+  compileSelectedExplanationStaged,
+  type StagedExplanationResult,
+} from "./explain.ts";
 
 const parseOptions = { onExcessProperty: "error" } as const;
 
@@ -50,39 +73,65 @@ const RepositoryRelativePath = Schema.String.pipe(
   ),
 );
 
-const ClassificationTargetSchema = Schema.Struct({
+const ClassificationTargetV1Schema = Schema.Struct({
   target: Schema.Literals(["effect-typescript", "gleam-beam"]),
   realization: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
 }).annotate({ parseOptions });
 
-const ClassificationSelectionSchema = Schema.Struct({
+const ClassificationTargetV2Schema = Schema.Struct({
+  target: Schema.Literals(["effect-typescript", "gleam-beam"]),
+  realization: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  probe: Schema.Literal("fresh"),
+}).annotate({ parseOptions });
+
+const ClassificationSelectionV1Schema = Schema.Struct({
   bangClassification: Schema.Literal(1),
   id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
   explanationSelection: RepositoryRelativePath,
   evidencePath: RepositoryRelativePath,
-  targets: Schema.Tuple([ClassificationTargetSchema, ClassificationTargetSchema]),
+  targets: Schema.Tuple([ClassificationTargetV1Schema, ClassificationTargetV1Schema]),
 }).annotate({ parseOptions });
 
-/** Strict JSON input for one M023 classification run. */
+const ClassificationSelectionV2Schema = Schema.Struct({
+  bangClassification: Schema.Literal(2),
+  id: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  explanationSelection: RepositoryRelativePath,
+  targets: Schema.Tuple([ClassificationTargetV2Schema, ClassificationTargetV2Schema]),
+}).annotate({ parseOptions });
+
+const ClassificationSelectionSchema = Schema.Union([
+  ClassificationSelectionV1Schema,
+  ClassificationSelectionV2Schema,
+]).annotate({ parseOptions });
+
+/** Strict JSON input for one M023 or M031 classification run. */
 export const ClassificationSelectionFromJson = Schema.fromJsonString(ClassificationSelectionSchema);
+export type ClassificationSelectionV1 = typeof ClassificationSelectionV1Schema.Type;
+export type ClassificationSelectionV2 = typeof ClassificationSelectionV2Schema.Type;
 export type ClassificationSelection = typeof ClassificationSelectionSchema.Type;
 export type ClassificationTarget = ClassificationSelection["targets"][number];
 
 export type ClassificationStage =
   | "selection"
   | "artifact"
+  | "package"
   | "evidence"
   | "target"
+  | "execution"
   | "profile"
-  | "classification";
+  | "classification"
+  | "publication";
 
 const ClassificationStageSchema = Schema.Literals([
   "selection",
   "artifact",
+  "package",
   "evidence",
   "target",
+  "execution",
   "profile",
   "classification",
+  "publication",
 ]);
 
 /** A typed failure that prevents M023 from emitting a partial classification report. */
@@ -133,7 +182,11 @@ const resolveSafePath = (
 const decodeSelection = (contents: string, filePath: string) =>
   Schema.decodeEffect(ClassificationSelectionFromJson)(contents, parseOptions).pipe(
     Effect.mapError((issue) =>
-      makeFailure("selection", filePath, `invalid M023 classification selection: ${String(issue)}`),
+      makeFailure(
+        "selection",
+        filePath,
+        `invalid M023/M031 classification selection: ${String(issue)}`,
+      ),
     ),
   );
 
@@ -152,13 +205,87 @@ const checkTargets = (
       makeFailure(
         "selection",
         selectionPath,
-        "M023 selection must contain exactly one effect-typescript target followed by one gleam-beam target",
+        `${selection.bangClassification === 2 ? "M031" : "M023"} selection must contain exactly one effect-typescript target followed by one gleam-beam target`,
         { reason: "invalid-target-set" },
+      ),
+    );
+  }
+  if (
+    selection.bangClassification === 2 &&
+    selection.targets.some(
+      ({ realization, probe }) => realization !== "WithdrawAccountOnce" || probe !== "fresh",
+    )
+  ) {
+    return Effect.fail(
+      makeFailure(
+        "selection",
+        selectionPath,
+        "M031 selection must use fresh WithdrawAccountOnce probes for both targets",
+        { reason: "invalid-target-selection" },
       ),
     );
   }
   return Effect.succeed(undefined);
 };
+const M031ActorRestartSchema = Schema.Struct({
+  oldGrantRejected: Schema.Boolean,
+  freshGrantDistinct: Schema.Boolean,
+  replacementGrantAccepted: Schema.Boolean,
+}).annotate({ parseOptions });
+
+const M031TraceSchema = Schema.Struct({
+  valid: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  reuse: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  competing: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  wrongDestination: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  disabled: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  defect: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  stale: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  replacement: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+}).annotate({ parseOptions });
+
+export const M031ProbeObservationSchema = Schema.Struct({
+  target: Schema.Literals(["effect-typescript", "gleam-beam"]),
+  realization: Schema.Literal("WithdrawAccountOnce"),
+  entity: Schema.Literal("account-1"),
+  validCall: Schema.Boolean,
+  reuse: Schema.Boolean,
+  competing: Schema.Boolean,
+  competingSuccesses: Schema.Natural,
+  competingRejections: Schema.Natural,
+  wrongDestination: Schema.Boolean,
+  disabled: Schema.Boolean,
+  defect: Schema.Boolean,
+  stateTrace: M031TraceSchema,
+  remainingTrace: M031TraceSchema,
+  actorRestart: Schema.optional(M031ActorRestartSchema),
+  supervised: Schema.optional(Schema.Boolean),
+}).annotate({ parseOptions });
+export const M031ProbeObservationFromJson = Schema.fromJsonString(M031ProbeObservationSchema);
+export type M031ProbeObservation = typeof M031ProbeObservationSchema.Type;
+export const normalizeM031ProbeObservation = (observation: M031ProbeObservation) => ({
+  target: observation.target,
+  realization: observation.realization,
+  entity: observation.entity,
+  validCall: observation.validCall,
+  reuse: observation.reuse,
+  competing: observation.competing,
+  competingSuccesses: observation.competingSuccesses,
+  competingRejections: observation.competingRejections,
+  wrongDestination: observation.wrongDestination,
+  disabled: observation.disabled,
+  defect: observation.defect,
+  stateTrace: observation.stateTrace,
+  remainingTrace: observation.remainingTrace,
+  ...(observation.actorRestart === undefined
+    ? {}
+    : {
+        actorRestart: {
+          ...observation.actorRestart,
+          supervised: observation.supervised ?? true,
+        },
+      }),
+});
 
 const materialReferences = (
   manifest: CheckedM018SingleUseCapabilityEvidenceManifest,
@@ -373,6 +500,692 @@ const classifyProfile = (
     );
   });
 
+const runM031Process = (
+  application: string,
+  arguments_: ReadonlyArray<string>,
+  cwd: string,
+  diagnosticPath: string,
+): Effect.Effect<
+  string,
+  ClassificationFailure,
+  ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const handle = yield* ChildProcess.make(application, [...arguments_], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    }).pipe(
+      Effect.mapError((error) =>
+        makeFailure(
+          "execution",
+          diagnosticPath,
+          `could not start ${application}: ${String(error)}`,
+          {
+            reason: "process-start-failed",
+          },
+        ),
+      ),
+    );
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        handle.stdout.pipe(Stream.decodeText(), Stream.mkString),
+        handle.stderr.pipe(Stream.decodeText(), Stream.mkString),
+        handle.exitCode,
+      ] as const,
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.mapError((error) =>
+        makeFailure(
+          "execution",
+          diagnosticPath,
+          `could not collect ${application}: ${String(error)}`,
+          {
+            reason: "process-output-failed",
+          },
+        ),
+      ),
+    );
+    if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+      return yield* Effect.fail(
+        makeFailure(
+          "execution",
+          diagnosticPath,
+          stderr.trim() || `${application} exited ${exitCode}`,
+          { reason: "process-failed" },
+        ),
+      );
+    }
+    return stdout;
+  });
+
+const effectProbeRunnerSource = (): string => `
+import { Effect, Layer } from "effect";
+import {
+  DebitAccount,
+  debitAccountGrantRemainingUses,
+  makeDebitAccountLayer,
+  makeWithdrawAccountOnceLayer,
+  observeWithdrawAccountOnce,
+} from "./boundary.ts";
+
+const healthyBoundary = Layer.mergeAll(
+  makeDebitAccountLayer("m031"),
+  makeWithdrawAccountOnceLayer({
+    withdraw: (state, amount) => Effect.succeed({ balance: state.balance - amount }),
+  }),
+);
+
+const healthyJourney = Effect.gen(function* () {
+  const debit = yield* DebitAccount;
+  const validGrant = yield* debit.issueGrant;
+  const validBefore = yield* debitAccountGrantRemainingUses(validGrant);
+  const valid = yield* observeWithdrawAccountOnce(validGrant, "account-1", { balance: 10n }, 4n);
+  const reuseBefore = yield* debitAccountGrantRemainingUses(validGrant);
+  const reuse = yield* observeWithdrawAccountOnce(validGrant, "account-1", valid.state, 1n);
+
+  const competingGrant = yield* debit.issueGrant;
+  const competingBefore = yield* debitAccountGrantRemainingUses(competingGrant);
+  const competing = yield* Effect.forEach(
+    [0, 1] as const,
+    () => observeWithdrawAccountOnce(competingGrant, "account-1", { balance: 6n }, 2n),
+    { concurrency: 2 },
+  );
+
+  const wrongGrant = yield* debit.issueGrant;
+  const wrongBefore = yield* debitAccountGrantRemainingUses(wrongGrant);
+  const wrongDestination = yield* observeWithdrawAccountOnce(
+    wrongGrant,
+    "account-2",
+    { balance: 6n },
+    2n,
+  );
+  const disabledGrant = yield* debit.issueGrant;
+  const disabledBefore = yield* debitAccountGrantRemainingUses(disabledGrant);
+  const disabled = yield* observeWithdrawAccountOnce(
+    disabledGrant,
+    "account-1",
+    { balance: 6n },
+    20n,
+  );
+  return {
+    validBefore,
+    valid,
+    reuseBefore,
+    reuse,
+    competingBefore,
+    competing,
+    wrongBefore,
+    wrongDestination,
+    disabledBefore,
+    disabled,
+  };
+});
+
+const defectBoundary = Layer.mergeAll(
+  makeDebitAccountLayer("m031-defect"),
+  makeWithdrawAccountOnceLayer({
+    withdraw: () => Effect.die("controlled M031 implementation defect"),
+  }),
+);
+const defectJourney = Effect.gen(function* () {
+  const debit = yield* DebitAccount;
+  const grant = yield* debit.issueGrant;
+  const before = yield* debitAccountGrantRemainingUses(grant);
+  const defect = yield* observeWithdrawAccountOnce(grant, "account-1", { balance: 10n }, 4n);
+  const reuseBefore = yield* debitAccountGrantRemainingUses(grant);
+  const reuse = yield* observeWithdrawAccountOnce(grant, "account-1", { balance: 10n }, 1n);
+  return { before, defect, reuseBefore, reuse };
+});
+
+const healthy = await Effect.runPromise(healthyJourney.pipe(Effect.provide(healthyBoundary)));
+const defect = await Effect.runPromise(defectJourney.pipe(Effect.provide(defectBoundary)));
+const state = (observation) => observation.state.balance.toString();
+const remaining = (observation) => observation.remainingUses;
+const competingSuccesses = healthy.competing.filter(({ _tag }) => _tag === "Success").length;
+const competingRejections = healthy.competing.filter(
+  ({ _tag }) => _tag === "CapabilityUseRejected",
+).length;
+console.log(
+  JSON.stringify({
+    target: "effect-typescript",
+    realization: "WithdrawAccountOnce",
+    entity: "account-1",
+    validCall: healthy.valid._tag === "Success",
+    reuse: healthy.reuse._tag === "CapabilityUseRejected",
+    competing: competingSuccesses === 1 && competingRejections === 1,
+    competingSuccesses,
+    competingRejections,
+    wrongDestination: healthy.wrongDestination._tag === "WrongDestination",
+    disabled: healthy.disabled._tag === "DomainRejected",
+    defect:
+      defect.defect._tag === "Defect" && defect.reuse._tag === "CapabilityUseRejected",
+    stateTrace: {
+      valid: \`10>\${state(healthy.valid)}\`,
+      reuse: \`\${state(healthy.valid)}>\${state(healthy.reuse)}\`,
+      competing: \`\${state(healthy.competing[0]!)}>\${state(healthy.competing[0]!)}\`,
+      wrongDestination: \`\${state(healthy.wrongDestination)}>\${state(healthy.wrongDestination)}\`,
+      disabled: \`\${state(healthy.disabled)}>\${state(healthy.disabled)}\`,
+      defect: \`10>\${state(defect.defect)}\`,
+      stale: \`10>\${state(defect.reuse)}\`,
+      replacement: "10>10",
+    },
+    remainingTrace: {
+      valid: \`\${healthy.validBefore}>\${remaining(healthy.valid)}\`,
+      reuse: \`\${healthy.reuseBefore}>\${remaining(healthy.reuse)}\`,
+      competing: \`\${healthy.competingBefore}>0\`,
+      wrongDestination: \`\${healthy.wrongBefore}>\${remaining(healthy.wrongDestination)}\`,
+      disabled: \`\${healthy.disabledBefore}>\${remaining(healthy.disabled)}\`,
+      defect: \`\${defect.before}>\${remaining(defect.defect)}\`,
+      stale: \`\${defect.reuseBefore}>\${remaining(defect.reuse)}\`,
+      replacement: "1>1",
+    },
+  }),
+);
+`;
+
+const gleamProbeRunnerSource = (): string => `
+import bang/account_entity
+import gleam/io
+
+pub fn main() {
+  io.println(account_entity.run_exact_one_probe())
+}
+`;
+
+const decodeM031ProbeOutput = (
+  output: string,
+  target: ClassificationTarget,
+  diagnosticPath: string,
+): Effect.Effect<M031ProbeObservation, ClassificationFailure> => {
+  const marker = "BANG_M031_RESULT|";
+  const lines = output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(marker));
+  const payload =
+    target.target === "gleam-beam" ? lines.at(-1)?.slice(marker.length) : output.trim();
+  if (payload === undefined || payload.length === 0) {
+    return Effect.fail(
+      makeFailure("execution", diagnosticPath, "target probe emitted no M031 result", {
+        reason: "malformed-target-output",
+      }),
+    );
+  }
+  return Schema.decodeEffect(M031ProbeObservationFromJson)(payload, parseOptions).pipe(
+    Effect.mapError((issue) =>
+      makeFailure("execution", diagnosticPath, `invalid M031 target output: ${String(issue)}`, {
+        reason: "malformed-target-output",
+      }),
+    ),
+  );
+};
+
+interface M031TargetRun {
+  readonly target: ClassificationTarget;
+  readonly projection: string;
+  readonly generatedPath: string;
+  readonly generatedBytes: Uint8Array;
+  readonly observation: M031ProbeObservation;
+}
+
+const m031DigestBytes = Effect.fn("bangM031.digestBytes")(function* (bytes: Uint8Array) {
+  const crypto = yield* Crypto.Crypto;
+  const digest = yield* crypto.digest("SHA-256", bytes).pipe(
+    Effect.mapError((error) =>
+      makeFailure("evidence", "M031 material", `could not digest M031 material: ${String(error)}`, {
+        reason: "material-digest-failed",
+      }),
+    ),
+  );
+  return Encoding.encodeHex(digest);
+});
+
+const m031ReadMaterial = (
+  root: string,
+  materialPath: string,
+): Effect.Effect<
+  { readonly path: string; readonly bytes: Uint8Array; readonly sha256: string },
+  ClassificationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const bytes = yield* fileSystem.readFile(path.resolve(root, materialPath)).pipe(
+      Effect.mapError((error) =>
+        makeFailure("evidence", materialPath, `could not read M031 material: ${String(error)}`, {
+          reason: "material-unavailable",
+        }),
+      ),
+    );
+    return { path: materialPath, bytes, sha256: yield* m031DigestBytes(bytes) };
+  });
+
+const makeM031Evidence = (
+  root: string,
+  staged: StagedExplanationResult,
+  core: CheckedSemanticArtifact["core"],
+  selection: ClassificationSelectionV2,
+  targetRun: M031TargetRun,
+  diagnosticPath: string,
+): Effect.Effect<
+  {
+    readonly checked: CheckedM031TargetQualificationEvidence;
+    readonly encoded: string;
+    readonly materials: Readonly<Record<string, Uint8Array>>;
+  },
+  ClassificationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const packageResolution = staged.packageResolution;
+    if (packageResolution === undefined) {
+      return yield* Effect.fail(
+        makeFailure("package", diagnosticPath, "M031 requires a resolved packaged explanation", {
+          reason: "missing-package",
+        }),
+      );
+    }
+    const coreSourcePath = staged.artifact.provenance[0]?.path;
+    if (coreSourcePath === undefined) {
+      return yield* Effect.fail(
+        makeFailure("evidence", diagnosticPath, "M031 artifact has no Core source provenance", {
+          reason: "missing-core-material",
+        }),
+      );
+    }
+    const coreMaterial = yield* m031ReadMaterial(root, coreSourcePath);
+    const targetMaterial = {
+      path: targetRun.generatedPath,
+      bytes: targetRun.generatedBytes,
+      sha256: yield* m031DigestBytes(targetRun.generatedBytes),
+    };
+    const observations = normalizeM031ProbeObservation(targetRun.observation);
+    const raw = {
+      bangTargetQualificationEvidence: 1 as const,
+      selectionId: selection.id,
+      targetId: targetRun.target.target,
+      realizationId: "WithdrawAccountOnce" as const,
+      artifactId: staged.result.artifactId,
+      artifactFormat: staged.result.artifactFormat,
+      theory: staged.result.theory,
+      package: {
+        id: packageResolution.resolved.package.identity.id,
+        version: packageResolution.resolved.package.identity.version,
+        semanticDigest: packageResolution.resolved.semanticDigest,
+      },
+      requirementAddress: staged.result.requirementAddress,
+      observations,
+      materials: [
+        { role: "core-source", path: coreMaterial.path, sha256: coreMaterial.sha256 },
+        {
+          role:
+            targetRun.target.target === "effect-typescript"
+              ? "generated-effect-boundary"
+              : "generated-gleam-boundary",
+          path: targetMaterial.path,
+          sha256: targetMaterial.sha256,
+        },
+      ],
+      producer: {
+        identity:
+          targetRun.target.target === "effect-typescript"
+            ? "BANG M031 Effect exact-one probe"
+            : "BANG M031 Gleam BEAM exact-one probe",
+        version: "1",
+        targetId: targetRun.target.target,
+      },
+      assumptions:
+        targetRun.target.target === "effect-typescript"
+          ? [
+              "the staged generated Effect boundary and independent implementation are the executed target",
+              "the diagnostic process reports the generated boundary without an unobserved bypass",
+            ]
+          : [
+              "the staged generated Gleam actor and real BEAM supervisor are the executed target",
+              "actor incarnation is target state and is not a Core capability identity",
+            ],
+      weakenings:
+        targetRun.target.target === "effect-typescript"
+          ? [
+              "TypeScript and Effect cannot make the grant universally unforgeable",
+              "this runtime journey observes one grant in one process and does not prove distributed exactly-once delivery",
+            ]
+          : [
+              "BEAM supervision and actor incarnation are target-local lifecycle behavior",
+              "this runtime journey does not establish durable grants across host or node failure",
+            ],
+      limitations: [
+        "termination, productivity, memory, and work bounds are not established",
+        "fairness and message delivery are not established",
+        "distributed exactly-once execution is not established",
+      ],
+      lifetime:
+        targetRun.target.target === "effect-typescript"
+          ? "valid for the scoped fresh Effect probe while checked and generated materials remain unchanged"
+          : "valid for the supervised fresh Gleam probe while checked, generated, and toolchain materials remain unchanged",
+      invalidators:
+        targetRun.target.target === "effect-typescript"
+          ? [
+              "checked Core declaration, quantity, or failure identity changes",
+              "generated Effect boundary, implementation, or runtime order changes",
+            ]
+          : [
+              "checked Core declaration, quantity, or failure identity changes",
+              "generated Gleam actor, supervisor lifecycle, or toolchain changes",
+            ],
+    };
+    const decoded = yield* decodeM031TargetQualificationEvidence(JSON.stringify(raw)).pipe(
+      Effect.mapError((error) =>
+        makeFailure("evidence", diagnosticPath, error.message, {
+          reason: error.reason,
+        }),
+      ),
+    );
+    const checked = yield* checkM031TargetQualificationEvidence(decoded, {
+      selectionId: selection.id,
+      targetId: targetRun.target.target,
+      realizationId: "WithdrawAccountOnce",
+      artifactId: staged.result.artifactId,
+      artifactFormat: staged.result.artifactFormat,
+      theory: staged.result.theory,
+      package: raw.package,
+      requirementAddress: staged.result.requirementAddress,
+      result: {
+        artifactId: staged.result.artifactId,
+        artifactFormat: staged.result.artifactFormat,
+        theory: staged.result.theory,
+        requirementAddress: staged.result.requirementAddress,
+      },
+      core,
+    }).pipe(
+      Effect.mapError((error) =>
+        makeFailure("evidence", diagnosticPath, error.message, {
+          reason: error.reason,
+        }),
+      ),
+    );
+    const encoded = encodeM031TargetQualificationEvidence(decoded);
+    const materials = {
+      [coreMaterial.path]: coreMaterial.bytes,
+      [targetMaterial.path]: targetMaterial.bytes,
+    };
+    yield* verifyM031TargetQualificationEvidenceMaterialBytes(decoded, materials).pipe(
+      Effect.mapError((error) =>
+        makeFailure("evidence", diagnosticPath, error.message, {
+          reason: error.reason,
+        }),
+      ),
+    );
+    return { checked, encoded, materials };
+  });
+
+const compileM031TargetRuns = (
+  root: string,
+  staged: StagedExplanationResult,
+  core: CheckedSemanticArtifact["core"],
+  selection: ClassificationSelectionV2,
+  qualificationBase: string,
+  diagnosticPath: string,
+): Effect.Effect<
+  ReadonlyArray<M031TargetRun>,
+  ClassificationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const temporaryRoot = yield* fileSystem
+        .makeTempDirectoryScoped({
+          directory: root,
+          prefix: ".m031-qualification-",
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            makeFailure(
+              "target",
+              diagnosticPath,
+              `could not create M031 temp directory: ${String(error)}`,
+              {
+                reason: "temporary-directory-failed",
+              },
+            ),
+          ),
+        );
+      const runs: Array<M031TargetRun> = [];
+      for (const target of selection.targets) {
+        const generatedPath =
+          target.target === "effect-typescript"
+            ? `${qualificationBase}/effect-typescript/boundary.ts`
+            : `${qualificationBase}/gleam-beam/src/bang/account_entity.gleam`;
+        let generatedBytes: Uint8Array;
+        let projection: string;
+        if (target.target === "effect-typescript") {
+          projection = yield* projectEffectSingleUseOperationRealization(
+            core,
+            target.realization,
+          ).pipe(
+            Effect.mapError((error) =>
+              makeFailure("target", diagnosticPath, error.message, {
+                reason: error.reason,
+                address: error.source,
+              }),
+            ),
+          );
+          generatedBytes = new TextEncoder().encode(projection);
+          const targetDirectory = path.join(temporaryRoot, "effect-typescript");
+          yield* fileSystem.makeDirectory(targetDirectory, { recursive: true }).pipe(
+            Effect.mapError((error) =>
+              makeFailure(
+                "target",
+                diagnosticPath,
+                `could not create Effect target directory: ${String(error)}`,
+                {
+                  reason: "target-directory-failed",
+                },
+              ),
+            ),
+          );
+          const boundaryPath = path.join(targetDirectory, "boundary.ts");
+          const runnerPath = path.join(targetDirectory, "probe.ts");
+          yield* fileSystem.writeFile(boundaryPath, generatedBytes).pipe(
+            Effect.mapError((error) =>
+              makeFailure(
+                "target",
+                diagnosticPath,
+                `could not write Effect boundary: ${String(error)}`,
+                {
+                  reason: "projection-write-failed",
+                },
+              ),
+            ),
+          );
+          yield* fileSystem.writeFileString(runnerPath, effectProbeRunnerSource()).pipe(
+            Effect.mapError((error) =>
+              makeFailure(
+                "execution",
+                diagnosticPath,
+                `could not write Effect probe: ${String(error)}`,
+                {
+                  reason: "probe-write-failed",
+                },
+              ),
+            ),
+          );
+          const output = yield* runM031Process(
+            "bun",
+            ["run", runnerPath],
+            targetDirectory,
+            diagnosticPath,
+          );
+          const observation = yield* decodeM031ProbeOutput(output, target, diagnosticPath);
+          runs.push({ target, projection, generatedPath, generatedBytes, observation });
+        } else {
+          const realization = core.declarations.find(
+            (declaration) =>
+              declaration.kind === "operationRealization" && declaration.id === target.realization,
+          );
+          if (realization?.kind !== "operationRealization") {
+            return yield* Effect.fail(
+              makeFailure(
+                "target",
+                diagnosticPath,
+                `missing checked realization ${target.realization}`,
+                {
+                  reason: "missing-declaration",
+                },
+              ),
+            );
+          }
+          const projected = projectGleamExactOneOperationRealization(core, realization.id);
+          if (!projected.ok) {
+            return yield* Effect.fail(
+              makeFailure("target", diagnosticPath, projected.error.message, {
+                reason: projected.error.reason,
+                address: projected.error.source,
+              }),
+            );
+          }
+          projection = projected.value;
+          generatedBytes = new TextEncoder().encode(projection);
+          const gleamRoot = path.join(temporaryRoot, "gleam-beam");
+          const sourceDirectory = path.join(gleamRoot, "src", "bang");
+          yield* fileSystem.makeDirectory(sourceDirectory, { recursive: true }).pipe(
+            Effect.mapError((error) =>
+              makeFailure(
+                "target",
+                diagnosticPath,
+                `could not create Gleam target directory: ${String(error)}`,
+                {
+                  reason: "target-directory-failed",
+                },
+              ),
+            ),
+          );
+          yield* fileSystem
+            .writeFile(path.join(sourceDirectory, "account_entity.gleam"), generatedBytes)
+            .pipe(
+              Effect.mapError((error) =>
+                makeFailure(
+                  "target",
+                  diagnosticPath,
+                  `could not write Gleam boundary: ${String(error)}`,
+                  {
+                    reason: "projection-write-failed",
+                  },
+                ),
+              ),
+            );
+          yield* fileSystem
+            .writeFileString(
+              path.join(gleamRoot, "gleam.toml"),
+              [
+                'name = "bang_m031_probe"',
+                'version = "0.1.0"',
+                'target = "erlang"',
+                'gleam = ">= 1.18.1 and < 2.0.0"',
+                "",
+                "[dependencies]",
+                'gleam_erlang = ">= 1.3.0 and < 2.0.0"',
+                'gleam_otp = ">= 1.3.0 and < 2.0.0"',
+                'gleam_stdlib = ">= 1.0.0 and < 2.0.0"',
+                "",
+              ].join("\n"),
+            )
+            .pipe(
+              Effect.mapError((error) =>
+                makeFailure(
+                  "execution",
+                  diagnosticPath,
+                  `could not write Gleam toolchain manifest: ${String(error)}`,
+                  {
+                    reason: "toolchain-manifest-failed",
+                  },
+                ),
+              ),
+            );
+          yield* fileSystem
+            .writeFileString(path.join(gleamRoot, "src", "main.gleam"), gleamProbeRunnerSource())
+            .pipe(
+              Effect.mapError((error) =>
+                makeFailure(
+                  "execution",
+                  diagnosticPath,
+                  `could not write Gleam probe: ${String(error)}`,
+                  {
+                    reason: "probe-write-failed",
+                  },
+                ),
+              ),
+            );
+          const output = yield* runM031Process(
+            "nix",
+            [
+              "shell",
+              "-f",
+              path.join(root, "nix", "gleam.nix"),
+              "-c",
+              "gleam",
+              "run",
+              "-m",
+              "main",
+            ],
+            gleamRoot,
+            diagnosticPath,
+          );
+          const observation = yield* decodeM031ProbeOutput(output, target, diagnosticPath);
+          runs.push({ target, projection, generatedPath, generatedBytes, observation });
+        }
+      }
+      return runs;
+    }),
+  );
+
+const makeM031Profile = (
+  result: Extract<ExactOneCapabilityExecutionResult, { readonly _tag: "Applicable" }>,
+  evidence: CheckedM031TargetQualificationEvidence,
+  target: ClassificationTarget,
+): M023RealizationProfile =>
+  M023RealizationProfileSchema.make({
+    bangRealizationProfile: 1,
+    artifactId: result.artifactId,
+    artifactFormat: result.artifactFormat,
+    theoryResultIdentity: theoryResultIdentity(result),
+    realizationId: target.realization,
+    targetId: target.target,
+    assessments: M023_EXACT_ONE_OBLIGATION_IDS.map((obligationId) => ({
+      obligationId,
+      disposition: "supported" as const,
+      evidence: [
+        {
+          class: "structurally-derived" as const,
+          scope: `checked Core ${target.realization} projection`,
+          producer: target.target,
+          materials: evidence.materials.map(({ path, sha256 }) => ({ path, sha256 })),
+        },
+        {
+          class: "runtime-checked" as const,
+          scope: `M031 fresh ${target.target} exact-one probe`,
+          producer: evidence.producer.identity,
+          materials: evidence.materials.map(({ path, sha256 }) => ({ path, sha256 })),
+        },
+        {
+          class: "assumed-truthful" as const,
+          scope: `M031 producer ${evidence.producer.version}`,
+          producer: evidence.producer.identity,
+          materials: evidence.materials.map(({ path, sha256 }) => ({ path, sha256 })),
+        },
+      ],
+    })),
+    assumptions: [...evidence.assumptions].toSorted(),
+    weakenings: [...evidence.weakenings].toSorted(),
+    limitations: [...evidence.limitations].toSorted(),
+    lifetime: evidence.lifetime,
+    invalidators: [...evidence.invalidators].toSorted(),
+  });
+
 const makeEffectProfile = (
   artifact: CheckedSemanticArtifact,
   evidence: CheckedM018SingleUseCapabilityEvidenceManifest,
@@ -466,6 +1279,271 @@ const makeGleamProfile = (
     });
     return yield* classifyProfile(profile, result, selectionPath);
   });
+export interface M031ClassificationCompileResult {
+  readonly selection: ClassificationSelectionV2;
+  readonly artifact: CheckedSemanticArtifact;
+  readonly evidence: ReadonlyArray<CheckedM031TargetQualificationEvidence>;
+  readonly results: ReadonlyArray<M023ClassificationResult>;
+  readonly text: string;
+  readonly publicationEntries: ReadonlyArray<PublicationEntry>;
+}
+
+const formatM031ClassificationReport = (
+  results: ReadonlyArray<M023ClassificationResult>,
+): string => `M031 two-target exact-one qualification
+${results.map(formatProfile).join("\n\n")}
+`;
+
+const makeM031PublicationEntries = (
+  root: string,
+  staged: StagedExplanationResult,
+  runs: ReadonlyArray<M031TargetRun>,
+  evidence: ReadonlyArray<{
+    readonly checked: CheckedM031TargetQualificationEvidence;
+    readonly encoded: string;
+  }>,
+  qualificationBase: string,
+  reportEncoded: string,
+): Effect.Effect<ReadonlyArray<PublicationEntry>, never, Path.Path> =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const entries: Array<PublicationEntry> = [];
+    const resolvedRoot = path.resolve(root);
+    const artifactPath = path
+      .relative(resolvedRoot, path.resolve(staged.artifactPath))
+      .replaceAll("\\", "/");
+    entries.push({
+      path: artifactPath,
+      bytes: new TextEncoder().encode(staged.encodedArtifact),
+    });
+    if (staged.theoryLock !== undefined) {
+      entries.push({
+        path: staged.theoryLock.lockPath,
+        bytes: new TextEncoder().encode(staged.theoryLock.encodedLock),
+      });
+    }
+    for (const run of runs) {
+      entries.push({
+        path: run.generatedPath,
+        bytes: new Uint8Array(run.generatedBytes),
+      });
+    }
+    for (const record of evidence) {
+      entries.push({
+        path: `${qualificationBase}/${record.checked.targetId}/evidence.json`,
+        bytes: new TextEncoder().encode(`${record.encoded}\n`),
+      });
+    }
+    entries.push({
+      path: `${qualificationBase}/report.json`,
+      bytes: new TextEncoder().encode(reportEncoded),
+    });
+    return entries.toSorted((left, right) => left.path.localeCompare(right.path));
+  });
+
+const compileSelectedM031Classification = (
+  root: string,
+  selection: ClassificationSelectionV2,
+  resolvedSelectionPath: string,
+): Effect.Effect<
+  M031ClassificationCompileResult,
+  ClassificationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      if (!/^[A-Za-z][A-Za-z0-9._-]*$/u.test(selection.id)) {
+        return yield* Effect.fail(
+          makeFailure(
+            "selection",
+            resolvedSelectionPath,
+            "M031 selection id is not a safe identity",
+            {
+              reason: "unsafe-selection-id",
+            },
+          ),
+        );
+      }
+      const explanationSelectionPath = yield* resolveSafePath(
+        root,
+        selection.explanationSelection,
+        yield* Path.Path,
+        "selection",
+      );
+      const staged = yield* compileSelectedExplanationStaged(
+        root,
+        selection.explanationSelection,
+      ).pipe(
+        Effect.mapError((error) =>
+          makeFailure(
+            error.stage === "package" ? "package" : "artifact",
+            explanationSelectionPath,
+            error.message,
+            {
+              reason: error.reason ?? error.stage,
+              ...(error.address === undefined ? {} : { address: error.address }),
+            },
+          ),
+        ),
+      );
+      if (staged.packageResolution === undefined || staged.theoryLock === undefined) {
+        return yield* Effect.fail(
+          makeFailure(
+            "package",
+            explanationSelectionPath,
+            "M031 explanation did not resolve a theory package",
+            {
+              reason: "missing-package",
+            },
+          ),
+        );
+      }
+      if (staged.result._tag !== "Applicable") {
+        return yield* Effect.fail(
+          makeFailure(
+            "artifact",
+            explanationSelectionPath,
+            "selected M022 theory result is not applicable",
+            {
+              reason: "inapplicable-theory",
+            },
+          ),
+        );
+      }
+      const artifact = yield* consumeSemanticArtifact(staged.encodedArtifact).pipe(
+        Effect.mapError((error) =>
+          makeFailure("artifact", explanationSelectionPath, error.message, {
+            reason: error.reason,
+            ...(error.address === undefined ? {} : { address: error.address }),
+          }),
+        ),
+      );
+      if (artifact.id !== staged.result.artifactId) {
+        return yield* Effect.fail(
+          makeFailure(
+            "artifact",
+            explanationSelectionPath,
+            "M031 result and artifact identities differ",
+            {
+              reason: "artifact-identity-mismatch",
+            },
+          ),
+        );
+      }
+      const packageEncoded = encodeExactOneCapabilityExecutionPackage(
+        staged.packageResolution.resolved.package,
+      );
+      yield* verifyM031TargetQualificationEvidencePackageDigest(
+        packageEncoded,
+        staged.packageResolution.resolved.semanticDigest,
+      ).pipe(
+        Effect.mapError((error) =>
+          makeFailure("package", explanationSelectionPath, error.message, {
+            reason: error.reason,
+          }),
+        ),
+      );
+      const qualificationBase = `.bang/qualifications/${selection.id}`;
+      const runs = yield* compileM031TargetRuns(
+        root,
+        staged,
+        artifact.core,
+        selection,
+        qualificationBase,
+        resolvedSelectionPath,
+      );
+      const evidenceRecords: Array<{
+        readonly checked: CheckedM031TargetQualificationEvidence;
+        readonly encoded: string;
+      }> = [];
+      for (const run of runs) {
+        const record = yield* makeM031Evidence(
+          root,
+          staged,
+          artifact.core,
+          selection,
+          run,
+          resolvedSelectionPath,
+        );
+        evidenceRecords.push(record);
+      }
+      const checkedEvidence = yield* checkM031TargetQualificationEvidenceSet(
+        evidenceRecords.map(({ checked }) => checked),
+        {
+          selectionId: selection.id,
+          artifactId: staged.result.artifactId,
+          artifactFormat: staged.result.artifactFormat,
+          theory: staged.result.theory,
+          package: {
+            id: staged.packageResolution.resolved.package.identity.id,
+            version: staged.packageResolution.resolved.package.identity.version,
+            semanticDigest: staged.packageResolution.resolved.semanticDigest,
+          },
+          requirementAddress: staged.result.requirementAddress,
+          result: {
+            artifactId: staged.result.artifactId,
+            artifactFormat: staged.result.artifactFormat,
+            theory: staged.result.theory,
+            requirementAddress: staged.result.requirementAddress,
+          },
+          core: artifact.core,
+        },
+      ).pipe(
+        Effect.mapError((error) =>
+          makeFailure("evidence", resolvedSelectionPath, error.message, {
+            reason: error.reason,
+            address: error.identity,
+          }),
+        ),
+      );
+      const checkedEvidenceRecords = evidenceRecords.map((record, index) =>
+        Object.assign(record, { checked: checkedEvidence[index]! }),
+      );
+      const results: M023ClassificationResult[] = [];
+      for (const record of checkedEvidenceRecords) {
+        const selectedTarget = selection.targets.find(
+          ({ target: targetId }) => targetId === record.checked.targetId,
+        );
+        if (selectedTarget === undefined) {
+          return yield* Effect.fail(
+            makeFailure("profile", resolvedSelectionPath, "M031 evidence target is not selected", {
+              reason: "target-mismatch",
+            }),
+          );
+        }
+        const profile = makeM031Profile(staged.result, record.checked, selectedTarget);
+        results.push(yield* classifyProfile(profile, staged.result, resolvedSelectionPath));
+      }
+      const reportValue = {
+        bangClassificationReport: 2 as const,
+        selectionId: selection.id,
+        artifactId: staged.result.artifactId,
+        artifactFormat: staged.result.artifactFormat,
+        theory: staged.result.theory,
+        requirementAddress: staged.result.requirementAddress,
+        results,
+        evidence: checkedEvidenceRecords.map(({ checked }) => checked),
+      };
+      const reportEncoded = `${encodeCanonicalJson(reportValue)}\n`;
+      const text = formatM031ClassificationReport(results);
+      const publicationEntries = yield* makeM031PublicationEntries(
+        root,
+        staged,
+        runs,
+        checkedEvidenceRecords,
+        qualificationBase,
+        reportEncoded,
+      );
+      return {
+        selection,
+        artifact,
+        evidence: checkedEvidenceRecords.map(({ checked }) => checked),
+        results,
+        text,
+        publicationEntries,
+      };
+    }),
+  );
 
 const targetOrder = (target: ClassificationTarget): number =>
   target.target === "effect-typescript" ? 0 : 1;
@@ -566,14 +1644,14 @@ export const compileClassificationFromArtifact = (
     };
   });
 
-/** Compile and classify both selected M023 realizations without emitting partial output. */
-export const compileSelectedClassification = (
+/** Compile and classify a selected M031 realization pair without persistent writes. */
+export const compileSelectedM031ClassificationStaged = (
   root: string,
   selectionPath: string,
 ): Effect.Effect<
-  ClassificationCompileResult,
+  M031ClassificationCompileResult,
   ClassificationFailure,
-  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
@@ -583,6 +1661,51 @@ export const compileSelectedClassification = (
       resolvedSelectionPath,
     );
     yield* checkTargets(selection, resolvedSelectionPath);
+    if (selection.bangClassification !== 2) {
+      return yield* Effect.fail(
+        makeFailure(
+          "selection",
+          resolvedSelectionPath,
+          "M031 staged classification requires a bangClassification: 2 selection",
+          { reason: "invalid-classification-version" },
+        ),
+      );
+    }
+    return yield* compileSelectedM031Classification(root, selection, resolvedSelectionPath);
+  });
+
+/** Compile and classify both selected M023 realizations without emitting partial output. */
+export const compileSelectedClassification = (
+  root: string,
+  selectionPath: string,
+): Effect.Effect<
+  ClassificationCompileResult | M031ClassificationCompileResult,
+  ClassificationFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const resolvedSelectionPath = yield* resolveSafePath(root, selectionPath, path, "selection");
+    const selection = yield* decodeSelection(
+      yield* readText(resolvedSelectionPath, "selection"),
+      resolvedSelectionPath,
+    );
+    yield* checkTargets(selection, resolvedSelectionPath);
+    if (selection.bangClassification === 2) {
+      const staged = yield* compileSelectedM031Classification(
+        root,
+        selection,
+        resolvedSelectionPath,
+      );
+      yield* publishAtomically(root, staged.publicationEntries).pipe(
+        Effect.mapError((error) =>
+          makeFailure("publication", error.path, error.message, {
+            reason: error.reason,
+          }),
+        ),
+      );
+      return staged;
+    }
     const explanationSelectionPath = yield* resolveSafePath(
       root,
       selection.explanationSelection,
@@ -640,8 +1763,6 @@ export const compileSelectedClassification = (
     );
     return { selection, ...compiled };
   });
-
-/** Format one M023 failure without a stack trace or partial report. */
 export const formatClassificationFailure = (error: ClassificationFailure): string => {
   const lines = [`stage: ${error.stage}`, `path: ${error.path}`];
   if (error.reason !== undefined) lines.push(`reason: ${error.reason}`);

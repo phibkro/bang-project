@@ -9,11 +9,11 @@
   "dependencies": {
     "@bang/core": "workspace:*",
     "@bang/evidence": "workspace:*",
+    "@bang/planning": "workspace:*",
     "@bang/surface": "workspace:*",
     "@bang/target-effect": "workspace:*",
     "@bang/target-gleam": "workspace:*",
     "@bang/theories": "workspace:*",
-    "@effect/platform-bun": "4.0.0-rc.108",
     "@effect/sql-sqlite-bun": "4.0.0-rc.108",
     "effect": "4.0.0-rc.108"
   }

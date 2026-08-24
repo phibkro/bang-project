@@ -1,0 +1,9 @@
+{
+  "bangAssembly": 1,
+  "id": "tiny-bank-assembly-path-traversal",
+  "planSelection": "examples/tiny-bank/plans/../plans/supervised-exact-one.json",
+  "artifact": {
+    "kind": "escript",
+    "entry": "main"
+  }
+}

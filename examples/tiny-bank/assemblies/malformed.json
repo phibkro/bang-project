@@ -1,0 +1,8 @@
+{
+  "bangAssembly": 1,
+  "id": "tiny-bank-assembly-malformed",
+  "planSelection": "examples/tiny-bank/plans/supervised-exact-one.json",
+  "artifact": {
+    "kind": "escript"
+  }
+}
