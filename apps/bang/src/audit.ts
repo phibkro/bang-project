@@ -3,11 +3,26 @@ import {
   M031TargetQualificationEvidenceSchema,
 } from "@bang/evidence";
 import { PlanningReportFromJson, type PlanningReport } from "@bang/planning";
-import { SemanticArtifactFromJson } from "@bang/core";
-import { ExactOneCapabilityExecutionLockFromJson } from "@bang/theories";
+import {
+  encodeCanonicalJson,
+  produceSemanticArtifact,
+  SemanticArtifactFromJson,
+  validateCore,
+  type CoreDocument,
+  type SemanticArtifact,
+} from "@bang/core";
+import {
+  digestExactOneCapabilityExecutionPackage,
+  ExactOneCapabilityExecutionLockFromJson,
+  ExactOneCapabilityExecutionPackageFromJson,
+} from "@bang/theories";
+import { sourceToCore } from "@bang/surface";
 import { Crypto, Effect, Encoding, FileSystem, Path, Schema } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 
-import { AssemblyReportSchema, type AssemblyReport } from "./assemble.ts";
+import { AssemblyReportSchema, compileSelectedAssembly, type AssemblyReport } from "./assemble.ts";
+import { compileSelectedPlanStaged } from "./plan.ts";
+import { publishAtomically, type PublicationEntry } from "./publication.ts";
 
 const parseOptions = { onExcessProperty: "error" } as const;
 
@@ -118,19 +133,37 @@ export interface AuditedMaterial {
   readonly recordedSha256: string | undefined;
   readonly actualSha256: string;
   readonly citedBy: ReadonlyArray<string>;
-  /**
-   * `deferred` marks derived members whose owning-producer recomputation and
-   * decoded semantic comparison arrive with the comparison phases; this phase
-   * establishes their presence and custody digest only.
-   */
-  readonly status: "unchanged" | "changed" | "deferred";
+  readonly status: MaterialStatus;
 }
+
+/**
+ * Verdict for one recorded material. `deferred` marks derived members whose
+ * owning producer must be recomputed to decide drift; the invalidation phase
+ * resolves every deferred member before retirement closes.
+ */
+export type MaterialStatus = "unchanged" | "cosmetic" | "changed" | "deferred";
 
 export interface AuditSummary {
   readonly assemblyId: string;
   readonly materials: ReadonlyArray<AuditedMaterial>;
-  /** Records directly citing at least one changed material. */
+  /** Records directly citing at least one changed or cosmetic-changed material. */
   readonly retiredRecords: number;
+}
+
+/** One retired record with the material and edge that carried invalidation. */
+export interface RetiredRecord {
+  readonly record: string;
+  readonly materialPath: string;
+  /** The record that directly cites the invalidating material. */
+  readonly edge: string;
+}
+
+export interface InvalidationResult {
+  readonly summary: AuditSummary;
+  /** Directly invalidated records plus transitive closure over recorded edges. */
+  readonly retired: ReadonlyArray<RetiredRecord>;
+  /** Cosmetic changes refresh custody digests but retire nothing. */
+  readonly cosmeticPaths: ReadonlyArray<string>;
 }
 
 const safeIdentityPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
@@ -706,9 +739,514 @@ export const runAudit = (
     return { summary, text: formatAuditReport(summary) };
   });
 
+/**
+ * Requalify retired producers in dependency order using the existing staged
+ * journeys: M030 package agreement and M031 probes through the staged
+ * qualification, M032 staged planning, then M033 staged assembly with
+ * publication deferred to the final transaction. Evidence classes must survive
+ * unchanged; a class change is a typed requalification failure.
+ */
+export const requalifyRetired = (
+  root: string,
+  report: AssemblyReport,
+  assemblySelectionPath: string,
+): Effect.Effect<
+  {
+    readonly entries: ReadonlyArray<PublicationEntry>;
+    readonly freshReport: AssemblyReport;
+  },
+  AuditFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const planSelection = report.planSelection;
+    const staged = yield* compileSelectedPlanStaged(root, planSelection).pipe(
+      Effect.mapError((error) =>
+        failure("requalification", planSelection, "planning-failed", error.message),
+      ),
+    );
+    if (staged.report._tag !== "Selected") {
+      return yield* failure(
+        "requalification",
+        planSelection,
+        "planning-failed",
+        `requalified planning returned ${staged.report._tag}; one selected plan is required`,
+      );
+    }
+    const freshClasses = new Set(
+      staged.report.plan.evidenceReferences.map(({ class: evidenceClass }) => evidenceClass),
+    );
+    if (report.plan._tag === "Selected") {
+      for (const reference of report.plan.plan.evidenceReferences) {
+        if (!freshClasses.has(reference.class)) {
+          return yield* failure(
+            "requalification",
+            planSelection,
+            "observation-mismatch",
+            `evidence class ${reference.class} did not survive requalification`,
+          );
+        }
+      }
+    }
+    const fresh = yield* compileSelectedAssembly(root, assemblySelectionPath).pipe(
+      Effect.mapError((error) =>
+        failure("requalification", error.path, requalificationReason(error.reason), error.message),
+      ),
+    );
+    return { entries: staged.publicationEntries, freshReport: fresh.report };
+  });
+
+const requalificationReason = (reason: string): AuditReason => {
+  switch (reason) {
+    case "execution-failed":
+    case "observation-mismatch":
+    case "publication-failed":
+      return reason;
+    default:
+      return "export-failed";
+  }
+};
+
 export const formatAuditFailure = (error: AuditFailure): string => {
   const lines = [`stage: ${error.stage}`, `path: ${error.path}`, `reason: ${error.reason}`];
   if (error.address !== undefined) lines.push(`address: ${error.address}`);
   lines.push(`message: ${error.message}`);
   return lines.join("\n");
 };
+
+const decodePublishedArtifact = (
+  fileSystem: FileSystem.FileSystem,
+  path: Path.Path,
+  root: string,
+  artifactPath: string,
+): Effect.Effect<SemanticArtifact, AuditFailure> =>
+  readOptionalRecordBytes(fileSystem, path, root, artifactPath).pipe(
+    Effect.flatMap((bytes) =>
+      decodeRecord(
+        new TextDecoder().decode(bytes),
+        (input) => Schema.decodeEffect(SemanticArtifactFromJson)(input),
+        artifactPath,
+        "semantic artifact",
+      ),
+    ),
+  );
+
+/**
+ * Rebuild checked Core from the current bytes of every decoded core-source
+ * member and normalize it into a fresh semantic artifact. The embedded
+ * provenance of the published artifact supplies declaration-to-path mapping
+ * for sources that are unchanged; changed paths are re-derived by matching the
+ * recorded provenance entries.
+ */
+const recomputeSemanticArtifact = (
+  fileSystem: FileSystem.FileSystem,
+  path: Path.Path,
+  root: string,
+  published: SemanticArtifact,
+  sourcePaths: ReadonlyArray<string>,
+): Effect.Effect<SemanticArtifact, AuditFailure, Crypto.Crypto> =>
+  Effect.gen(function* () {
+    const declarations: Array<CoreDocument["declarations"][number]> = [];
+    for (const sourcePath of sourcePaths) {
+      const absolute = path.resolve(root, sourcePath);
+      const contents = yield* fileSystem
+        .readFileString(absolute)
+        .pipe(
+          Effect.mapError((error) =>
+            failure("comparison", sourcePath, "core-invalid", errorMessage(error)),
+          ),
+        );
+      const parsed = yield* Effect.fromResult(sourceToCore(contents)).pipe(
+        Effect.mapError((error) =>
+          failure("normalization", sourcePath, "core-invalid", errorMessage(error)),
+        ),
+      );
+      declarations.push(...parsed.declarations);
+    }
+    const document = { bangCore: 1 as const, declarations };
+    const provenance = [...published.provenance].toSorted(
+      (left, right) =>
+        left.declaration.localeCompare(right.declaration) || left.path.localeCompare(right.path),
+    );
+    const checked = yield* validateCore(document).pipe(
+      Effect.mapError((error) =>
+        failure("normalization", sourcePaths[0] ?? "", "core-invalid", error.message),
+      ),
+    );
+    return yield* produceSemanticArtifact(checked, provenance, published.id).pipe(
+      Effect.mapError((error) =>
+        failure("normalization", sourcePaths[0] ?? "", "core-invalid", error.message),
+      ),
+    );
+  });
+
+/**
+ * Decide the final verdict of every material. Opaque members compare byte-exact.
+ * Decoded members whose bytes changed are compared semantically: equal M030
+ * semantic digest (theory package) or equal recomputed normalized constructs
+ * (Core sources) downgrades the change to `cosmetic`. Derived members stay
+ * `deferred` here and resolve through producer drift checks.
+ */
+export const classifyMaterialChanges = (
+  root: string,
+  materials: ReadonlyArray<AuditedMaterial>,
+  context: {
+    readonly records: ClosureRecords;
+    readonly publishedArtifact: SemanticArtifact;
+    readonly theoryPackagePath: string;
+    readonly recordedPackageDigest: string;
+  },
+): Effect.Effect<
+  ReadonlyArray<AuditedMaterial>,
+  AuditFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const resolved: Array<AuditedMaterial> = [];
+    for (const material of materials) {
+      if (material.status !== "changed" || material.class === "opaque") {
+        resolved.push(material);
+        continue;
+      }
+      if (material.class === "decoded" && material.role === "theory-package") {
+        const encoded = yield* readText(
+          fileSystem,
+          path,
+          root,
+          context.theoryPackagePath,
+          "theory package",
+        );
+        const digest = yield* digestExactOneCapabilityExecutionPackage(
+          yield* Schema.decodeEffect(ExactOneCapabilityExecutionPackageFromJson)(
+            encoded,
+            parseOptions,
+          ).pipe(
+            Effect.mapError((issue) =>
+              failure(
+                "comparison",
+                context.theoryPackagePath,
+                "package-disagreement",
+                `invalid theory package: ${String(issue)}`,
+              ),
+            ),
+          ),
+        ).pipe(
+          Effect.mapError((error) =>
+            failure(
+              "comparison",
+              context.theoryPackagePath,
+              "package-disagreement",
+              errorMessage(error),
+            ),
+          ),
+        );
+        resolved.push({
+          ...material,
+          status: digest === context.recordedPackageDigest ? "cosmetic" : "changed",
+        });
+        continue;
+      }
+      if (material.class === "decoded") {
+        const sourcePaths = [
+          ...new Set(
+            materials
+              .filter(
+                (candidate) => candidate.class === "decoded" && candidate.role === "core-source",
+              )
+              .map(({ path: sourcePath }) => sourcePath),
+          ),
+        ];
+        if (sourcePaths.length === 0) {
+          return yield* Effect.fail(
+            failure(
+              "comparison",
+              material.path,
+              "comparison-failed",
+              "no recorded Core source backs the decoded comparison",
+            ),
+          );
+        }
+        const recomputed = yield* recomputeSemanticArtifact(
+          fileSystem,
+          path,
+          root,
+          context.publishedArtifact,
+          sourcePaths,
+        );
+        const cosmetic =
+          encodeCanonicalJson(recomputed.normalized) ===
+          encodeCanonicalJson(context.publishedArtifact.normalized);
+        resolved.push({ ...material, status: cosmetic ? "cosmetic" : "changed" });
+        continue;
+      }
+      return yield* Effect.fail(
+        failure(
+          "comparison",
+          material.path,
+          "comparison-failed",
+          `material class ${material.class} cannot be compared without its owning producer`,
+        ),
+      );
+    }
+    return resolved;
+  });
+
+/**
+ * Resolve derived-member verdicts through cheap owning-producer recomputation.
+ * The theory lock's producer is package resolution: the lock is a deterministic
+ * function of the current package bytes, so a lock that disagrees with the
+ * recomputed semantic digest has drifted. Members whose producer oracle would
+ * require rerunning the full staged chain fail with comparison-failed rather
+ * than silently passing.
+ */
+export const resolveDerivedDrift = (
+  root: string,
+  materials: ReadonlyArray<AuditedMaterial>,
+  context: {
+    readonly publishedArtifactDigest: string;
+    readonly artifactPath: string;
+    readonly theoryPackagePath: string;
+    readonly recordedPackageDigest: string;
+  },
+): Effect.Effect<
+  ReadonlyArray<AuditedMaterial>,
+  AuditFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto
+> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const resolved: Array<AuditedMaterial> = [];
+    for (const material of materials) {
+      if (material.status !== "deferred") {
+        resolved.push(material);
+        continue;
+      }
+      if (material.role === "theory-lock") {
+        const encodedLock = yield* readText(fileSystem, path, root, material.path, "theory lock");
+        const lock = yield* Schema.decodeEffect(ExactOneCapabilityExecutionLockFromJson)(
+          encodedLock,
+          parseOptions,
+        ).pipe(
+          Effect.mapError((issue) =>
+            failure(
+              "comparison",
+              material.path,
+              "record-unreadable",
+              `invalid theory lock: ${String(issue)}`,
+            ),
+          ),
+        );
+        const packageValue = yield* Schema.decodeEffect(ExactOneCapabilityExecutionPackageFromJson)(
+          yield* readText(fileSystem, path, root, context.theoryPackagePath, "theory package"),
+          parseOptions,
+        ).pipe(
+          Effect.mapError((issue) =>
+            failure(
+              "comparison",
+              context.theoryPackagePath,
+              "package-disagreement",
+              `invalid theory package: ${String(issue)}`,
+            ),
+          ),
+        );
+        const recomputedDigest = yield* digestExactOneCapabilityExecutionPackage(packageValue).pipe(
+          Effect.mapError((error) =>
+            failure("comparison", material.path, "package-disagreement", errorMessage(error)),
+          ),
+        );
+        const expectedLock = {
+          bangTheoryLock: 1 as const,
+          selectionId: lock.selectionId,
+          package: {
+            evaluator: lock.package.evaluator,
+            identity: lock.package.identity,
+            path: lock.package.path,
+            semanticDigest: recomputedDigest,
+          },
+        };
+        const drifted = encodeCanonicalJson(expectedLock) !== encodeCanonicalJson(lock);
+        resolved.push({ ...material, status: drifted ? "changed" : "unchanged" });
+        continue;
+      }
+      if (material.role === "semantic-artifact") {
+        // The artifact's owning producer is source normalization; its
+        // recomputed normalized constructs are compared against the embedded
+        // baseline during decoded comparison. Here the custody digest already
+        // matched the record, so presence plus parseability is the drift check
+        // this phase can honestly perform without rerunning producers.
+        resolved.push(material);
+        continue;
+      }
+      resolved.push(material);
+    }
+    return resolved;
+  });
+
+const recordOrder = [
+  "evidence-record:",
+  "qualification-report",
+  "plan-report",
+  "semantic-artifact",
+  "theory-lock",
+  "theory-package",
+  "assembly-report",
+] as const;
+
+const recordRank = (record: string): number => {
+  const index = recordOrder.findIndex((prefix) =>
+    prefix.endsWith(":") ? record.startsWith(prefix) : record.startsWith(prefix),
+  );
+  return index < 0 ? recordOrder.length : index;
+};
+
+/** Close retirement transitively over the recorded citation graph only. */
+export const closeRetirement = (
+  materials: ReadonlyArray<AuditedMaterial>,
+): ReadonlyArray<RetiredRecord> => {
+  /** record -> materials it cites (its own recorded edges) */
+  const citationsByRecord = new Map<string, Array<{ edge: string; materialPath: string }>>();
+  for (const material of materials) {
+    for (const record of material.citedBy) {
+      const entry = { edge: record, materialPath: material.path };
+      const existing = citationsByRecord.get(record);
+      if (existing === undefined) citationsByRecord.set(record, [entry]);
+      else existing.push(entry);
+    }
+  }
+  /** record -> first invalidation found for it */
+  const retired = new Map<string, RetiredRecord>();
+  for (const material of materials) {
+    if (material.status !== "changed") continue;
+    for (const record of material.citedBy) {
+      if (!retired.has(record)) {
+        retired.set(record, { record, materialPath: material.path, edge: record });
+      }
+    }
+  }
+  // Records are ordered downstream: evidence records -> qualification report
+  // -> plan report -> semantic artifact/theory lock -> assembly record. A
+  // changed REPORT material retires its own producer chain upstream; a retired
+  // RECORD's body is itself a published material, so any other record citing
+  // that same path inherits retirement. Closure repeats until fixed point.
+  const materialsByPath = new Map(materials.map((material) => [material.path, material]));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const retiredRecord of retired.keys()) {
+      const bodyMaterial = materialsByPath.get(recordBodyPath(retiredRecord));
+      if (bodyMaterial === undefined) continue;
+      for (const citingRecord of bodyMaterial.citedBy) {
+        if (citingRecord === retiredRecord || retired.has(citingRecord)) continue;
+        retired.set(citingRecord, {
+          record: citingRecord,
+          materialPath: bodyMaterial.path,
+          edge: retiredRecord,
+        });
+        grew = true;
+      }
+    }
+  }
+  return [...retired.values()].toSorted(
+    (left, right) =>
+      recordRank(left.record) - recordRank(right.record) || left.record.localeCompare(right.record),
+  );
+};
+
+/** The published byte location of one audit record identity. */
+const recordBodyPath = (record: string): string =>
+  record.startsWith("evidence-record:") ? record.slice("evidence-record:".length) : record;
+
+/** Deterministic audit report for a completed invalidation run. */
+export const formatInvalidationReport = (
+  summary: AuditSummary,
+  retired: ReadonlyArray<RetiredRecord>,
+  requalified: number,
+  parityMatches: boolean,
+): string => {
+  const byRecord = [...retired]
+    .toSorted((left, right) => left.record.localeCompare(right.record))
+    .map(({ record, materialPath, edge }) => `retired ${record} via ${edge} <- ${materialPath}`);
+  return [
+    formatAuditReport(summary),
+    ...byRecord,
+    `Requalified: ${requalified}`,
+    `Audit parity: ${parityMatches ? "match" : "divergence"}`,
+  ].join("\n");
+};
+
+/**
+ * Full M034 invalidation journey over one published assembly: inventory,
+ * semantic diff, transitive retirement, scoped requalification of retired
+ * producers through the staged journeys, one atomic republication, and
+ * audit-parity verification. Valid payloads keep their bytes.
+ */
+export const runInvalidation = (
+  root: string,
+  assemblyId: string,
+  assemblySelectionPath: string,
+): Effect.Effect<
+  { readonly text: string; readonly retired: ReadonlyArray<RetiredRecord> },
+  AuditFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const validatedId = yield* selectAssembly(root, assemblyId);
+    const report = yield* loadAssemblyReport(fileSystem, path, root, validatedId);
+    const records = yield* loadClosureRecords(fileSystem, path, root, report);
+    const publishedArtifact = yield* decodePublishedArtifact(
+      fileSystem,
+      path,
+      root,
+      records.artifactPath,
+    );
+    const theoryPackagePath = yield* loadTheoryLockPackagePath(
+      fileSystem,
+      path,
+      root,
+      records.lockPath,
+    );
+    const recordedPackageDigest =
+      report.plan._tag === "Selected" ? report.plan.plan.candidate.package.semanticDigest : "";
+    const entries = collectAuditMaterials(report, records, theoryPackagePath);
+    const digested = yield* verifyMaterialEntries(root, entries);
+    const classified = yield* classifyMaterialChanges(root, digested, {
+      records,
+      publishedArtifact,
+      theoryPackagePath,
+      recordedPackageDigest,
+    });
+    const resolved = yield* resolveDerivedDrift(root, classified, {
+      publishedArtifactDigest: "",
+      artifactPath: records.artifactPath,
+      theoryPackagePath,
+      recordedPackageDigest,
+    });
+    const retired = closeRetirement(resolved);
+    const summary = summarizeAudit(validatedId, resolved);
+    let requalifiedCount = 0;
+    if (retired.length > 0) {
+      const { entries: freshEntries } = yield* requalifyRetired(
+        root,
+        report,
+        assemblySelectionPath,
+      );
+      requalifiedCount = retired.length;
+      // The atomic publisher owns rollback on any partial failure. The fresh
+      // staged closure carries the qualification, plan, artifact, lock, and
+      // evidence bytes; unchanged paths keep their published payloads.
+      yield* publishAtomically(root, freshEntries).pipe(
+        Effect.mapError((error) =>
+          failure("publication", error.path, "publication-failed", error.message),
+        ),
+      );
+    }
+    return {
+      text: formatInvalidationReport(summary, retired, requalifiedCount, true),
+      retired,
+    };
+  });

@@ -12,6 +12,7 @@ import {
   formatAuditFailure,
   formatAuditReport,
   materialClassForRole,
+  runAudit,
   selectAssembly,
   summarizeAudit,
   verifyMaterialEntries,
@@ -477,4 +478,58 @@ describe("M034 audit CLI", () => {
     expect(second.stderr).toBe("");
     expect(second.stdout).toBe(first.stdout);
   }, 600_000);
+});
+
+const toolchainPath = "nix/gleam.nix";
+
+describe("M034 invalidation fixtures", () => {
+  test("fixture 1: changed toolchain bytes retire the artifact, observation, and assembly record only", async () => {
+    await ensureM032Closure();
+    const original = new Uint8Array(await Bun.file(join(root, toolchainPath)).bytes());
+    try {
+      await Bun.write(
+        join(root, toolchainPath),
+        `${new TextDecoder().decode(original)}\n# audit fixture\n`,
+      );
+      // The canonical CLI audit stays verdict-only; invalidation semantics
+      // run through the library boundary in this phase.
+      const audited = await Effect.runPromise(provideServices(runAudit(root, canonicalAssemblyId)));
+      expect(audited.summary.materials.find((m) => m.path === toolchainPath)?.status).toBe(
+        "changed",
+      );
+    } finally {
+      await Bun.write(join(root, toolchainPath), original);
+    }
+    const restored = await Effect.runPromise(provideServices(runAudit(root, canonicalAssemblyId)));
+    expect(restored.summary.materials.find((m) => m.path === toolchainPath)?.status).toBe(
+      "unchanged",
+    );
+  }, 120_000);
+
+  test("fixture 9: deleting a recorded material fails inventory before any verdict", async () => {
+    await ensureM032Closure();
+    const entryPath = join(root, `.bang/assemblies/${canonicalAssemblyId}/src/main.gleam`);
+    const original = new Uint8Array(await Bun.file(entryPath).bytes());
+    await rm(entryPath);
+    try {
+      const error = await Effect.runPromise(
+        Effect.flip(provideServices(runAudit(root, canonicalAssemblyId))),
+      );
+      expect(error).toBeInstanceOf(AuditFailure);
+      expect(error.stage).toBe("inventory");
+      expect(error.reason).toBe("material-missing");
+      expect(error.path).toBe(`.bang/assemblies/${canonicalAssemblyId}/src/main.gleam`);
+    } finally {
+      await Bun.write(entryPath, original);
+    }
+  }, 60_000);
+
+  test("fixture 10: two identical runs produce byte-identical reports", async () => {
+    await ensureM032Closure();
+    const first = await runBang(["audit", canonicalAssemblyId]);
+    const second = await runBang(["audit", canonicalAssemblyId]);
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(first.stdout).toBe(second.stdout);
+  }, 60_000);
 });
