@@ -40,6 +40,7 @@ flowchart LR
     M032["M032 · objective-relative realization planning<br/>complete"]
     M033["M033 · selected realization assembly<br/>complete"]
     M034["M034 · continuous evidence invalidation<br/>complete"]
+    M035["M035 · external extension boundary<br/>complete"]
 
 
     M000 --> M001 --> M002 --> M003
@@ -137,6 +138,7 @@ flowchart LR
     M031 --> M032
     M032 --> M033
     M033 --> M034
+    M034 --> M035
 
 ```
 
@@ -177,6 +179,7 @@ flowchart LR
 | fresh two-target exact-one qualification | Execute the same packaged exact-one requirement through fresh Effect and supervised Gleam probes with target-specific evidence | actor realization + single-use capability + theory explanation + classification + local theory package          | M031         | complete |
 | selected realization assembly            | State one objective, receive one local escript that runs without BANG, with every assembled byte identified                    | objective-relative planning + actor realization + fresh qualification                                           | M033         | complete |
 | continuous evidence invalidation         | Change one material and learn exactly which published evidence is invalidated, then requalify only that closure                | objective-relative planning + actor realization + fresh qualification + selected realization assembly           | M034         | complete |
+| external extension boundary              | Consume BANG's published schemas from one process outside the workspace and receive one typed verdict                          | selected realization assembly + continuous evidence invalidation                                                | M035         | complete |
 
 M025 is complete through `bang project examples/tiny-bank/project.json`. Its tracer composes one project-owned source list and preserves all evidence distinctions.
 
@@ -199,6 +202,8 @@ M026 is complete through `bang database examples/tiny-bank/database/account.json
 [M033](design-specs/M033-selected-realization-assembly.md) is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. BANG stages the selected M032 plan, binds the M031-qualified Gleam boundary by digest, exports a canonical escript with pinned toolchain materials, and checks one separate-process observation against M031 evidence. The published artifact runs through `escript` without BANG; the assembly record identifies every generated, assembled, third-party, compiled, and toolchain material.
 
 [M034](design-specs/M034-evidence-invalidation.md) is complete through `bang audit tiny-bank-supervised-exact-one`. The audit inventories every recorded material of one published assembly closure, recomputes each digest, and classifies every member by its equality class: decoded materials compare semantically, opaque custody bytes compare exactly, and derived members resolve through their owning producer. Changed materials retire records transitively over recorded citation edges only, requalification reruns only retired producers while preserving evidence classes, closure parity is verified before any commit, and the fresh closure republishes in one atomic transaction. Typed failures cover unsafe or unknown assembly identities, unreadable records, missing or unreadable materials, digest failures, comparison failures, and requalification stages.
+
+[M035](design-specs/M035-external-extension-boundary.md) is complete through `bang export-schemas`. BANG publishes one versioned schema set under `dist/schemas/1/` — a digest-pinned manifest, three JSON Schema documents generated from the live producer Schemas, and consumer types with strict decoders — replacing any same-version publication atomically and byte-identically. A focused journey runs one consumer process in a temporary directory outside the workspace that imports only publication entries and host built-ins, verifies every recorded SHA-256 custody digest, strictly decodes a published theory lock and target evidence record, and prints one typed verdict; eight negative fixtures cover tampered materials, unsupported versions, missing or altered publication files, malformed records, foreign imports, and disagreeing records.
 
 ## Exploratory ecosystem frontier
 
