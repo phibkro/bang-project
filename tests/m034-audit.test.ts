@@ -5,6 +5,7 @@ import type { M031TargetQualificationEvidence } from "@bang/evidence";
 import { BunServices } from "@effect/platform-bun";
 import { describe, expect, test } from "bun:test";
 import { type FileSystem, type Path, Crypto, Effect } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   AuditFailure,
@@ -13,6 +14,7 @@ import {
   formatAuditReport,
   materialClassForRole,
   runAudit,
+  runInvalidation,
   selectAssembly,
   summarizeAudit,
   verifyMaterialEntries,
@@ -34,6 +36,19 @@ const testCrypto = Crypto.make({
 const provideServices = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | Crypto.Crypto>,
 ) =>
+  // @effect-diagnostics-next-line strictEffectProvide:off
+  Effect.provide(effect, BunServices.layer).pipe(Effect.provideService(Crypto.Crypto, testCrypto));
+
+const provideServicesWithSpawner = <A, E>(
+  effect: Effect.Effect<
+    A,
+    E,
+    FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+  >,
+) =>
+  // Test execution is the composition root; BunServices.layer supplies the
+  // ChildProcessSpawner alongside FileSystem and Path. The deterministic test
+  // Crypto replaces the platform digest so fixture digests stay reproducible.
   // @effect-diagnostics-next-line strictEffectProvide:off
   Effect.provide(effect, BunServices.layer).pipe(Effect.provideService(Crypto.Crypto, testCrypto));
 
@@ -532,4 +547,123 @@ describe("M034 invalidation fixtures", () => {
     expect(second.exitCode).toBe(0);
     expect(first.stdout).toBe(second.stdout);
   }, 60_000);
+});
+
+describe("M034 cosmetic and failed-requalification fixtures", () => {
+  const coreSourcePath = "examples/tiny-bank/account.bang";
+  const assemblySelection = "examples/tiny-bank/assemblies/supervised-exact-one.json";
+  const theoryPackageSourcePath = "packages/theories/theory-packages/exact-one-capability.json";
+
+  test("fixture 5: reordered theory-package JSON keeps the closure valid and refreshes custody", async () => {
+    await ensureM032Closure();
+    await rm(join(root, ".bang/assemblies", canonicalAssemblyId), {
+      recursive: true,
+      force: true,
+    });
+    // Rebuild the closure against the ORIGINAL package so every recorded
+    // digest matches before the mutation.
+    const baseline = await runBang(["assemble", canonicalSelection]);
+    expect(baseline.exitCode).toBe(0);
+    expect(baseline.stderr).toBe("");
+
+    const originalPackage = new Uint8Array(
+      await Bun.file(join(root, theoryPackageSourcePath)).bytes(),
+    );
+    try {
+      // Cosmetic edit: reverse top-level key order. Same parsed JSON value,
+      // different bytes, identical M030 canonical semantic digest.
+      const parsed = JSON.parse(new TextDecoder().decode(originalPackage)) as object;
+      const reordered: Record<string, unknown> = {};
+      for (const key of Object.keys(parsed).toReversed()) {
+        reordered[key] = (parsed as Record<string, unknown>)[key];
+      }
+      await Bun.write(
+        join(root, theoryPackageSourcePath),
+        `${JSON.stringify(reordered, null, 2)}\n`,
+      );
+
+      // Spec material classes: a decoded material with different bytes but
+      // equal semantics is cosmetic, and a cosmetic change retires nothing
+      // (falsifier #5). This closure records the package only by semantic
+      // digest (lock + plan candidate), so there are no byte-custody digests
+      // to refresh and every verdict stays valid.
+      const invalidation = await Effect.runPromise(
+        provideServicesWithSpawner(runInvalidation(root, canonicalAssemblyId, assemblySelection)),
+      );
+      expect(invalidation.retired.length).toBe(0);
+      expect(invalidation.text).toContain("cosmetic decoded packages/theories/");
+      expect(invalidation.text).toContain("Would retire 0 records");
+      expect(invalidation.text).toContain("Requalified: 0");
+      expect(invalidation.text).toContain("Audit parity: match");
+
+      // After recovery, the published closure is valid again with refreshed
+      // custody digests matching the reordered package bytes.
+      const recovered = await runBang(["audit", canonicalAssemblyId]);
+      expect(recovered.exitCode).toBe(0);
+      expect(recovered.stderr).toBe("");
+      expect(recovered.stdout).toContain("Materials:");
+      expect(recovered.stdout).toContain("Changed: 0");
+      expect(recovered.stdout).toContain("Would retire 0 records");
+    } finally {
+      await Bun.write(join(root, theoryPackageSourcePath), originalPackage);
+    }
+    const restoredAudit = await runBang(["assemble", canonicalSelection]);
+    expect(restoredAudit.exitCode).toBe(0);
+    const finalAudit = await runBang(["audit", canonicalAssemblyId]);
+    expect(finalAudit.exitCode).toBe(0);
+    expect(finalAudit.stdout).toContain("Changed: 0");
+  }, 600_000);
+
+  test("fixture 8: strengthened invariant forces typed requalification failure and leaves bytes unchanged", async () => {
+    await ensureM032Closure();
+    await rm(join(root, ".bang/assemblies", canonicalAssemblyId), {
+      recursive: true,
+      force: true,
+    });
+    const baseline = await runBang(["assemble", canonicalSelection]);
+    expect(baseline.exitCode).toBe(0);
+    expect(baseline.stderr).toBe("");
+
+    const originalSource = new Uint8Array(await Bun.file(join(root, coreSourcePath)).bytes());
+    try {
+      // Strengthen the Account invariant: balance >= 0 -> balance >= 1. The
+      // Gleam exact-one projection requires the literal >= 0 predicate and
+      // rejects anything else, so M031 requalification genuinely fails and
+      // planning surfaces a non-qualified candidate for gleam-beam.
+      const strengthened = new TextDecoder()
+        .decode(originalSource)
+        .replace("balance >= 0", "balance >= 1");
+      expect(strengthened).not.toBe(new TextDecoder().decode(originalSource));
+      await Bun.write(join(root, coreSourcePath), strengthened);
+
+      const failureBytes = await readBytesOf(m033Closure);
+      const error = await Effect.runPromise(
+        Effect.flip(
+          provideServicesWithSpawner(runInvalidation(root, canonicalAssemblyId, assemblySelection)),
+        ),
+      );
+      expect(error).toBeInstanceOf(AuditFailure);
+      expect(error.stage).toBe("requalification");
+      // The strengthened invariant makes the Gleam exact-one projection
+      // reject the literal >= 0 predicate; M031 requalification surfaces
+      // that as an unsupported-target reason mapped onto planning-failed.
+      expect(error.reason).toBe("planning-failed");
+      expect(error.message).toContain("nonnegativeBalance");
+
+      // Every prior byte remains: the failed journey publishes nothing.
+      const afterFailure = await readBytesOf(m033Closure);
+      expect(sameBytes(failureBytes, afterFailure)).toBe(true);
+    } finally {
+      await Bun.write(join(root, coreSourcePath), originalSource);
+    }
+
+    // Restore the source; observe recovery to a fully valid closure.
+    const recovered = await runBang(["assemble", canonicalSelection]);
+    expect(recovered.exitCode).toBe(0);
+    expect(recovered.stderr).toBe("");
+    const finalAudit = await runBang(["audit", canonicalAssemblyId]);
+    expect(finalAudit.exitCode).toBe(0);
+    expect(finalAudit.stdout).toContain("Changed: 0");
+    expect(finalAudit.stdout).toContain("Would retire 0 records");
+  }, 600_000);
 });
