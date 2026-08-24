@@ -17,7 +17,7 @@ bang/
 │   ├── planning/               strict objectives, target contributions, and deterministic realization plans
 │   └── theories/               reusable Schema-backed theory consumers
 ├── apps/                       user-facing executables
-│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, plan, assemble, trace, project, database, and evolve commands
+│   └── bang/                   shipped report, check, ledger, normalize, explain, classify, plan, assemble, audit, trace, project, database, and evolve commands
 ├── tools/                      repository/build/release tooling packages
 ├── examples/                   cumulative systems and conformance implementations
 ├── design-specs/               frozen mission and tooling contracts
@@ -52,6 +52,8 @@ M025 is complete through `bang project`. One project-owned selection composes th
 [M032](../design-specs/M032-objective-relative-realization-planning.md) adds `bang plan`. It reruns the fresh M031 qualification pipeline, consumes checked target-owned contributions, and matches explicit operational demands without scoring or hidden defaults. Selected, incomparable, and no-plan results preserve premises, evidence scope, assumptions, weakenings, lifetime, and invalidators. One transaction publishes the qualification and plan closure or restores all prior bytes.
 
 [M033](../design-specs/M033-selected-realization-assembly.md) adds `bang assemble`. It reruns the staged M032 plan, binds the M031-qualified Gleam boundary by SHA-256, exports a canonicalized Erlang escript with pinned toolchain materials, runs it once as a separate process, and compares the observation against M031 evidence. One transaction publishes the qualification, plan, project materials, artifact, and assembly record or restores all prior bytes. The published artifact runs through `escript` without BANG.
+
+[M034](../design-specs/M034-evidence-invalidation.md) adds `bang audit`. It resolves one published assembly record, inventories every recorded material across the closure records — assembly materials, plan report, target evidence records, semantic artifact, theory lock, and the recorded theory package — recomputes each SHA-256 through the Crypto service, and classifies every member by its equality class: decoded materials compare semantically (Core sources by construct-addressed normalization, the theory package by canonical semantic digest), opaque custody bytes compare exactly, and derived members resolve through their owning producer or fail comparison. Retirement closes transitively over recorded citation edges only; requalification reruns only retired producers through the staged M030–M033 journeys while preserving evidence classes; closure parity is verified before any commit and the fresh closure republishes in one atomic transaction.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

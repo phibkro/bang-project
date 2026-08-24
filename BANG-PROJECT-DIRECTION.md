@@ -273,10 +273,11 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 33. M031 — execute the packaged exact-one requirement through fresh Effect and supervised Gleam/BEAM probes, then classify each target from independent evidence.
 34. M032 — match explicit operational objectives against fresh qualified Effect and Gleam candidates, then return one plan, incomparable plans, or no plan.
 35. M033 — assemble one selected Gleam realization into one standalone escript with a strict qualified-material record.
+36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
-M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`. M028 is complete through `bang evolve <selection>`. M029 and M030 are complete through `bang explain <selection>`. M031 is complete through `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. M032 is complete through `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. M033 is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`.
+M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`. M028 is complete through `bang evolve <selection>`. M029 and M030 are complete through `bang explain <selection>`. M031 is complete through `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. M032 is complete through `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. M033 is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. M034 is complete through `bang audit <assembly-id>`.
 
 M030 turns the cross-domain exact-one declaration into a load-bearing local package boundary. TinyBank and Inventory pin the same package identity, version, semantic digest, evaluator identity, premise identities, and obligation identities. Missing, changed, unsupported, or evaluator-disagreeing packages fail before artifacts or locks are published.
 
@@ -285,6 +286,8 @@ M031 turns heterogeneous realization classification into a fresh two-target exec
 M032 turns fresh qualification into objective-relative planning. It selects Gleam for supervised restart behavior and Effect for in-process execution. Without a distinguishing objective, it returns both candidates as incomparable. A grant-survival objective returns no plan because Effect is unresolved and Gleam contradicts it. Planning policy remains separate from Core and target evidence.
 
 M033 turns one selected plan into a locally runnable artifact. The assembler binds the M031-qualified Gleam boundary by digest, records every other source, dependency, toolchain, and compiled material without upgrading its evidence grade, checks one separate-process observation, and publishes the complete closure atomically. The escript runs without BANG or the Gleam compiler on a compatible OTP host.
+
+M034 turns published evidence into an auditable custody question. `bang audit` inventories every recorded material of one assembly closure — assembly materials, plan report, target evidence records, semantic artifact, theory lock, and the recorded theory package — recomputes each SHA-256 through the Crypto service, and classifies every member with one equality rule: decoded materials compare semantically (Core sources by construct-addressed normalization against the embedded baseline, the theory package by canonical semantic digest), opaque custody bytes compare exactly, and derived members resolve through their owning producer or fail comparison rather than silently passing. Retirement closes transitively over recorded citation edges only and names the material and edge that carried invalidation for every retired record; requalification reruns only retired producers through the staged journeys and preserves evidence classes on pain of typed failure; closure parity is checked before any commit and the fresh closure republishes in one atomic transaction.
 
 ## Provisional full-compiler horizon
 
