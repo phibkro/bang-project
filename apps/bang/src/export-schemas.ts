@@ -250,7 +250,7 @@ const decodePackageReference = (value) =>
   exactFields(value, ["path", "identity", "semanticDigest", "evaluator"]);
 
 /**
- * Strict decoder for format tag \\\`bangTheoryLock:1\\\`. Excess fields are
+ * Strict decoder for format tag \`bangTheoryLock:1\`. Excess fields are
  * errors, matching producer decoding behavior.
  */
 export const decodeBangTheoryLock = (encoded) => {
@@ -361,7 +361,7 @@ const evidenceFields = [
 ];
 
 /**
- * Strict decoder for format tag \\\`bangTargetQualificationEvidence:1\\\`.
+ * Strict decoder for format tag \`bangTargetQualificationEvidence:1\`.
  * Excess fields are errors, matching producer decoding behavior.
  */
 export const decodeBangTargetQualificationEvidence = (encoded) => {
@@ -426,16 +426,16 @@ const verifyPublishedFile = async (relativePath, expectedDigest, publicationDire
     return reject(
       "publication",
       "schema-unavailable",
-      \\\`missing published file \\\${relativePath}\\\`,
+      \`missing published file \\\${relativePath}\`,
       { path: relativePath },
     );
   }
-  const observedDigest = \\\`sha256:\\\\\${sha256HexOf(bytes)}\\\`;
+  const observedDigest = \`sha256:\${sha256HexOf(bytes)}\`;
   if (observedDigest !== expectedDigest) {
     return reject(
       "publication",
       "digest-mismatch",
-      \\\`published bytes differ from the manifest digest for \\\${relativePath}\\\`,
+      \`published bytes differ from the manifest digest for \\\${relativePath}\`,
       { path: relativePath, expected: expectedDigest, observed: observedDigest },
     );
   }
@@ -446,7 +446,7 @@ const verifyManifestIntegrity = async (manifestPath) => {
   const manifestBytes = await readBytes(manifestPath);
   if (manifestBytes === undefined) {
     return {
-      failure: reject("publication", "schema-unavailable", \\\`missing manifest \\\${manifestPath}\\\`, {
+      failure: reject("publication", "schema-unavailable", \`missing manifest \\\${manifestPath}\`, {
         path: manifestPath,
       }),
     };
@@ -477,7 +477,7 @@ const verifyManifestIntegrity = async (manifestPath) => {
           : reject(
               "publication",
               "version-unsupported",
-              \\\`unsupported publication version \\\${String(isPlainObject(manifest) ? manifest.version : undefined)}\\\`,
+              \`unsupported publication version \${String(isPlainObject(manifest) ? manifest.version : undefined)}\`,
               {
                 path: manifestPath,
                 expected: String(${BANG_SCHEMA_PUBLICATION_VERSION}),
@@ -532,7 +532,7 @@ const verifyMaterials = async (evidence, materialsDirectory) => {
       return reject(
         "custody",
         "material-missing",
-        \\\`no supplied bytes for recorded material \\\${material.path}\\\`,
+        \`no supplied bytes for recorded material \\\${material.path}\`,
         { path: material.path },
       );
     }
@@ -541,7 +541,7 @@ const verifyMaterials = async (evidence, materialsDirectory) => {
       return reject(
         "custody",
         "digest-mismatch",
-        \\\`supplied bytes differ from the recorded digest for \\\${material.path}\\\`,
+        \`supplied bytes differ from the recorded digest for \\\${material.path}\`,
         { path: material.path, expected: material.sha256, observed: observedDigest },
       );
     }
@@ -600,7 +600,7 @@ export const verifyBangConsumption = async (options) => {
     return reject(
       "decode",
       "decode-failed",
-      \\\`could not read lock bytes at \\\${options.lockPath}\\\`,
+      \`could not read lock bytes at \\\${options.lockPath}\`,
       { path: options.lockPath },
     );
   }
@@ -609,7 +609,7 @@ export const verifyBangConsumption = async (options) => {
     return reject(
       "decode",
       "decode-failed",
-      \\\`could not read evidence bytes at \\\${options.evidencePath}\\\`,
+      \`could not read evidence bytes at \\\${options.evidencePath}\`,
       { path: options.evidencePath },
     );
   }
@@ -618,7 +618,7 @@ export const verifyBangConsumption = async (options) => {
     return reject(
       "decode",
       "decode-failed",
-      \\\`strict decoder rejected lock document at \\\${options.lockPath}\\\`,
+      \`strict decoder rejected lock document at \\\${options.lockPath}\`,
       { path: options.lockPath },
     );
   }
@@ -627,7 +627,7 @@ export const verifyBangConsumption = async (options) => {
     return reject(
       "decode",
       "decode-failed",
-      \\\`strict decoder rejected evidence document at \\\${options.evidencePath}\\\`,
+      \`strict decoder rejected evidence document at \\\${options.evidencePath}\`,
       { path: options.evidencePath },
     );
   }
