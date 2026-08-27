@@ -57,7 +57,7 @@ M025 is complete through `bang project`. One project-owned selection composes th
 
 [M035](../design-specs/M035-external-extension-boundary.md) adds `bang export-schemas`. It generates one versioned publication under `dist/schemas/1/` — a digest-pinned manifest, three JSON Schema documents compiled from the live producer Schemas through Effect's JSON Schema generation, and consumer types with strict JSON decoders — replacing any same-version publication atomically with byte-identical output. The focused consumer journey copies only the publication and real artifact bytes into a temporary directory outside the workspace, runs a script importing solely publication entries plus node built-ins, verifies every recorded SHA-256 custody digest, strictly decodes the theory lock and evidence record, checks their agreement on theory identity, version, and package semantic digest, and prints one typed verdict; eight negative fixtures pin every rejection stage from publication custody through record agreement.
 
-[M036](../design-specs/M036-second-domain-realization-boundary-portability.md) is active with complete local acceptance evidence. Protected integration is pending.
+[M036](../design-specs/M036-second-domain-realization-boundary-portability.md) is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
 Its positive inputs are under `examples/clinic/`. Checked Core supplies the Clinic machine, operation, state, capability, failure, and realization identities.
 
@@ -72,6 +72,12 @@ Schema publication major 2 accepts the checked-Core-selected observation identit
 The external consumer uses strict decode, custody, and record agreement only. Its loader observes only the sandbox consumer, published consumer module, and required Node built-ins.
 
 No package or CLI verb was added. M036 does not add a generic target plugin protocol or move target-owned decrement behavior into Core.
+
+[M037](../design-specs/M037-full-compiler-candidate.md) is active. It adds one mission-local root script, one strict selection, one public consumer, and one accumulated report.
+
+The command composes existing Clinic explanation, qualification, planning, assembly, audit, schema publication, and external consumption. It adds no BANG CLI verb.
+
+The report separates reused mission evidence from new end-to-end observations. Its six-family scorecard does not claim author-independent Clinic design or universal unification.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

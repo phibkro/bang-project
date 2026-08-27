@@ -1,7 +1,7 @@
 ---
 id: M036
 title: Second-domain realization boundary portability
-status: active
+status: complete
 timebox: 5 focused sessions
 vision_claims:
   - second-domain-realization-portability
@@ -26,9 +26,9 @@ The candidate required Clinic identities through M031, M032, M033, M034, and M03
 
 Thus, the candidate had no path to pass its own acceptance boundary. M036 now tests the missing realization portability boundary first.
 
-The full compiler candidate moves to a future mission only after M036 passes. This contract does not create or reserve M037.
+The full compiler candidate moved to M037 only after M036 passed. This record preserves the original sequencing decision.
 
-Local Phase 3 acceptance evidence passed on 2026-08-27. Protected integration is pending, so M036 remains `active`.
+Protected integration completed on 2026-08-27. M036 is `complete` at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
 # Mission
 
@@ -402,7 +402,7 @@ The acceptance record stores paths and digests from both clean runs. It does not
 
 Local acceptance compared two clean worktrees. The protected revision was `f2673c1b74726adcbf6b56a8655d5efee505b1b2`.
 
-The candidate revision was `8c0d590b08a1432ede1279cf501a46e88efb96d2`. Both worktrees used this `bun.lock` SHA-256:
+The integrated candidate revision is `d2fa7ea4575e6b4e026e369435a21c1d0897d5e6`. Both worktrees used this `bun.lock` SHA-256:
 
 ```text
 e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa
@@ -577,13 +577,21 @@ If implementation pressure exceeds one accepted operation shape, revise the cont
 
 Acceptance requires all items. Clinic success without TinyBank parity is a failure.
 
-## Local acceptance status
+## Completion status
 
-All 23 acceptance items passed locally before this documentation update. `bun run evidence:m036 --verify-record` validates record structure, revision metadata, lock blobs, commands, and canonical encoding.
+All 23 acceptance items passed locally before protected integration.
+
+`bun run evidence:m036 --verify-record` validates record structure, revision metadata, lock blobs, commands, and canonical encoding.
 
 The record-only check does not rerun output bytes. Only `bun run evidence:m036` re-observes both clean worktrees and compares all 15 outputs.
 
-Delivery remains pending protected integration. M036 stays `active`, and this result does not activate or reserve M037.
+[PR 9](https://github.com/phibkro/bang-project/pull/9) rebase-merged M036 at `d2fa7ea4575e6b4e026e369435a21c1d0897d5e6`.
+
+[PR 10](https://github.com/phibkro/bang-project/pull/10) bound parity evidence to that integrated revision. It rebase-merged at `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
+
+The required protected-main `verify` run passed at the final revision. M036 is complete.
+
+M037 activation is a separate contract change.
 
 # Sources
 

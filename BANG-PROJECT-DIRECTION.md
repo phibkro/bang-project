@@ -276,12 +276,15 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 37. M035 — publish versioned semantic schemas and prove one out-of-workspace typed verdict.
 38. M036 — carry one checked-Core-selected Clinic operation through the M031–M035 path while preserving every TinyBank output byte.
+39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated qualified report.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
 M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`. M028 is complete through `bang evolve <selection>`. M029 and M030 are complete through `bang explain <selection>`. M031 is complete through `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. M032 is complete through `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. M033 is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. M034 is complete through `bang audit <assembly-id>`. M035 is complete through `bang export-schemas`.
 
-M036 has complete local acceptance evidence. It remains active because protected integration is pending.
+M036 is complete through the checked Clinic qualification, planning, assembly, audit, and external-consumer path. Protected integration passed at `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
+
+M037 is the sole active mission. It freezes the full compiler candidate boundary.
 
 M031 turns heterogeneous realization classification into a fresh two-target execution journey. Effect TypeScript and supervised Gleam/BEAM consume the same checked packaged requirement, publish separate target-specific evidence, and qualify independently. Gleam actor-incarnation behavior remains target-owned; Core does not promise restart persistence or distributed exactly-once delivery.
 
@@ -311,7 +314,14 @@ Run `bun run evidence:m036` for the clean-worktree parity check. The machine rec
 
 The verifier is [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts). Local `just verify` also passes.
 
-The M036 unsupported claims remain in its active contract. Local acceptance does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
+The M036 unsupported claims remain in its completed contract. M036 does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
+M037 composes the existing Clinic path through one root Bun command. It adds no BANG CLI verb or semantic authority.
+
+The command runs two clean worktrees and compares one 22-file closure. It publishes only after the two runs are equal.
+
+The accumulated report separates reused mission evidence from new end-to-end observations. Its six-family scorecard does not claim universal semantic unification.
+
+M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 
 ## Provisional full-compiler horizon
 
@@ -337,7 +347,7 @@ real BANG self-check
   → full compiler candidate
 ```
 
-Mission evidence can split, merge, reorder, replace, or remove each future node. [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md) defines the compiler acceptance signals. [Decision 0011](decisions/0011-semantic-data-service-exploration.md) defines the new product exploration.
+Mission evidence can split, merge, reorder, replace, or remove each later node. M037 activates the full compiler candidate node from [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md).
 
 Bounded temporal protocols, feedback controllers, and adaptation remain optional semantic branches. They require separate missions and do not block the product tracer.
 

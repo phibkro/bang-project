@@ -57,14 +57,27 @@ The completed vertical missions are listed below. See the [capability dependency
 - [M033 selected realization assembly](design-specs/M033-selected-realization-assembly.md).
 - [M034 continuous evidence invalidation](design-specs/M034-evidence-invalidation.md).
 - [M035 external extension boundary](design-specs/M035-external-extension-boundary.md).
+- [M036 second-domain realization boundary portability](design-specs/M036-second-domain-realization-boundary-portability.md).
 
 This monorepo contains the BANG specification language, Core, compilers, target projections, conformance tools, build tools, theories, and future realization packages. See the [repository map](docs/repository-map.md). A frozen mission must create pressure before a subsystem becomes a package.
 
 ## Current frontier
 
-M036 is the active mission. Its local acceptance evidence is complete, but delivery awaits protected integration.
+M037 is the active mission. It freezes one full compiler candidate from a clean checkout through one public command.
 
-The Clinic journey reuses the M031–M035 path. Checked Core supplies its identities and accepted shape, while each target owns its runtime behavior.
+The command will use the committed Clinic inputs and existing compiler verbs. It will add no new BANG CLI verb or semantic construct.
+
+The active contract freezes this command:
+
+```sh
+bun run candidate:m037 examples/clinic/full-candidate.json
+```
+
+The command is not implemented yet. The M037 contract defines its exact input, output, failure, evidence, and clean-run boundaries.
+
+M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
+
+The six-family scorecard will separate reused mission evidence from new end-to-end observations.
 
 ## Experience the current capability
 
@@ -125,7 +138,7 @@ M035 established the public `bang export-schemas` boundary. The current command 
 
 Major 2 accepts checked-Core-selected realization and entity identifiers in target evidence. Major 1 fixed those fields to TinyBank literals.
 
-M036 has complete local acceptance evidence. Protected integration is pending, so the mission remains active.
+M036 is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
 Checked Core selects `AppointmentBook`, its operation and state shapes, `ConfirmBooking`, `BookingRejectedOnce`, and `BookAppointmentOnce`. Each target owns the decrement.
 
@@ -156,6 +169,12 @@ Local `just verify` passes its `check`, completed previews, full test chain, and
 M036 does not establish a Core decrement law or clinical correctness. It does not establish durable exact-once execution, liveness, fairness, or broader target shapes.
 
 It also does not generalize to arbitrary domains. External validity does not prove implementation conformance or evidence truth.
+
+M037 is active. Its one candidate command will compose the existing Clinic chain through artifact-only execution, audit, schema publication, and external consumption.
+
+The command will write `.bang/evidence/M037.json`. It will compare two clean 22-file closures before it publishes the first closure.
+
+The report will preserve evidence classes and unsupported claims. It will not claim author-independent Clinic design or universal six-family unification.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 

@@ -41,7 +41,8 @@ flowchart LR
     M033["M033 · selected realization assembly<br/>complete"]
     M034["M034 · continuous evidence invalidation<br/>complete"]
     M035["M035 · external extension boundary<br/>complete"]
-    M036["M036 · second-domain realization portability<br/>active · protected integration pending"]
+    M036["M036 · second-domain realization portability<br/>complete"]
+    M037["M037 · full compiler candidate<br/>active"]
 
 
     M000 --> M001 --> M002 --> M003
@@ -141,6 +142,7 @@ flowchart LR
     M033 --> M034
     M034 --> M035
     M035 --> M036
+    M036 --> M037
 
 ```
 
@@ -183,7 +185,8 @@ flowchart LR
 | selected realization assembly            | State one objective, receive one local escript that runs without BANG, with every assembled byte identified                        | objective-relative planning + actor realization + fresh qualification                                           | M033         | complete |
 | continuous evidence invalidation         | Change one material and learn exactly which published evidence is invalidated, then requalify only that closure                    | objective-relative planning + actor realization + fresh qualification + selected realization assembly           | M034         | complete |
 | external extension boundary              | Consume BANG's published schemas from one process outside the workspace and receive one typed verdict                              | selected realization assembly + continuous evidence invalidation                                                | M035         | complete |
-| second-domain realization portability    | Carry one Clinic operation through qualification, planning, Gleam assembly, audit, and external consumption without TinyBank drift | second-domain theory portability + external extension boundary                                                  | M036         | active   |
+| second-domain realization portability    | Carry one Clinic operation through qualification, planning, Gleam assembly, audit, and external consumption without TinyBank drift | second-domain theory portability + external extension boundary                                                  | M036         | complete |
+| full compiler candidate                  | Run the committed Clinic path through one clean-checkout command and receive one honest accumulated report                         | accumulated report + channel evidence + portability + external extension                                        | M037         | active   |
 
 M025 is complete through `bang project examples/tiny-bank/project.json`. Its tracer composes one project-owned source list and preserves all evidence distinctions.
 
@@ -209,7 +212,9 @@ M026 is complete through `bang database examples/tiny-bank/database/account.json
 
 [M035](design-specs/M035-external-extension-boundary.md) is complete through `bang export-schemas`. BANG publishes one versioned schema set under `dist/schemas/1/` — a digest-pinned manifest, three JSON Schema documents generated from the live producer Schemas, and consumer types with strict decoders — replacing any same-version publication atomically and byte-identically. A focused journey runs one consumer process in a temporary directory outside the workspace that imports only publication entries and host built-ins, verifies every recorded SHA-256 custody digest, strictly decodes a published theory lock and target evidence record, and prints one typed verdict; eight negative fixtures cover tampered materials, unsupported versions, missing or altered publication files, malformed records, foreign imports, and disagreeing records.
 
-[M036](design-specs/M036-second-domain-realization-boundary-portability.md) has complete local acceptance evidence. Protected integration is pending, so M036 remains active. Checked Core selects the Clinic shape and identities. Effect and Gleam own their decrement probes and publish separate evidence. Planning selects Gleam, and assembly retains the exact qualified bytes. The copied escript runs with an Erlang-only runtime. Audit finds zero changes in an 18-material closure and requests zero requalifications. The external sandbox strictly decodes records and checks custody through its observed module boundary. A second clean Clinic run is deterministic. Schema major 2 accepts checked-Core-selected observation identities, while all six protected major-1 files remain unchanged. The clean TinyBank comparison matches 15 of 15 files. Run `bun run evidence:m036`; [`tests/m036-tiny-bank-protected-baseline.json`](tests/m036-tiny-bank-protected-baseline.json) and [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts) are the machine-checkable digest root. These observations do not add a Core decrement law or prove clinical correctness, distributed execution, liveness, or implementation conformance.
+[M036](design-specs/M036-second-domain-realization-boundary-portability.md) is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`. Checked Core selects the Clinic shape and identities. Effect and Gleam own separate probes. Planning selects Gleam, assembly retains the qualified bytes, and audit requests zero requalifications. The external consumer checks strict decode and custody. Clean runs preserve all Clinic and TinyBank compatibility bytes.
+
+[M037](design-specs/M037-full-compiler-candidate.md) is active. One root Bun command will compose the committed Clinic chain, artifact-only execution, audit, schema publication, and external consumer. One accumulated report will separate reused evidence from new observations. The six-family scorecard will not claim universal unification or author-independent Clinic design.
 
 ## Exploratory ecosystem frontier
 
