@@ -149,6 +149,8 @@ The same journey preserves all six seeded major-1 files. Two clean TinyBank work
 
 Run `bun run evidence:m036` for that clean-worktree comparison. The only machine-checkable digest root is [`tests/m036-tiny-bank-protected-baseline.json`](tests/m036-tiny-bank-protected-baseline.json) plus [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts).
 
+The full command uses `just install`, builds both worktrees, and re-observes all outputs. `--verify-record` only validates the checked JSON record and does not rerun outputs.
+
 Local `just verify` passes its `check`, completed previews, full test chain, and `build` scope.
 
 M036 does not establish a Core decrement law or clinical correctness. It does not establish durable exact-once execution, liveness, fairness, or broader target shapes.

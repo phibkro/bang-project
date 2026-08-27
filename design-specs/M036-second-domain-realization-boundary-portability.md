@@ -411,7 +411,7 @@ e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa
 Each worktree ran these setup commands:
 
 ```sh
-bun install --frozen-lockfile
+just install
 bun run build
 ```
 
@@ -425,7 +425,7 @@ bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json
 
 All 15 required files matched byte for byte. Run `bun run evidence:m036` to repeat both clean runs.
 
-[`tests/m036-tiny-bank-protected-baseline.json`](../tests/m036-tiny-bank-protected-baseline.json) stores the revisions, commands, paths, and digest pairs. [`scripts/m036-clean-parity.ts`](../scripts/m036-clean-parity.ts) verifies that record.
+[`tests/m036-tiny-bank-protected-baseline.json`](../tests/m036-tiny-bank-protected-baseline.json) stores the revisions, commands, paths, and digest pairs. [`scripts/m036-clean-parity.ts`](../scripts/m036-clean-parity.ts) re-observes both runs and verifies that record.
 
 # Evidence statement
 
@@ -579,7 +579,9 @@ Acceptance requires all items. Clinic success without TinyBank parity is a failu
 
 ## Local acceptance status
 
-All 23 acceptance items passed locally before this documentation update. `bun run evidence:m036 --verify-record` verifies the bound clean-parity record.
+All 23 acceptance items passed locally before this documentation update. `bun run evidence:m036 --verify-record` validates record structure, revision metadata, lock blobs, commands, and canonical encoding.
+
+The record-only check does not rerun output bytes. Only `bun run evidence:m036` re-observes both clean worktrees and compares all 15 outputs.
 
 Delivery remains pending protected integration. M036 stays `active`, and this result does not activate or reserve M037.
 

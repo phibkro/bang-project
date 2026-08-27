@@ -6,7 +6,7 @@
       "path": "bun.lock",
       "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
     },
-    "setupCommands": ["bun install --frozen-lockfile", "bun run build"],
+    "setupCommands": ["just install", "bun run build"],
     "commands": [
       "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
       "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
@@ -19,7 +19,7 @@
       "path": "bun.lock",
       "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
     },
-    "setupCommands": ["bun install --frozen-lockfile", "bun run build"],
+    "setupCommands": ["just install", "bun run build"],
     "commands": [
       "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
       "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
