@@ -275,10 +275,13 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 35. M033 — assemble one selected Gleam realization into one standalone escript with a strict qualified-material record.
 36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 37. M035 — publish versioned semantic schemas and prove one out-of-workspace typed verdict.
+38. M036 — carry one checked-Core-selected Clinic operation through the M031–M035 path while preserving every TinyBank output byte.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
 M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`. M028 is complete through `bang evolve <selection>`. M029 and M030 are complete through `bang explain <selection>`. M031 is complete through `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. M032 is complete through `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. M033 is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. M034 is complete through `bang audit <assembly-id>`. M035 is complete through `bang export-schemas`.
+
+M036 has complete local acceptance evidence. It remains active because protected integration is pending.
 
 M031 turns heterogeneous realization classification into a fresh two-target execution journey. Effect TypeScript and supervised Gleam/BEAM consume the same checked packaged requirement, publish separate target-specific evidence, and qualify independently. Gleam actor-incarnation behavior remains target-owned; Core does not promise restart persistence or distributed exactly-once delivery.
 
@@ -289,6 +292,26 @@ M033 turns one selected plan into a locally runnable artifact. The assembler bin
 M034 turns published evidence into an auditable custody question. `bang audit` inventories every recorded material of one assembly closure — assembly materials, plan report, target evidence records, semantic artifact, theory lock, and the recorded theory package — recomputes each SHA-256 through the Crypto service, and classifies every member with one equality rule: decoded materials compare semantically (Core sources by construct-addressed normalization against the embedded baseline, the theory package by canonical semantic digest), opaque custody bytes compare exactly, and derived members resolve through their owning producer or fail comparison rather than silently passing. Retirement closes transitively over recorded citation edges only and names the material and edge that carried invalidation for every retired record; requalification reruns only retired producers through the staged journeys and preserves evidence classes on pain of typed failure; closure parity is checked before any commit and the fresh closure republishes in one atomic transaction.
 
 M035 freezes the external extension boundary as one versioned publication under `dist/schemas/<version>/`. `bang export-schemas` regenerates the manifest, three JSON Schema documents derived from the live producer Schemas (semantic artifact, theory lock, target qualification evidence), and generated consumer types with strict decoders in one deterministic, digest-pinned transaction. A sandboxed consumer process outside the workspace imports only published entries and host built-ins, verifies every recorded SHA-256 custody digest, strictly decodes both records, and returns one typed verdict — `valid`, or one of seven stage/reason rejections from publication custody through record agreement. The verdict proves custody and decodability; it never upgrades evidence class or recomputes canonical semantic digests, which remain producer-owned.
+
+M036 selects the Clinic shape from checked Core. The machine is `AppointmentBook`, and the realization is `BookAppointmentOnce`.
+
+Effect TypeScript and Gleam/BEAM run fresh probes and publish separate evidence. Target adapters still own decrement behavior and runtime policy.
+
+Planning selects Gleam. Assembly retains the exact qualified boundary bytes, and the copied escript runs with only an Erlang runtime.
+
+Audit checks an 18-material closure with zero changes and zero requalifications. The external sandbox strictly decodes records and verifies supplied material custody.
+
+The loader observes only the consumer, the published consumer module, and three required Node built-ins. The four tracked negative inputs keep typed target failures.
+
+Local evidence also records deterministic Clinic reruns and TinyBank parity across two clean worktrees. All 15 TinyBank files match.
+
+Schema major 2 records the broader identifier shape. All six protected major-1 publication paths remain byte-identical.
+
+Run `bun run evidence:m036` for the clean-worktree parity check. The machine record is [`tests/m036-tiny-bank-protected-baseline.json`](tests/m036-tiny-bank-protected-baseline.json).
+
+The verifier is [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts). Local `just verify` also passes.
+
+The M036 unsupported claims remain in its active contract. Local acceptance does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
 
 ## Provisional full-compiler horizon
 
@@ -309,6 +332,8 @@ real BANG self-check
   → objective-relative realization planning
   → generated or assembled implementation
   → continuous conformance and evidence invalidation
+  → external checked consumption
+  → second-domain realization portability
   → full compiler candidate
 ```
 
