@@ -14,7 +14,7 @@
     ]
   },
   "candidateRun": {
-    "revision": "8c0d590b08a1432ede1279cf501a46e88efb96d2",
+    "revision": "d2fa7ea4575e6b4e026e369435a21c1d0897d5e6",
     "dependencyLock": {
       "path": "bun.lock",
       "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
