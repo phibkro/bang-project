@@ -13,17 +13,25 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { BunServices } from "@effect/platform-bun";
 import { validateCore } from "@bang/core";
 import {
   checkM031TargetQualificationEvidence,
   decodeM031TargetQualificationEvidence,
   type M031TargetQualificationEvidence,
 } from "@bang/evidence";
+import { ExactOneCapabilityExecutionLockFromJson } from "@bang/theories";
 import { sourceToCore } from "@bang/surface";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
+import {
+  ClassificationFailure,
+  compileSelectedM031ClassificationStaged,
+} from "../apps/bang/src/classify.ts";
 
 const workspaceRoot = resolve(import.meta.dir, "..");
 const executable = join(workspaceRoot, "node_modules/.bin/bang");
+const nodeExecutable = Bun.which("node");
+if (nodeExecutable === null) throw new Error("M036 external consumer requires a Node runtime");
 let root: string;
 const clinicClassification = "examples/clinic/realizations/two-qualified-exact-one.json";
 const clinicPlan = "examples/clinic/plans/supervised-exact-one.json";
@@ -33,6 +41,13 @@ const clinicQualificationId = "clinic-two-qualified-exact-one";
 const clinicArtifactId = "clinic-packaged-exact-one";
 const clinicRequirement = "operationRealization:BookAppointmentOnce.requirement:ConfirmBooking";
 const clinicEvidencePath = `.bang/qualifications/${clinicQualificationId}/effect-typescript/evidence.json`;
+const clinicGleamEvidencePath = `.bang/qualifications/${clinicQualificationId}/gleam-beam/evidence.json`;
+const clinicPackage = {
+  path: "packages/theories/theory-packages/exact-one-capability.json",
+  identity: { id: "ExactOneCapabilityExecution", version: 1 },
+  evaluator: { id: "ExactOneCapabilityExecutionEvaluator", version: 1 },
+  semanticDigest: "sha256:f5688125437b19929b78f813b74a6595e09d92fdfd8ac6005066ff1cb3557071",
+} as const;
 const clinicLockPath = `.bang/theory-locks/${clinicArtifactId}.json`;
 
 const clinicClosure = [
@@ -74,35 +89,12 @@ const clinicPublicationRoots = [
   `.bang/assemblies/${clinicAssemblyId}`,
   "dist/schemas/2",
 ] as const;
-const tinyBankPublicationRoots = [
-  ".bang/artifacts/tiny-bank-packaged-exact-one.json",
-  ".bang/theory-locks/tiny-bank-packaged-exact-one.json",
-  ".bang/qualifications/tiny-bank-two-qualified-exact-one",
-  ".bang/plans/tiny-bank-supervised-exact-one",
-  ".bang/assemblies/tiny-bank-supervised-exact-one",
-] as const;
 const persistentPublicationRoots = [".bang", "dist"] as const;
 
 interface CommandResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-}
-
-interface TinyBankBaseline {
-  readonly bangM036TinyBankParity: 1;
-  readonly protectedRevision: string;
-  readonly candidateRevision: string;
-  readonly dependencyLock: {
-    readonly path: string;
-    readonly sha256: string;
-  };
-  readonly commands: ReadonlyArray<string>;
-  readonly files: ReadonlyArray<{
-    readonly path: string;
-    readonly protectedSha256: string;
-    readonly candidateSha256: string;
-  }>;
 }
 
 interface ClinicJourney {
@@ -120,7 +112,6 @@ const sandboxInputs = [
   "nix/gleam.nix",
   "packages/theories/theory-packages",
   "examples/clinic",
-  "examples/tiny-bank",
 ] as const;
 
 const makeRepositorySandbox = async (): Promise<string> => {
@@ -312,6 +303,21 @@ const checkedClinicCore = async (cwd = root) => {
 
 const decodeEvidence = (value: unknown) =>
   Effect.runPromise(decodeM031TargetQualificationEvidence(JSON.stringify(value)));
+const decodeTheoryLock = (value: unknown) =>
+  Effect.runPromise(
+    Schema.decodeUnknownEffect(ExactOneCapabilityExecutionLockFromJson)(JSON.stringify(value)),
+  );
+
+const classificationFailure = (selectionPath: string) =>
+  Effect.runPromise(
+    Effect.flip(
+      compileSelectedM031ClassificationStaged(root, selectionPath).pipe(
+        // Test execution is the composition root for the staged filesystem, crypto, and process services.
+        // @effect-diagnostics-next-line strictEffectProvide:off
+        Effect.provide(BunServices.layer),
+      ),
+    ),
+  );
 
 const evidenceFailure = async (value: unknown) => {
   const core = await checkedClinicCore();
@@ -346,6 +352,59 @@ process.stdout.write(JSON.stringify(verdict));
 if (verdict.verdict !== "valid") process.exit(1);
 `;
 
+const isolationLoaderSource = `import { appendFileSync, realpathSync } from "node:fs";
+import { isAbsolute, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const sandboxRoot = realpathSync(process.env.BANG_M036_SANDBOX_ROOT);
+const moduleLogPath = process.env.BANG_M036_MODULE_LOG;
+if (moduleLogPath === undefined) throw new Error("missing module log path");
+
+const observe = (entry) => appendFileSync(moduleLogPath, JSON.stringify(entry) + "\\n");
+const allowedModule = (url) => {
+  if (url.startsWith("node:")) return url;
+  if (!url.startsWith("file:")) throw new Error("external module protocol rejected: " + url);
+  const filePath = realpathSync(fileURLToPath(url));
+  if (filePath !== sandboxRoot && !filePath.startsWith(sandboxRoot + sep)) {
+    throw new Error("external file import rejected: " + filePath);
+  }
+  return relative(sandboxRoot, filePath);
+};
+
+export const resolve = async (specifier, context, nextResolve) => {
+  if (
+    !specifier.startsWith("node:") &&
+    !specifier.startsWith("file:") &&
+    !specifier.startsWith("./") &&
+    !specifier.startsWith("../") &&
+    !isAbsolute(specifier)
+  ) {
+    throw new Error("bare package import rejected: " + specifier);
+  }
+  const resolution = await nextResolve(specifier, context);
+  observe({
+    hook: "resolve",
+    specifier,
+    parent: context.parentURL === undefined ? null : allowedModule(context.parentURL),
+    module: allowedModule(resolution.url),
+  });
+  return resolution;
+};
+
+export const load = async (url, context, nextLoad) => {
+  const module = allowedModule(url);
+  observe({ hook: "load", module });
+  return nextLoad(url, context);
+};
+`;
+
+interface ModuleBoundaryObservation {
+  readonly hook: "resolve" | "load";
+  readonly specifier?: string;
+  readonly parent?: string | null;
+  readonly module: string;
+}
+
 const makeConsumerSandbox = async (): Promise<{
   readonly directory: string;
   readonly evidence: M031TargetQualificationEvidence;
@@ -369,35 +428,47 @@ const makeConsumerSandbox = async (): Promise<{
     }),
   );
   await writeFile(join(directory, "consumer.mjs"), consumerSource);
+  await writeFile(join(directory, "isolation-loader.mjs"), isolationLoaderSource);
   return { directory, evidence };
 };
 
 const runConsumer = (directory: string) =>
-  runProcess([process.execPath, "consumer.mjs"], directory, 60_000);
+  runProcess(
+    [
+      nodeExecutable,
+      "--no-warnings",
+      "--experimental-loader",
+      join(directory, "isolation-loader.mjs"),
+      "consumer.mjs",
+    ],
+    directory,
+    60_000,
+    {
+      HOME: directory,
+      LANG: "C.UTF-8",
+      PATH: dirname(nodeExecutable),
+      BANG_M036_SANDBOX_ROOT: directory,
+      BANG_M036_MODULE_LOG: join(directory, "module-loads.jsonl"),
+    },
+  );
+
+const readModuleBoundary = async (
+  directory: string,
+): Promise<ReadonlyArray<ModuleBoundaryObservation>> =>
+  (await readFile(join(directory, "module-loads.jsonl"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as ModuleBoundaryObservation);
 
 let temporaryRoot: string;
 let firstJourney: ClinicJourney;
 let firstClinicInventory: Readonly<Record<string, string>>;
 let legacySchemaDigests: Readonly<Record<string, string>>;
-let tinyBankBaseline: TinyBankBaseline;
 
 beforeAll(async () => {
   root = await makeRepositorySandbox();
   temporaryRoot = await mkdtemp(join(root, ".m036-portability-test-"));
-  tinyBankBaseline = JSON.parse(
-    await readFile(join(workspaceRoot, "tests/m036-tiny-bank-protected-baseline.json"), "utf8"),
-  ) as TinyBankBaseline;
   legacySchemaDigests = await digestPaths(legacySchemaPublication);
-
-  for (const command of [
-    ["classify", "examples/tiny-bank/realizations/two-qualified-exact-one.json"],
-    ["plan", "examples/tiny-bank/plans/supervised-exact-one.json"],
-    ["assemble", "examples/tiny-bank/assemblies/supervised-exact-one.json"],
-  ] as const) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- each command consumes the prior command's publication.
-    const result = await runBang(command, 600_000);
-    requireSuccess(`TinyBank ${command[0]}`, result);
-  }
 
   firstJourney = await runClinicJourney();
   firstClinicInventory = await digestInventory(clinicPublicationRoots);
@@ -438,6 +509,47 @@ describe("M036 second-domain realization boundary portability", () => {
       "bangSemanticArtifact:1",
       "bangTheoryLock:1",
       "bangTargetQualificationEvidence:1",
+    ]);
+    const theoryLock = await decodeTheoryLock(await readJson<unknown>(clinicLockPath));
+    expect(theoryLock).toEqual({
+      bangTheoryLock: 1,
+      selectionId: clinicArtifactId,
+      package: clinicPackage,
+    });
+    const targetEvidence = await Promise.all(
+      [clinicEvidencePath, clinicGleamEvidencePath].map(async (path) =>
+        decodeEvidence(await readJson<unknown>(path)),
+      ),
+    );
+    expect(
+      targetEvidence.map((evidence) => ({
+        targetId: evidence.targetId,
+        artifactId: evidence.artifactId,
+        requirementAddress: evidence.requirementAddress,
+        theory: evidence.theory,
+        package: evidence.package,
+      })),
+    ).toEqual([
+      {
+        targetId: "effect-typescript",
+        artifactId: clinicArtifactId,
+        requirementAddress: clinicRequirement,
+        theory: clinicPackage.identity,
+        package: {
+          ...clinicPackage.identity,
+          semanticDigest: clinicPackage.semanticDigest,
+        },
+      },
+      {
+        targetId: "gleam-beam",
+        artifactId: clinicArtifactId,
+        requirementAddress: clinicRequirement,
+        theory: clinicPackage.identity,
+        package: {
+          ...clinicPackage.identity,
+          semanticDigest: clinicPackage.semanticDigest,
+        },
+      },
     ]);
 
     const qualification = await readJson<{
@@ -521,35 +633,16 @@ describe("M036 second-domain realization boundary portability", () => {
     });
   });
 
-  test("matches all 15 regenerated TinyBank files to both clean-checkout records", async () => {
-    expect(tinyBankBaseline.protectedRevision).toBe("f2673c1b74726adcbf6b56a8655d5efee505b1b2");
-    expect(tinyBankBaseline.candidateRevision).toBe("8c0d590b08a1432ede1279cf501a46e88efb96d2");
-    expect(tinyBankBaseline.files).toHaveLength(15);
-    expect(sha256(await readFile(join(root, tinyBankBaseline.dependencyLock.path)))).toBe(
-      tinyBankBaseline.dependencyLock.sha256,
-    );
-    const regenerated = await digestPaths(tinyBankBaseline.files.map(({ path }) => path));
-    expect(Object.keys(await digestInventory(tinyBankPublicationRoots))).toEqual(
-      tinyBankBaseline.files.map(({ path }) => path).toSorted(),
-    );
-    expect(
-      tinyBankBaseline.files.map(({ path, protectedSha256, candidateSha256 }) => ({
-        path,
-        protected: protectedSha256,
-        candidate: candidateSha256,
-        observed: regenerated[path],
-      })),
-    ).toEqual(
-      tinyBankBaseline.files.map(({ path, protectedSha256 }) => ({
-        path,
-        protected: protectedSha256,
-        candidate: protectedSha256,
-        observed: protectedSha256,
-      })),
-    );
-  });
-
   test("rejects a foreign realization before target execution and preserves both domains", async () => {
+    const stagedFailure = await classificationFailure(
+      "examples/clinic/realizations/foreign-realization.json",
+    );
+    expect(stagedFailure).toBeInstanceOf(ClassificationFailure);
+    expect(stagedFailure).toMatchObject({
+      stage: "target",
+      reason: "missing-declaration",
+      address: "operationRealization:WithdrawAccountOnce",
+    });
     const before = await digestInventory(persistentPublicationRoots);
     const result = await runBang([
       "classify",
@@ -571,6 +664,15 @@ describe("M036 second-domain realization boundary portability", () => {
     ]);
     requireSuccess("unsupported-profile theory applicability", explanation);
     expect(explanation.stdout).toContain("Result: applicable");
+    const stagedFailure = await classificationFailure(
+      "examples/clinic/realizations/unsupported-two-state-fields.json",
+    );
+    expect(stagedFailure).toBeInstanceOf(ClassificationFailure);
+    expect(stagedFailure).toMatchObject({
+      stage: "target",
+      reason: "unsupported-target",
+      address: "stateMachine:AppointmentBook",
+    });
 
     const before = await digestInventory(persistentPublicationRoots);
     const result = await runBang([
@@ -635,6 +737,34 @@ describe("M036 second-domain realization boundary portability", () => {
         "core-source",
         "generated-effect-boundary",
       ]);
+      const moduleBoundary = await readModuleBoundary(valid.directory);
+      expect(
+        [
+          ...new Set(
+            moduleBoundary
+              .filter(({ hook, module }) => hook === "load" && !module.startsWith("node:"))
+              .map(({ module }) => module),
+          ),
+        ].toSorted(),
+      ).toEqual(["consumer.mjs", "publication/types/consumer.js"]);
+      expect(
+        [
+          ...new Set(
+            moduleBoundary
+              .filter(({ hook, module }) => hook === "resolve" && module.startsWith("node:"))
+              .map(({ module }) => module),
+          ),
+        ].toSorted(),
+      ).toEqual(["node:crypto", "node:fs/promises", "node:path"]);
+      expect(
+        [
+          ...new Set(
+            moduleBoundary
+              .filter(({ hook, module }) => hook === "resolve" && !module.startsWith("node:"))
+              .map(({ module }) => module),
+          ),
+        ].toSorted(),
+      ).toEqual(["consumer.mjs", "publication/types/consumer.js"]);
     } finally {
       await rm(valid.directory, { recursive: true, force: true });
     }

@@ -1,16 +1,31 @@
 {
   "bangM036TinyBankParity": 1,
-  "protectedRevision": "f2673c1b74726adcbf6b56a8655d5efee505b1b2",
-  "candidateRevision": "8c0d590b08a1432ede1279cf501a46e88efb96d2",
-  "dependencyLock": {
-    "path": "bun.lock",
-    "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
+  "protectedRun": {
+    "revision": "f2673c1b74726adcbf6b56a8655d5efee505b1b2",
+    "dependencyLock": {
+      "path": "bun.lock",
+      "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
+    },
+    "setupCommands": ["bun install --frozen-lockfile", "bun run build"],
+    "commands": [
+      "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
+      "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
+      "bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json"
+    ]
   },
-  "commands": [
-    "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
-    "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
-    "bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json"
-  ],
+  "candidateRun": {
+    "revision": "8c0d590b08a1432ede1279cf501a46e88efb96d2",
+    "dependencyLock": {
+      "path": "bun.lock",
+      "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
+    },
+    "setupCommands": ["bun install --frozen-lockfile", "bun run build"],
+    "commands": [
+      "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
+      "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
+      "bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json"
+    ]
+  },
   "files": [
     {
       "path": ".bang/artifacts/tiny-bank-packaged-exact-one.json",
