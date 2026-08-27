@@ -1353,10 +1353,43 @@ ${disabledParameterAssertions}
 `;
   },
 );
+const lowerKebab = (value: string): string =>
+  value
+    .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .replace(/([A-Z])([A-Z][a-z])/gu, "$1-$2")
+    .toLowerCase();
+
+const matchesStateValue = (
+  value: StateValue,
+  kind: StateValue["kind"],
+  identity: string,
+): boolean => {
+  switch (kind) {
+    case "parameter":
+      return value.kind === "parameter" && value.id === identity;
+    case "stateField":
+      return value.kind === "stateField" && value.field === identity;
+    case "integerLiteral":
+      return value.kind === "integerLiteral" && value.value === identity;
+  }
+};
+
+const matchesStatePredicate = (
+  predicate: StatePredicate,
+  leftKind: StateValue["kind"],
+  leftIdentity: string,
+  rightKind: StateValue["kind"],
+  rightIdentity: string,
+): boolean =>
+  matchesStateValue(predicate.left, leftKind, leftIdentity) &&
+  matchesStateValue(predicate.right, rightKind, rightIdentity);
+
 const emitEffectSingleUseOperationRealization = (
   machine: StateMachineDeclaration,
   operation: (typeof machine.transitions)[number],
   realization: OperationRealizationDeclaration,
+  operationParameter: string,
+  capability: string,
 ): string => {
   const stateType = machine.state.id;
   const stateFields = machine.state.fields.map(({ id }) => `  ${id}: Schema.BigInt,`).join("\n");
@@ -1367,7 +1400,15 @@ const emitEffectSingleUseOperationRealization = (
     `    state: ${stateType},`,
     ...parameterNames.map((id) => `    ${id}: Schema.BigInt,`),
   ].join("\n");
-  const capability = projectCapabilityIds(realization.requires)[0] ?? "DebitAccount";
+  const capabilityValue = lowerFirst(capability);
+  const realizationName = realization.id;
+  const realizationValue = lowerFirst(realizationName);
+  const grantType = `${capability}Grant`;
+  const grantStateType = `${grantType}State`;
+  const consumedGrantFailure = `${grantType}AlreadyConsumed`;
+  const wrongDestinationFailure = `${realizationName}WrongDestinationError`;
+  const destinationName = `${realizationValue}Destination`;
+  const entityId = `${lowerKebab(machine.id)}-1`;
   const failure = realization.disabled.id;
   const enabled = [
     ...machine.invariants.map((invariant) => projectStatePredicate(invariant.proposition, "state")),
@@ -1376,7 +1417,7 @@ const emitEffectSingleUseOperationRealization = (
     .filter((part) => part.length > 0)
     .join(" && ");
   const observationParameters = [
-    "grant: DebitAccountGrant",
+    `grant: ${grantType}`,
     "destination: string",
     `state: ${stateType}`,
     methodParameters,
@@ -1415,7 +1456,7 @@ const emitEffectSingleUseOperationRealization = (
     "});",
     `export type ${stateType} = typeof ${stateType}.Type;`,
     "",
-    'export const withdrawAccountOnceDestination = "account-1" as const;',
+    `export const ${destinationName} = "${entityId}" as const;`,
     "",
     `export const is${upperFirst(operation.id)}Enabled = (state: ${stateType}, ${methodParameters}): boolean =>`,
     `  ${enabled.length === 0 ? "true" : enabled};`,
@@ -1427,54 +1468,54 @@ const emitEffectSingleUseOperationRealization = (
     "  },",
     ") {}",
     "",
-    "export class WithdrawAccountOnceWrongDestinationError extends Schema.TaggedError<WithdrawAccountOnceWrongDestinationError>()(",
-    '  "WithdrawAccountOnceWrongDestinationError",',
+    `export class ${wrongDestinationFailure} extends Schema.TaggedError<${wrongDestinationFailure}>()(`,
+    `  "${wrongDestinationFailure}",`,
     "  {",
     "    destination: Schema.String,",
-    '    expectedDestination: Schema.Literal("account-1"),',
+    `    expectedDestination: Schema.Literal("${entityId}"),`,
     `    state: ${stateType},`,
     ...parameterNames.map((id) => `    ${id}: Schema.BigInt,`),
     "    grantId: Schema.String,",
     "  },",
     ") {}",
     "",
-    "export class DebitAccountGrantAlreadyConsumed extends Schema.TaggedError<DebitAccountGrantAlreadyConsumed>()(",
-    '  "DebitAccountGrantAlreadyConsumed",',
+    `export class ${consumedGrantFailure} extends Schema.TaggedError<${consumedGrantFailure}>()(`,
+    `  "${consumedGrantFailure}",`,
     "  {",
     "    grantId: Schema.String,",
     "    remainingUses: Schema.Literal(0),",
     "  },",
     ") {}",
     "",
-    "export interface DebitAccountGrant {",
-    '  readonly _tag: "DebitAccountGrant";',
+    `export interface ${grantType} {`,
+    `  readonly _tag: "${grantType}";`,
     "  readonly grantId: string;",
     "}",
     "",
-    'type DebitAccountGrantState = "available" | "consumed";',
-    "const grantStates = new WeakMap<DebitAccountGrant, Ref.Ref<DebitAccountGrantState>>();",
+    `type ${grantStateType} = "available" | "consumed";`,
+    `const grantStates = new WeakMap<${grantType}, Ref.Ref<${grantStateType}>>();`,
     "",
-    "const makeDebitAccountGrant = (grantId: string): Effect.Effect<DebitAccountGrant> =>",
+    `const make${grantType} = (grantId: string): Effect.Effect<${grantType}> =>`,
     "  Effect.gen(function* () {",
-    '    const grant = Object.freeze({ _tag: "DebitAccountGrant" as const, grantId });',
-    '    grantStates.set(grant, yield* Ref.make<DebitAccountGrantState>("available"));',
+    `    const grant = Object.freeze({ _tag: "${grantType}" as const, grantId });`,
+    `    grantStates.set(grant, yield* Ref.make<${grantStateType}>("available"));`,
     "    return grant;",
     "  });",
     "",
-    "export const debitAccountGrantRemainingUses = (grant: DebitAccountGrant): Effect.Effect<number> =>",
+    `export const ${capabilityValue}GrantRemainingUses = (grant: ${grantType}): Effect.Effect<number> =>`,
     "  Effect.gen(function* () {",
     "    const state = grantStates.get(grant);",
     "    if (state === undefined) return 0;",
     '    return (yield* Ref.get(state)) === "available" ? 1 : 0;',
     "  });",
     "",
-    "const consumeDebitAccountGrant = (",
-    "  grant: DebitAccountGrant,",
-    "): Effect.Effect<void, DebitAccountGrantAlreadyConsumed> =>",
+    `const consume${grantType} = (`,
+    `  grant: ${grantType},`,
+    `): Effect.Effect<void, ${consumedGrantFailure}> =>`,
     "  Effect.gen(function* () {",
     "    const state = grantStates.get(grant);",
     "    if (state === undefined) {",
-    "      return yield* new DebitAccountGrantAlreadyConsumed({",
+    `      return yield* new ${consumedGrantFailure}({`,
     "        grantId: grant.grantId,",
     "        remainingUses: 0,",
     "      });",
@@ -1483,7 +1524,7 @@ const emitEffectSingleUseOperationRealization = (
     '      current === "available" ? [true, "consumed" as const] : [false, current] as const,',
     "    );",
     "    if (!consumed) {",
-    "      return yield* new DebitAccountGrantAlreadyConsumed({",
+    `      return yield* new ${consumedGrantFailure}({`,
     "        grantId: grant.grantId,",
     "        remainingUses: 0,",
     "      });",
@@ -1491,7 +1532,7 @@ const emitEffectSingleUseOperationRealization = (
     "  });",
     "",
     `export interface ${capability}Shape {`,
-    "  readonly issueGrant: Effect.Effect<DebitAccountGrant>;",
+    `  readonly issueGrant: Effect.Effect<${grantType}>;`,
     "}",
     "",
     `export class ${capability} extends Context.Service<${capability}, ${capability}Shape>()(`,
@@ -1503,57 +1544,57 @@ const emitEffectSingleUseOperationRealization = (
     "    const nextGrantId = yield* Ref.make(0);",
     `    return ${capability}.of({`,
     "      issueGrant: Ref.modify(nextGrantId, (current) => [current + 1, current + 1] as const).pipe(",
-    "        Effect.flatMap((ordinal) => makeDebitAccountGrant(`${grantPrefix}-${ordinal}`)),",
+    `        Effect.flatMap((ordinal) => make${grantType}(\`\${grantPrefix}-\${ordinal}\`)),`,
     "      ),",
     "    });",
     "  }));",
     "",
     `export const ${lowerFirst(capability)}Layer = make${capability}Layer();`,
     "",
-    `export interface WithdrawAccountOnceShape {`,
+    `export interface ${realizationName}Shape {`,
     `  readonly ${operation.id}: (`,
-    "    grant: DebitAccountGrant,",
+    `    grant: ${grantType},`,
     "    destination: string,",
     `    state: ${stateType},`,
     methodParameters.length === 0 ? "" : `    ${methodParameters},`,
-    `  ) => Effect.Effect<${stateType}, ${failure} | WithdrawAccountOnceWrongDestinationError | DebitAccountGrantAlreadyConsumed, ${capability}>;`,
+    `  ) => Effect.Effect<${stateType}, ${failure} | ${wrongDestinationFailure} | ${consumedGrantFailure}, ${capability}>;`,
     "  readonly implementationCalls: Effect.Effect<number>;",
     "}",
     "",
-    `export type WithdrawAccountOnceRequirements = ${capability};`,
+    `export type ${realizationName}Requirements = ${capability};`,
     "",
-    "export class WithdrawAccountOnce extends Context.Service<WithdrawAccountOnce, WithdrawAccountOnceShape>()(",
-    '  "@bang/realization/WithdrawAccountOnce",',
+    `export class ${realizationName} extends Context.Service<${realizationName}, ${realizationName}Shape>()(`,
+    `  "@bang/realization/${realizationName}",`,
     ") {}",
     "",
-    "export interface WithdrawAccountOnceImplementation {",
+    `export interface ${realizationName}Implementation {`,
     `  readonly ${operation.id}: (state: ${stateType}${methodParameters.length === 0 ? "" : `, ${methodParameters}`}) => Effect.Effect<${stateType}, ${failure}>;`,
     "}",
     "",
-    "export const makeWithdrawAccountOnceLayer = (",
-    "  implementation: WithdrawAccountOnceImplementation,",
-    "): Layer.Layer<WithdrawAccountOnce> =>",
+    `export const make${realizationName}Layer = (`,
+    `  implementation: ${realizationName}Implementation,`,
+    `): Layer.Layer<${realizationName}> =>`,
     "  Layer.effect(",
-    "    WithdrawAccountOnce,",
+    `    ${realizationName},`,
     "    Effect.gen(function* () {",
     "      const implementationCalls = yield* Ref.make(0);",
-    '      const runImplementation = Effect.fn("WithdrawAccountOnce.implementation")(function* (',
+    `      const runImplementation = Effect.fn("${realizationName}.implementation")(function* (`,
     `        ${["state: " + stateType, ...parameterNames.map((id) => `${id}: bigint`)].join(", ")}`,
     `      ): Effect.fn.Return<${stateType}, ${failure}> {`,
     "        yield* Ref.update(implementationCalls, (current) => current + 1);",
     `        return yield* implementation.${operation.id}(${implementationArguments});`,
     "      });",
-    `      return WithdrawAccountOnce.of({`,
-    `        ${operation.id}: Effect.fn("WithdrawAccountOnce.${operation.id}")(function* (`,
-    "          grant: DebitAccountGrant,",
+    `      return ${realizationName}.of({`,
+    `        ${operation.id}: Effect.fn("${realizationName}.${operation.id}")(function* (`,
+    `          grant: ${grantType},`,
     "          destination: string,",
     `          state: ${stateType},`,
     methodParameters.length === 0 ? "" : `          ${methodParameters},`,
-    `        ): Effect.fn.Return<${stateType}, ${failure} | WithdrawAccountOnceWrongDestinationError | DebitAccountGrantAlreadyConsumed, ${capability}> {`,
-    "          if (destination !== withdrawAccountOnceDestination) {",
-    "            return yield* new WithdrawAccountOnceWrongDestinationError({",
+    `        ): Effect.fn.Return<${stateType}, ${failure} | ${wrongDestinationFailure} | ${consumedGrantFailure}, ${capability}> {`,
+    `          if (destination !== ${destinationName}) {`,
+    `            return yield* new ${wrongDestinationFailure}({`,
     "              destination,",
-    "              expectedDestination: withdrawAccountOnceDestination,",
+    `              expectedDestination: ${destinationName},`,
     "              state,",
     ...parameterNames.map((id) => `              ${id},`),
     "              grantId: grant.grantId,",
@@ -1566,7 +1607,7 @@ const emitEffectSingleUseOperationRealization = (
     "            });",
     "          }",
     `          yield* ${capability};`,
-    "          yield* consumeDebitAccountGrant(grant);",
+    `          yield* consume${grantType}(grant);`,
     `          return yield* runImplementation(state${parameterNames.length === 0 ? "" : `, ${parameterNames.join(", ")}`});`,
     "        }),",
     "        implementationCalls: Ref.get(implementationCalls),",
@@ -1574,47 +1615,47 @@ const emitEffectSingleUseOperationRealization = (
     "    }),",
     "  );",
     "",
-    'export const WithdrawAccountOnceSuccess = Schema.TaggedStruct("Success", {',
+    `export const ${realizationName}Success = Schema.TaggedStruct("Success", {`,
     `  state: ${stateType},`,
     "  remainingUses: Schema.Int,",
     "  implementationCalls: Schema.Int,",
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
-    'export const WithdrawAccountOnceDomainRejected = Schema.TaggedStruct("DomainRejected", {',
+    `export const ${realizationName}DomainRejected = Schema.TaggedStruct("DomainRejected", {`,
     domainObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
-    'export const WithdrawAccountOnceCapabilityUseRejected = Schema.TaggedStruct("CapabilityUseRejected", {',
-    `  failure: Schema.Literal("DebitAccountGrantAlreadyConsumed"),`,
+    `export const ${realizationName}CapabilityUseRejected = Schema.TaggedStruct("CapabilityUseRejected", {`,
+    `  failure: Schema.Literal("${consumedGrantFailure}"),`,
     `  state: ${stateType},`,
-    "  amount: Schema.BigInt,",
+    `  ${operationParameter}: Schema.BigInt,`,
     commonObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
-    'export const WithdrawAccountOnceWrongDestination = Schema.TaggedStruct("WrongDestination", {',
+    `export const ${realizationName}WrongDestination = Schema.TaggedStruct("WrongDestination", {`,
     wrongDestinationObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
-    'export const WithdrawAccountOnceDefect = Schema.TaggedStruct("Defect", {',
+    `export const ${realizationName}Defect = Schema.TaggedStruct("Defect", {`,
     "  failure: Schema.String,",
     `  state: ${stateType},`,
-    "  amount: Schema.BigInt,",
+    `  ${operationParameter}: Schema.BigInt,`,
     "  defect: Schema.String,",
     commonObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
-    "export const WithdrawAccountOnceObservation = Schema.Union([",
-    "  WithdrawAccountOnceSuccess,",
-    "  WithdrawAccountOnceDomainRejected,",
-    "  WithdrawAccountOnceCapabilityUseRejected,",
-    "  WithdrawAccountOnceWrongDestination,",
-    "  WithdrawAccountOnceDefect,",
+    `export const ${realizationName}Observation = Schema.Union([`,
+    `  ${realizationName}Success,`,
+    `  ${realizationName}DomainRejected,`,
+    `  ${realizationName}CapabilityUseRejected,`,
+    `  ${realizationName}WrongDestination,`,
+    `  ${realizationName}Defect,`,
     ']).pipe(Schema.toTaggedUnion("_tag")).annotate({',
     '  parseOptions: { onExcessProperty: "error" },',
     "});",
-    "export type WithdrawAccountOnceObservation = typeof WithdrawAccountOnceObservation.Type;",
+    `export type ${realizationName}Observation = typeof ${realizationName}Observation.Type;`,
     "",
-    'export const observeWithdrawAccountOnce = Effect.fn("observeWithdrawAccountOnce")(function* (',
+    `export const observe${realizationName} = Effect.fn("observe${realizationName}")(function* (`,
     `  ${observationParameters}`,
-    `): Effect.fn.Return<WithdrawAccountOnceObservation, never, WithdrawAccountOnce | ${capability}> {`,
-    "  const service = yield* WithdrawAccountOnce;",
+    `): Effect.fn.Return<${realizationName}Observation, never, ${realizationName} | ${capability}> {`,
+    `  const service = yield* ${realizationName};`,
     `  const exit = yield* Effect.exit(service.${operation.id}(${observationCallArguments}));`,
-    "  const remainingUses = yield* debitAccountGrantRemainingUses(grant);",
+    `  const remainingUses = yield* ${capabilityValue}GrantRemainingUses(grant);`,
     "  const implementationCalls = yield* service.implementationCalls;",
     '  if (exit._tag === "Success") {',
     "    return {",
@@ -1648,17 +1689,17 @@ const emitEffectSingleUseOperationRealization = (
     "        implementationCalls,",
     "      };",
     "    }",
-    "    if (error.value instanceof DebitAccountGrantAlreadyConsumed) {",
+    `    if (error.value instanceof ${consumedGrantFailure}) {`,
     "      return {",
     '        _tag: "CapabilityUseRejected",',
-    `        failure: "DebitAccountGrantAlreadyConsumed",`,
+    `        failure: "${consumedGrantFailure}",`,
     "        state,",
-    `        amount: ${parameterNames[0] ?? "0n"},`,
+    `        ${operationParameter}: ${operationParameter},`,
     "        remainingUses,",
     "        implementationCalls,",
     "      };",
     "    }",
-    "    if (error.value instanceof WithdrawAccountOnceWrongDestinationError) {",
+    `    if (error.value instanceof ${wrongDestinationFailure}) {`,
     "      return {",
     '        _tag: "WrongDestination",',
     "        destination: error.value.destination,",
@@ -1701,29 +1742,39 @@ export const projectEffectSingleUseOperationRealization = Effect.fn(
       `Effect single-use projection cannot resolve checked realization ${realizationId}`,
     );
   }
-  if (realization.id !== "WithdrawAccountOnce") {
-    return yield* targetProjectionFailure(
-      "unsupported-target",
-      `operationRealization:${realization.id}`,
-      "Effect M018 single-use projection supports only WithdrawAccountOnce",
-    );
-  }
+
   const requirement = realization.requires[0];
   if (
     realization.requires.length !== 1 ||
     requirement === undefined ||
-    requirement.capability !== "DebitAccount" ||
     requirement.quantity.kind !== "exactly" ||
-    requirement.quantity.uses !== "1" ||
-    realization.disabled.kind !== "failure" ||
-    realization.disabled.id !== "WithdrawalRejectedOnce"
+    requirement.quantity.uses !== "1"
   ) {
     return yield* targetProjectionFailure(
       "unsupported-target",
       `operationRealization:${realization.id}.requires`,
-      "Effect M018 single-use projection supports only exactly 1 capability use",
+      "Effect single-use projection requires exactly one capability use",
     );
   }
+  if (realization.disabled.kind !== "failure") {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.disabled`,
+      "Effect single-use projection requires a disabled failure",
+    );
+  }
+
+  const capability = document.declarations.find(
+    (declaration) => declaration.kind === "capability" && declaration.id === requirement.capability,
+  );
+  if (capability === undefined) {
+    return yield* targetProjectionFailure(
+      "inconsistent-declaration",
+      `operationRealization:${realization.id}.capability:${requirement.capability}`,
+      `Effect single-use projection cannot resolve checked capability ${requirement.capability}`,
+    );
+  }
+
   const machine = document.declarations.find(
     (declaration): declaration is StateMachineDeclaration =>
       declaration.kind === "stateMachine" && declaration.id === realization.operation.stateMachine,
@@ -1735,6 +1786,7 @@ export const projectEffectSingleUseOperationRealization = Effect.fn(
       `Effect single-use projection cannot resolve checked state machine ${realization.operation.stateMachine}`,
     );
   }
+
   const operation = machine.transitions.find(({ id }) => id === realization.operation.operation);
   if (operation === undefined) {
     return yield* targetProjectionFailure(
@@ -1743,37 +1795,159 @@ export const projectEffectSingleUseOperationRealization = Effect.fn(
       `Effect single-use projection cannot resolve checked transition ${machine.id}.${realization.operation.operation}`,
     );
   }
+
+  const stateField = machine.state.fields[0];
   if (
-    machine.id !== "Account" ||
-    operation.id !== "withdraw" ||
-    operation.parameters.length !== 1
+    machine.state.fields.length !== 1 ||
+    stateField === undefined ||
+    stateField.type !== "Integer"
   ) {
     return yield* targetProjectionFailure(
       "unsupported-target",
-      `operationRealization:${realization.id}.operation`,
-      "Effect M018 single-use projection supports only Account.withdraw with one amount parameter",
+      `operationRealization:${realization.id}.state:${machine.id}.${machine.state.id}`,
+      `Effect single-use projection requires one Integer state field in ${machine.id}`,
     );
   }
-  for (const field of machine.state.fields) {
-    if (field.type !== "Integer") {
-      return yield* targetProjectionFailure(
-        "unsupported-target",
-        `operationRealization:${realization.id}.stateField:${machine.id}.${field.id}`,
-        `Effect single-use projection requires Integer field ${machine.id}.${field.id}`,
-      );
-    }
+
+  const initializer = machine.initializers[0];
+  if (machine.initializers.length !== 1 || initializer === undefined) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.initializers:${machine.id}`,
+      `Effect single-use projection requires one initializer in ${machine.id}`,
+    );
   }
-  for (const parameter of operation.parameters) {
-    if (parameter.type !== "Integer") {
-      return yield* targetProjectionFailure(
-        "unsupported-target",
-        `operationRealization:${realization.id}.parameter:${machine.id}.${operation.id}.${parameter.id}`,
-        `Effect single-use projection requires Integer parameter ${machine.id}.${operation.id}.${parameter.id}`,
-      );
-    }
+  const initializerParameter = initializer.parameters[0];
+  if (
+    initializer.parameters.length !== 1 ||
+    initializerParameter === undefined ||
+    initializerParameter.type !== "Integer"
+  ) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.initializer:${machine.id}.${initializer.id}`,
+      `Effect single-use projection requires one Integer parameter for ${machine.id}.${initializer.id}`,
+    );
   }
+  const initializerRequirement = initializer.requires[0];
+  if (
+    initializer.requires.length !== 1 ||
+    initializerRequirement === undefined ||
+    !matchesStatePredicate(
+      initializerRequirement,
+      "parameter",
+      initializerParameter.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.initializer:${machine.id}.${initializer.id}.requires`,
+      `Effect single-use projection requires ${initializerParameter.id} >= 0`,
+    );
+  }
+
+  if (machine.transitions.length !== 1) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.transitions:${machine.id}`,
+      `Effect single-use projection requires one transition in ${machine.id}`,
+    );
+  }
+  const operationParameter = operation.parameters[0];
+  if (
+    operation.parameters.length !== 1 ||
+    operationParameter === undefined ||
+    operationParameter.type !== "Integer"
+  ) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.parameter:${machine.id}.${operation.id}`,
+      `Effect single-use projection requires one Integer parameter for ${machine.id}.${operation.id}`,
+    );
+  }
+  const firstOperationRequirement = operation.requires[0];
+  const secondOperationRequirement = operation.requires[1];
+  const firstMatchesNonnegativeParameter =
+    firstOperationRequirement !== undefined &&
+    matchesStatePredicate(
+      firstOperationRequirement,
+      "parameter",
+      operationParameter.id,
+      "integerLiteral",
+      "0",
+    );
+  const firstMatchesAvailableState =
+    firstOperationRequirement !== undefined &&
+    matchesStatePredicate(
+      firstOperationRequirement,
+      "stateField",
+      stateField.id,
+      "parameter",
+      operationParameter.id,
+    );
+  const secondMatchesNonnegativeParameter =
+    secondOperationRequirement !== undefined &&
+    matchesStatePredicate(
+      secondOperationRequirement,
+      "parameter",
+      operationParameter.id,
+      "integerLiteral",
+      "0",
+    );
+  const secondMatchesAvailableState =
+    secondOperationRequirement !== undefined &&
+    matchesStatePredicate(
+      secondOperationRequirement,
+      "stateField",
+      stateField.id,
+      "parameter",
+      operationParameter.id,
+    );
+  if (
+    operation.requires.length !== 2 ||
+    firstOperationRequirement === undefined ||
+    secondOperationRequirement === undefined ||
+    !(
+      (firstMatchesNonnegativeParameter && secondMatchesAvailableState) ||
+      (firstMatchesAvailableState && secondMatchesNonnegativeParameter)
+    )
+  ) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.transition:${machine.id}.${operation.id}.requires`,
+      `Effect single-use projection requires ${operationParameter.id} >= 0 and ${stateField.id} >= ${operationParameter.id}`,
+    );
+  }
+
+  const invariant = machine.invariants[0];
+  if (
+    machine.invariants.length !== 1 ||
+    invariant === undefined ||
+    !matchesStatePredicate(
+      invariant.proposition,
+      "stateField",
+      stateField.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${realization.id}.invariants:${machine.id}`,
+      `Effect single-use projection requires ${stateField.id} >= 0 as its only invariant`,
+    );
+  }
+
   try {
-    return emitEffectSingleUseOperationRealization(machine, operation, realization);
+    return emitEffectSingleUseOperationRealization(
+      machine,
+      operation,
+      realization,
+      operationParameter.id,
+      requirement.capability,
+    );
   } catch (error) {
     return yield* targetProjectionFailure(
       "unsupported-target",

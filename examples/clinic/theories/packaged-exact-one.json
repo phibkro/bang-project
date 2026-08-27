@@ -1,0 +1,17 @@
+{
+  "bangExplanation": 1,
+  "id": "clinic-packaged-exact-one",
+  "sources": [
+    {
+      "path": "examples/clinic/clinic.bang",
+      "format": "bang-source"
+    }
+  ],
+  "requirement": "operationRealization:BookAppointmentOnce.requirement:ConfirmBooking",
+  "theory": {
+    "path": "packages/theories/theory-packages/exact-one-capability.json",
+    "id": "ExactOneCapabilityExecution",
+    "version": 1,
+    "semanticDigest": "sha256:f5688125437b19929b78f813b74a6595e09d92fdfd8ac6005066ff1cb3557071"
+  }
+}
