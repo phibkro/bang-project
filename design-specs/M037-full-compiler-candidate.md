@@ -92,7 +92,7 @@ examples/clinic/external-consumer/consumer.mjs
 tests/m037-full-compiler-candidate.test.ts
 ```
 
-The only existing executor file M037 may edit is `.github/workflows/quality.yml`. It may add the direct M036 parity and focused M037 test commands to the existing merge-blocking `verify` job.
+The only existing executor file M037 may edit is `.github/workflows/quality.yml`. It must set the pinned `extractions/setup-just` step's `with.just-version` input to `1.58.0`. It may add the direct M036 parity and focused M037 test commands to the existing merge-blocking `verify` job.
 
 The root `package.json`, `bun.lock`, and existing package scripts remain byte-identical. M037 adds no root dependency.
 
@@ -145,6 +145,47 @@ The decoder rejects every excess property. On success, standard output is exactl
 
 The decode success path writes no standard error. A decode failure returns `decode/report-invalid` as canonical `M037CandidateFailure` JSON.
 
+# Public host contract
+
+M037 supports one `x86_64-linux` host profile. The root rejects every other operating system or architecture before it creates a worktree.
+
+The public host must provide these tools and capabilities:
+
+| Tool | Required contract                                                             | Project-host observation     |
+| ---- | ----------------------------------------------------------------------------- | ---------------------------- |
+| Git  | `git worktree add --detach --no-checkout` and cleanup support                 | `git version 2.55.0`         |
+| Bash | `-euo pipefail` support for the shell configured by the `Justfile`            | GNU Bash `5.3.15(1)-release` |
+| Just | exactly `just 1.58.0`, and the root `Justfile` must parse                     | `just 1.58.0`                |
+| Bun  | exactly `1.3.13`                                                              | `1.3.13`                     |
+| Nix  | `nix-command`, flakes, the public Nix cache, and refreshed network resolution | `nix (Nix) 2.34.8`           |
+
+Nix must reach GitHub and `https://cache.nixos.org/`. A warm local store does not remove this public-host prerequisite.
+
+The mission root runs these preflights once, in this order:
+
+1. Check that `process.platform` is `linux`, `process.arch` is `x64`, and `Bun.version` is `1.3.13`.
+2. Resolve absolute real paths for `git`, `bash`, `just`, and `nix`.
+3. Run `git --version` and require one normalized `git version` line.
+4. Add and remove one detached no-checkout worktree at `HEAD`.
+5. Run `bash --version` and retain only the normalized first line.
+6. Run `bash -euo pipefail -c 'printf "m037-bash-ok\n"'` and require the exact token.
+7. Run `just --version` and require exactly `just 1.58.0`.
+8. Run `just --summary` in the mission root and require success.
+9. Run `nix --version` and require one normalized `nix (Nix)` line.
+10. Run `nix config show experimental-features` and require `nix-command` and `flakes`.
+11. Run `nix config show substituters` and require `https://cache.nixos.org/`.
+12. Run the refreshed pinned Node build in the Node section and require Node `v24.7.0`.
+
+Every preflight child uses the mission root as its working directory. Each child receives this complete replacement environment:
+
+```text
+HOME=<host-preflight-temp>
+LANG=C.UTF-8
+PATH=<directories of the resolved host tools>
+```
+
+The root records normalized version strings and the narrow capability results. It does not record host paths, temporary paths, or cache paths.
+
 # Public input schema
 
 The file `examples/clinic/full-candidate.json` has this exact content:
@@ -176,7 +217,9 @@ The orchestrator fails if any resolved reference disagrees with this chain. The 
 
 # Clean-run model
 
-The command records `HEAD` and the SHA-256 digest of `bun.lock`. It then creates two detached clean worktrees at that revision.
+The command records `HEAD` and the SHA-256 digest of `bun.lock`. It rejects a dirty tracked worktree before the public-host preflights.
+
+After all preflights pass, the command creates two detached clean worktrees at the recorded revision.
 
 Each worktree runs these setup commands as typed child processes:
 
@@ -189,7 +232,7 @@ The candidate uses one Effect composition root for each worktree path. It does n
 
 Each run independently produces exactly 21 producer files. Temporary paths, times, process identities, and cache paths do not enter those files.
 
-The command removes both worktrees on success and failure. A cleanup failure stops the command before final publication.
+The command removes both run worktrees and the preflight worktree on success and failure. A cleanup failure stops the command before final publication.
 
 # Ordered journey
 
@@ -198,7 +241,7 @@ Each clean run records these ten observations in this order. This is the report 
 | Stage                | Current typed boundary                                                                                   | Required observation                                                                        |
 | -------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `checkout`           | detached worktree acquisition                                                                            | recorded revision and lock digest match                                                     |
-| `setup`              | `ChildProcessSpawner` with explicit arguments                                                            | install, build, and pinned Nix Node provisioning exit with zero                             |
+| `setup`              | `ChildProcessSpawner` with explicit arguments                                                            | `just install` and `bun run build` exit with zero                                           |
 | `explain`            | one direct `compileSelectedExplanationStaged` result                                                     | exact-one result is `Applicable` and its artifact and lock bytes match the assembly closure |
 | `classify`           | mission-local strict `M037CollectedClassificationReportSchema` consumer decode                           | Effect and Gleam are ordered `Qualified` results                                            |
 | `plan`               | strict `PlanningReportSchema` decode of the collected entry                                              | the explicit objective selects `gleam-beam`                                                 |
@@ -258,11 +301,51 @@ The runner copies only this file into a new temporary artifact directory:
 .bang/assemblies/clinic-supervised-exact-one/bin/exact_one
 ```
 
-The runner executes the copy with the pinned Erlang `escript` runtime. The artifact directory contains no BANG source, package, build output, or Gleam compiler.
+The runner obtains the pinned toolchain output with this exact command:
 
-The subprocess cannot resolve the BANG workspace through its working directory or `PATH`. It must emit one decodable M031 exact-one observation.
+```text
+nix build --file <worktree>/nix/gleam.nix --no-link --print-out-paths
+```
 
-The observation must contain these identities:
+The command must return one absolute Nix store path. The root resolves `<toolchain>/bin/escript` through `FileSystem.realPath`.
+
+The resolved path must be an absolute `<erlang-store>/bin/escript` path. The root hashes the executable bytes and records the digest.
+
+The root derives `<erlang-store>/lib/erlang` from that real path and requires the directory to exist.
+
+The artifact child receives this exact argument vector:
+
+```text
+<absolute-erlang-store>/bin/escript
+exact_one
+```
+
+Its working directory is `<artifact-only-temp>`. This directory contains only the copied `exact_one` file.
+
+The child receives this complete replacement environment:
+
+```text
+HOME=<artifact-only-temp>
+LANG=C.UTF-8
+PATH=<absolute-erlang-store>/bin
+ERL_ROOTDIR=<absolute-erlang-store>/lib/erlang
+ERL_CRASH_DUMP_SECONDS=0
+```
+
+The `PATH` value is the Erlang-store bin directory. It is not the combined output path from `nix/gleam.nix`.
+
+Before execution, the root checks these repository-relative sentinels from the artifact working directory:
+
+```text
+apps/bang/src
+packages
+examples/clinic/clinic.bang
+.bang/assemblies/clinic-supervised-exact-one/report.json
+```
+
+None can resolve from the artifact working directory or its `PATH`. The root also checks that `gleam` cannot resolve from the Erlang-only `PATH`.
+
+The artifact must emit one decodable M031 exact-one observation. The observation must contain these identities:
 
 | Role        | Identity                                                              |
 | ----------- | --------------------------------------------------------------------- |
@@ -272,6 +355,8 @@ The observation must contain these identities:
 | Target      | `gleam-beam`                                                          |
 
 The observation must equal the selected qualification observation. This equality is a bounded runtime check, not implementation equivalence.
+
+This boundary restricts the argument vector, working directory, and environment. It does not provide filesystem sandboxing or deny absolute host paths.
 
 # Outside-workspace consumer
 
@@ -297,13 +382,15 @@ inputs/
 
 The root writes `isolation-loader.mjs` only inside the sandbox. Its source follows the tested M036 `resolve` and `load` hook pattern.
 
-The root provisions Node by running this exact setup command. The Nixpkgs commit is immutable and introduces `nodejs_24` at version `24.7.0`.
+The public-host preflight provisions Node with this exact command. The Nixpkgs commit introduces `nodejs_24` at version `24.7.0`.
 
 ```text
-nix build --no-link --print-out-paths --extra-experimental-features "nix-command flakes" github:NixOS/nixpkgs/adf428a7cfbb66e9b5cb5cdd2df8a659c2df1052#nodejs_24
+nix build --refresh --no-link --print-out-paths --extra-experimental-features "nix-command flakes" github:NixOS/nixpkgs/adf428a7cfbb66e9b5cb5cdd2df8a659c2df1052#nodejs_24
 ```
 
-The runner accepts exactly one absolute Nix store path on standard output. It requires output `v24.7.0` from `<nix-result>/bin/node` and digest-binds those executable bytes.
+The runner accepts one absolute Nix store path on standard output. It requires `v24.7.0` from `<nix-result>/bin/node` and hashes the executable bytes.
+
+Nix can write fetch progress to standard error. The root does not parse or record that untyped success output.
 
 The exact external-consumer child argument vector uses absolute paths:
 
@@ -440,6 +527,7 @@ type M037RawSha256 = string;
 
 type M037Stage =
   | "selection"
+  | "preflight"
   | "checkout"
   | "setup"
   | "explain"
@@ -461,6 +549,7 @@ type M037SourceRecordPath =
   | ".bang/plans/clinic-supervised-exact-one/report.json"
   | ".bang/assemblies/clinic-supervised-exact-one/report.json"
   | "dist/schemas/2/manifest.json"
+  | "embedded/public-host-preflight.json"
   | "embedded/input-resolution.json"
   | "embedded/artifact-isolation.json"
   | "embedded/audit.json"
@@ -477,6 +566,7 @@ type M037SourceSelector =
   | "plan:clinic-supervised-exact-one/gleam-beam"
   | "assembly:clinic-supervised-exact-one/gleam-beam"
   | "schema-publication:2"
+  | "observation:public-host-preflight"
   | "observation:input-resolution"
   | "observation:artifact-isolation"
   | "observation:audit"
@@ -566,6 +656,25 @@ interface M037FullCompilerCandidateReport {
     readonly sha256: M037Sha256;
   }>;
   readonly embeddedRecords: {
+    readonly publicHostPreflight: M037EmbeddedRecord<
+      "embedded/public-host-preflight.json",
+      {
+        readonly executionPlatform: "x86_64-linux";
+        readonly bunVersion: "1.3.13";
+        readonly gitVersion: `git version ${string}`;
+        readonly gitDetachedWorktreeProbe: true;
+        readonly bashVersion: `GNU bash, version ${string}`;
+        readonly bashStrictModeProbe: true;
+        readonly justVersion: "just 1.58.0";
+        readonly justfileParsed: true;
+        readonly nixVersion: `nix (Nix) ${string}`;
+        readonly nixCommandEnabled: true;
+        readonly nixFlakesEnabled: true;
+        readonly nixPublicCacheConfigured: true;
+        readonly nixRefreshedNetworkResolution: true;
+        readonly pinnedNodeClosureResolved: true;
+      }
+    >;
     readonly inputResolution: M037EmbeddedRecord<
       "embedded/input-resolution.json",
       {
@@ -596,8 +705,25 @@ interface M037FullCompilerCandidateReport {
         readonly requirementAddress: "operationRealization:BookAppointmentOnce.requirement:ConfirmBooking";
         readonly observation: M031TargetQualificationObservations;
         readonly qualificationMatch: true;
-        readonly workspaceAvailable: false;
-        readonly gleamCompilerAvailable: false;
+        readonly escriptRealPath: `/nix/store/${string}/bin/escript`;
+        readonly escriptSha256: M037Sha256;
+        readonly arguments: readonly ["exact_one"];
+        readonly cwd: "artifact-only-temp";
+        readonly environment: {
+          readonly HOME: "artifact-only-temp";
+          readonly LANG: "C.UTF-8";
+          readonly PATH: "erlang-store/bin";
+          readonly ERL_ROOTDIR: "erlang-store/lib/erlang";
+          readonly ERL_CRASH_DUMP_SECONDS: "0";
+        };
+        readonly workspaceSentinels: readonly [
+          "apps/bang/src",
+          "packages",
+          "examples/clinic/clinic.bang",
+          ".bang/assemblies/clinic-supervised-exact-one/report.json",
+        ];
+        readonly workspaceResolvableFromCwdOrPath: false;
+        readonly gleamResolvableFromPath: false;
       }
     >;
     readonly audit: M037EmbeddedRecord<"embedded/audit.json", AuditSummary>;
@@ -724,7 +850,7 @@ The unchanged lock digest binds the M036 dependency graph. The external-consumer
 
 The output inventory has the exact 21 producer rows followed by the report row. The report row has `sha256: null` because a report cannot contain its own byte digest. `staleMembers` is sorted and has no path from the output inventory.
 
-The stage array has exactly 23 rows. It contains `selection`, ten ordered stages for run 1, ten ordered stages for run 2, `comparison`, and `accumulation`.
+The stage array has exactly 24 rows. It contains `selection`, `preflight`, ten ordered stages for run 1, ten ordered stages for run 2, `comparison`, and `accumulation`.
 
 `run` appears only on the 20 per-run rows. The report has no success stage named `publication`.
 
@@ -781,6 +907,7 @@ The source-reference catalog is exact:
 | `E05` | `embedded/external-consumer-isolation.json`                                           | `observation:external-consumer-isolation`         | `effect-typescript` | `Q`        | embedded record    |
 | `E06` | `embedded/producer-inventory-comparison.json`                                         | `observation:producer-inventory-comparison`       | —                   | —          | embedded record    |
 | `E07` | `embedded/theory-applicability.json`                                                  | `observation:theory-applicability`                | —                   | `Q`        | embedded record    |
+| `E08` | `embedded/public-host-preflight.json`                                                 | `observation:public-host-preflight`               | —                   | —          | embedded record    |
 
 For an `R` reference, `sha256` equals the digest for its exact path in `producerInventory`.
 
@@ -788,19 +915,19 @@ For an `E` reference, `sha256` equals the digest on its exact embedded record. T
 
 The 11 warranted claim projections are exact and ordered:
 
-| Claim | Exact statement                                                                                    | Ordered source references                                                                        |
-| ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `C01` | one public command resolved the committed Clinic input chain                                       | `E01`                                                                                            |
-| `C02` | the current exact-one theory remained applicable                                                   | `E07`                                                                                            |
-| `C03` | two fresh targets qualified from separate bounded evidence                                         | `R04`, `R02`, `R03`                                                                              |
-| `C04` | the explicit supervised objective selected Gleam                                                   | `R05`, `R03`                                                                                     |
-| `C05` | assembly retained the selected qualified bytes                                                     | `R03`, `R06`                                                                                     |
-| `C06` | one escript ran without BANG or the Gleam compiler                                                 | `R06`, `E02`                                                                                     |
-| `C07` | one clean audit found no changed material or retired record                                        | `R06`, `E03`                                                                                     |
-| `C08` | schema major 2 produced six files with exact bounded custody                                       | `R07`, `E04`                                                                                     |
-| `C09` | one isolated external process returned the strict valid verdict                                    | `R02`, `E05`                                                                                     |
-| `C10` | one report linked every current source without copying its evidence grades                         | `R01`, `R02`, `R03`, `R04`, `R05`, `R06`, `R07`, `E01`, `E02`, `E03`, `E04`, `E05`, `E06`, `E07` |
-| `C11` | two clean runs produced equal 21-file producer inventories and five-record observation projections | `E06`                                                                                            |
+| Claim | Exact statement                                                                                    | Ordered source references                                                                               |
+| ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `C01` | one supported public host ran one command and resolved the committed Clinic input chain            | `E08`, `E01`                                                                                            |
+| `C02` | the current exact-one theory remained applicable                                                   | `E07`                                                                                                   |
+| `C03` | two fresh targets qualified from separate bounded evidence                                         | `R04`, `R02`, `R03`                                                                                     |
+| `C04` | the explicit supervised objective selected Gleam                                                   | `R05`, `R03`                                                                                            |
+| `C05` | assembly retained the selected qualified bytes                                                     | `R03`, `R06`                                                                                            |
+| `C06` | one copied escript ran from the artifact-only working directory with the Erlang-only `PATH`        | `R06`, `E02`                                                                                            |
+| `C07` | one clean audit found no changed material or retired record                                        | `R06`, `E03`                                                                                            |
+| `C08` | schema major 2 produced six files with exact bounded custody                                       | `R07`, `E04`                                                                                            |
+| `C09` | one isolated external process returned the strict valid verdict                                    | `R02`, `E05`                                                                                            |
+| `C10` | one report linked every current source without copying its evidence grades                         | `R01`, `R02`, `R03`, `R04`, `R05`, `R06`, `R07`, `E01`, `E02`, `E03`, `E04`, `E05`, `E06`, `E07`, `E08` |
+| `C11` | two clean runs produced equal 21-file producer inventories and five-record observation projections | `E06`                                                                                                   |
 
 The report decoder checks the source-reference order and values against this table. It does not accept an equivalent reordering.
 
@@ -812,14 +939,14 @@ Every historical item has the label `historical-mission-observation-citation`.
 
 Only the current digest-bound `R` and `E` references count as report evidence.
 
-| Family                     | Score label                                               | Historical citations                                 | Current source references                                                          | Current observation                                                   | Limit                                                 |
-| -------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------- |
-| Refined data algebra       | `historical-mission-observation-citation`                 | M001, M002, M003                                     | none                                                                               | none                                                                  | Clinic has no refinement or algebraic law declaration |
-| State and coeffects        | `current-digest-bound-evidence-with-historical-citations` | M004, M015, M036                                     | `R03`, `R06`, `E02`, `E03`                                                         | checked Clinic state, requirements, invariant, artifact, and audit    | no Core state-update law                              |
-| Capability and quantity    | `current-digest-bound-evidence-with-historical-citations` | M006, M018, M030, M036                               | `R04`, `R02`, `R03`                                                                | two current Qualified dispositions and their separate target evidence | no durable or distributed quantity claim              |
-| Actor and channel behavior | `current-digest-bound-evidence-with-historical-citations` | M017, M024, M036                                     | `R03`, `R06`, `E02`                                                                | selected supervised Gleam artifact and restart profile                | Clinic has no M024 channel input                      |
-| Laws and providers         | `current-digest-bound-evidence-with-historical-citations` | M005, M011, M016, M030                               | `R01`, `E07`                                                                       | current package custody and Applicable theory result                  | no Clinic solver or kernel-provider run               |
-| Graded evidence            | `current-digest-bound-evidence-with-historical-citations` | M007, M010, M012, M031, M032, M033, M034, M035, M036 | `R01`, `R02`, `R03`, `R04`, `R05`, `R06`, `R07`, `E03`, `E04`, `E05`, `E06`, `E07` | current records, audit, custody, source projections, and comparison   | no evidence-grade upgrade                             |
+| Family                     | Score label                                               | Historical citations                                 | Current source references                                                                 | Current observation                                                   | Limit                                                 |
+| -------------------------- | --------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------- |
+| Refined data algebra       | `historical-mission-observation-citation`                 | M001, M002, M003                                     | none                                                                                      | none                                                                  | Clinic has no refinement or algebraic law declaration |
+| State and coeffects        | `current-digest-bound-evidence-with-historical-citations` | M004, M015, M036                                     | `R03`, `R06`, `E02`, `E03`                                                                | checked Clinic state, requirements, invariant, artifact, and audit    | no Core state-update law                              |
+| Capability and quantity    | `current-digest-bound-evidence-with-historical-citations` | M006, M018, M030, M036                               | `R04`, `R02`, `R03`                                                                       | two current Qualified dispositions and their separate target evidence | no durable or distributed quantity claim              |
+| Actor and channel behavior | `current-digest-bound-evidence-with-historical-citations` | M017, M024, M036                                     | `R03`, `R06`, `E02`                                                                       | selected supervised Gleam artifact and restart profile                | Clinic has no M024 channel input                      |
+| Laws and providers         | `current-digest-bound-evidence-with-historical-citations` | M005, M011, M016, M030                               | `R01`, `E07`                                                                              | current package custody and Applicable theory result                  | no Clinic solver or kernel-provider run               |
+| Graded evidence            | `current-digest-bound-evidence-with-historical-citations` | M007, M010, M012, M031, M032, M033, M034, M035, M036 | `R01`, `R02`, `R03`, `R04`, `R05`, `R06`, `R07`, `E03`, `E04`, `E05`, `E06`, `E07`, `E08` | current records, host preflight, audit, custody, and comparison       | no evidence-grade upgrade                             |
 
 The scorecard does not establish a universal semantic family model. It does not claim that Clinic exercises every historical citation.
 
@@ -842,10 +969,11 @@ The report must include these exact unsupported claims after the 11 warranted ro
 24. Rollback cannot fail or always restores every prior byte.
 25. Unlisted stale members are absent, removed, or part of the enumerated closure.
 26. The final replacement survives process termination at every instruction boundary.
+27. Artifact execution provides filesystem sandboxing or denies absolute host paths.
 
-Claims `C12` through `C26` have `disposition: "unsupported"` and an empty `sourceReferences` array.
+Claims `C12` through `C27` have `disposition: "unsupported"` and an empty `sourceReferences` array.
 
-The claims array has exactly 26 rows in numeric order.
+The claims array has exactly 27 rows in numeric order.
 
 # Typed failures
 
@@ -854,6 +982,7 @@ M037 adds one mission-local orchestration error. It does not change an existing 
 ```ts
 type M037FailureStage =
   | "selection"
+  | "preflight"
   | "checkout"
   | "setup"
   | "explain"
@@ -872,6 +1001,12 @@ type M037FailureReason =
   | "invalid-selection"
   | "unsafe-path"
   | "reference-disagreement"
+  | "unsupported-platform"
+  | "bun-version-unsupported"
+  | "git-worktree-unavailable"
+  | "bash-unavailable"
+  | "just-version-unsupported"
+  | "nix-unavailable"
   | "dirty-worktree"
   | "revision-unavailable"
   | "cleanup-failed"
@@ -992,23 +1127,24 @@ M037 does not create a producer reason when the source reason is absent.
 
 The outer stage and reason pairs are exact:
 
-| Stage                | Reasons                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `selection`          | `invalid-selection`, `unsafe-path`, `reference-disagreement`                                |
-| `checkout`           | `dirty-worktree`, `revision-unavailable`, `cleanup-failed`                                  |
-| `setup`              | `process-failed`                                                                            |
-| `explain`            | `producer-failed`                                                                           |
-| `classify`           | `producer-failed`                                                                           |
-| `plan`               | `producer-failed`                                                                           |
-| `assemble`           | `producer-failed`                                                                           |
-| `artifact`           | `material-missing`, `execution-failed`, `observation-mismatch`, `runtime-boundary-violated` |
-| `audit`              | `producer-failed`                                                                           |
-| `schema-publication` | `producer-failed`, `platform-failed`, `custody-mismatch`                                    |
-| `external-consumer`  | `process-failed`, `consumer-rejected`, `isolation-violated`                                 |
-| `comparison`         | `producer-inventory-diverged`, `observation-diverged`                                       |
-| `accumulation`       | `report-invalid`, `source-reference-invalid`, `unsupported-claim-upgraded`                  |
-| `publication`        | `publication-failed`, `rollback-failed`                                                     |
-| `decode`             | `report-invalid`                                                                            |
+| Stage                | Reasons                                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `selection`          | `invalid-selection`, `unsafe-path`, `reference-disagreement`                                                                                     |
+| `preflight`          | `unsupported-platform`, `bun-version-unsupported`, `git-worktree-unavailable`, `bash-unavailable`, `just-version-unsupported`, `nix-unavailable` |
+| `checkout`           | `dirty-worktree`, `revision-unavailable`, `cleanup-failed`                                                                                       |
+| `setup`              | `process-failed`                                                                                                                                 |
+| `explain`            | `producer-failed`                                                                                                                                |
+| `classify`           | `producer-failed`                                                                                                                                |
+| `plan`               | `producer-failed`                                                                                                                                |
+| `assemble`           | `producer-failed`                                                                                                                                |
+| `artifact`           | `material-missing`, `execution-failed`, `observation-mismatch`, `runtime-boundary-violated`                                                      |
+| `audit`              | `producer-failed`                                                                                                                                |
+| `schema-publication` | `producer-failed`, `platform-failed`, `custody-mismatch`                                                                                         |
+| `external-consumer`  | `process-failed`, `consumer-rejected`, `isolation-violated`                                                                                      |
+| `comparison`         | `producer-inventory-diverged`, `observation-diverged`                                                                                            |
+| `accumulation`       | `report-invalid`, `source-reference-invalid`, `unsupported-claim-upgraded`                                                                       |
+| `publication`        | `publication-failed`, `rollback-failed`                                                                                                          |
+| `decode`             | `report-invalid`                                                                                                                                 |
 
 The positive candidate can emit `explain/producer-failed` for its direct applicability call. A nested producer failure from the assembly call emits `assemble/producer-failed` with `AssemblyFailure`.
 
@@ -1028,6 +1164,15 @@ The focused journey must exercise these failures in temporary roots:
 
 | Case                                                          | Expected M037 result                      | Exact cause or observation                                                     |
 | ------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Reject a non-`x86_64-linux` injected host fact                | `preflight/unsupported-platform`          | no worktree exists                                                             |
+| Report injected Bun version `1.3.12`                          | `preflight/bun-version-unsupported`       | exact `1.3.13` requirement                                                     |
+| Fail the detached no-checkout worktree probe                  | `preflight/git-worktree-unavailable`      | Git probe command and cleanup                                                  |
+| Fail the Bash strict-mode token probe                         | `preflight/bash-unavailable`              | Bash is the configured `Justfile` shell                                        |
+| Report injected Just version `just 1.57.0`                    | `preflight/just-version-unsupported`      | exact `just 1.58.0` requirement                                                |
+| Fail Nix version, feature, cache, or refreshed build checks   | `preflight/nix-unavailable`               | exact failed Nix preflight command                                             |
+| Resolve `escript` to the combined toolchain path              | `artifact/runtime-boundary-violated`      | path is not the absolute real Erlang-store executable                          |
+| Change artifact argv, working directory, or environment       | `artifact/runtime-boundary-violated`      | exact command boundary disagreement                                            |
+| Resolve one workspace sentinel or `gleam`                     | `artifact/runtime-boundary-violated`      | narrow working-directory or `PATH` observation                                 |
 | Candidate copy adds `"unexpected": true`                      | `selection/invalid-selection`             | strict candidate decoder                                                       |
 | Classify `foreign-realization.json` in-process                | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `missing-declaration` |
 | Classify `unsupported-two-state-fields.json` in-process       | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `unsupported-target`  |
@@ -1042,9 +1187,9 @@ The focused journey must exercise these failures in temporary roots:
 
 One additional stale-member case places an extra file in an owned directory. The command reports the sorted path, ignores it, and leaves it unchanged.
 
-The first nine failure cases do not change any prior enumerated byte. The tenth case restores prior enumerated bytes after rollback succeeds.
+The first 18 failure cases do not change any prior enumerated byte. The nineteenth case restores prior enumerated bytes after rollback succeeds.
 
-The eleventh case runs only in a temporary root. It checks the typed limitation and does not assert byte equality.
+The twentieth case runs only in a temporary root. It checks the typed limitation and does not assert byte equality.
 
 Each failure writes no report path to standard output.
 
@@ -1054,12 +1199,12 @@ The focused test calls mission-local functions with temporary copies and test La
 
 M037 can establish these claims:
 
-1. one public command resolved the committed Clinic input chain;
+1. one supported public host ran one command and resolved the committed Clinic input chain;
 2. the current exact-one theory remained applicable;
 3. two fresh targets qualified from separate bounded evidence;
 4. the explicit supervised objective selected Gleam;
 5. assembly retained the selected qualified bytes;
-6. one escript ran without BANG or the Gleam compiler;
+6. one copied escript ran from the artifact-only working directory with the Erlang-only `PATH`;
 7. one clean audit found no changed material or retired record;
 8. schema major 2 produced six files with exact bounded custody;
 9. one isolated external process returned the strict valid verdict;
@@ -1079,28 +1224,32 @@ M037 cannot establish any claim in the unsupported section.
 M037 fails if:
 
 1. the executor needs any command, file, or instruction absent from the public README;
-2. the root command does not resolve to one exact committed input;
-3. an M030 through M036 producer changes;
-4. the root parses child BANG CLI prose or invokes a BANG CLI child command;
-5. the report contains a successful `publication` stage observation;
-6. the second clean run compares a report, compares 22 files, omits a producer file, or omits a per-run observation;
-7. a claim copies or combines source evidence metadata;
-8. a warranted claim lacks its exact ordered source references;
-9. a historical citation is labeled as current evidence;
-10. the scorecard claims universal family coverage;
-11. planning selects Gleam without the public objective values;
-12. assembly regenerates or replaces the qualified Gleam bytes;
-13. the copied escript requires BANG, the workspace, or the Gleam compiler;
-14. a clean audit changes or retires a record;
-15. the schema report claims that all six files are manifest-digested;
-16. the external consumer accepts an outside import or wrong material-role string;
-17. the public report decoder is unavailable or accepts an excess property;
-18. the publication claims concurrent-reader isolation or one physical filesystem transaction;
-19. the command removes, owns, or claims absence of an unlisted stale member;
-20. a rollback failure is reported as restored or unchanged;
-21. an enumerated byte differs after any failure whose rollback succeeded;
-22. any protected M036 parity byte changes; or
-23. implementation adds a new Core construct, provider, target, evidence class, deployment, or CLI verb.
+2. a mission-root preflight is absent or accepts an unsupported host, tool version, or capability;
+3. the public-host record omits or changes a normalized version or narrow capability result;
+4. the root command does not resolve to one exact committed input;
+5. an M030 through M036 producer changes;
+6. the root parses child BANG CLI prose or invokes a BANG CLI child command;
+7. the report contains a successful `publication` stage observation;
+8. the second clean run compares a report, compares 22 files, omits a producer file, or omits a per-run observation;
+9. a claim copies or combines source evidence metadata;
+10. a warranted claim lacks its exact ordered source references;
+11. a historical citation is labeled as current evidence;
+12. the scorecard claims universal family coverage;
+13. planning selects Gleam without the public objective values;
+14. assembly regenerates or replaces the qualified Gleam bytes;
+15. artifact execution uses a non-real escript path, a different argument vector, a different working directory, or an inherited environment;
+16. an artifact workspace sentinel or `gleam` resolves through the working directory or Erlang-only `PATH`;
+17. the artifact report uses broad availability fields or claims filesystem sandboxing;
+18. a clean audit changes or retires a record;
+19. the schema report claims that all six files are manifest-digested;
+20. the external consumer accepts an outside import or wrong material-role string;
+21. the public report decoder is unavailable or accepts an excess property;
+22. the publication claims concurrent-reader isolation or one physical filesystem transaction;
+23. the command removes, owns, or claims absence of an unlisted stale member;
+24. a rollback failure is reported as restored or unchanged;
+25. an enumerated byte differs after any failure whose rollback succeeded;
+26. any protected M036 parity byte changes; or
+27. implementation adds a new Core construct, provider, target, evidence class, deployment, or CLI verb.
 
 # Non-goals
 
@@ -1116,23 +1265,25 @@ M037 does not provide:
 - an indirection pointer, generation directory, or manifest switch-over protocol;
 - cleanup or ownership of unlisted stale members;
 - infallible rollback or process-termination durability;
+- filesystem sandboxing for artifact execution;
 - cross-platform candidate execution; or
 - implementation conformance inferred from custody or decode validity.
 
 # Smallest implementation sequence
 
 1. Add the strict candidate input, external consumer, and root script entry.
-2. Declare the strict candidate, accumulated report, source-reference, claim, scorecard, failure, and decode Schemas in the root script. Compose the collected M031 report consumer from its existing exported component Schemas.
-3. Add pure inventory, digest, source-projection, closure-comparison, stale-scan, and claim-validation functions.
-4. Add one Effect composition root with current Bun `FileSystem`, `Path`, `Crypto`, and `ChildProcessSpawner` services.
-5. Run one direct staged explanation, one staged assembly call, strict collected-record decodes, audit, and schema publication in-process.
-6. Inject one assembly collector into `compileSelectedAssembly`. Use its complete entries for the single final publication.
-7. Run only setup tools, the copied escript, and the isolated external consumer as child processes.
-8. Reuse the M036 loader and import-log pattern. Freeze and decode the exact Node invocation.
-9. Compare the two 21-file producer inventories and five-record observation projections, build the 14 source references, validate 26 claims, and strictly decode the accumulated report.
-10. Scan owned directories for unlisted members. Add only the report to the 21 producer entries and call the house atomic publisher once.
-11. Add the focused positive journey, 11 failure cases, one stale-member case, and M036 byte-parity check.
-12. Add direct M036 parity and focused M037 test steps to the existing merge-blocking quality workflow.
+2. Declare the strict candidate, accumulated report, source-reference, claim, scorecard, failure, and decode Schemas in the root script.
+3. Compose the collected M031 report consumer from its existing exported component Schemas.
+4. Add pure inventory, digest, source-projection, closure-comparison, stale-scan, and claim-validation functions.
+5. Add one Effect composition root with current Bun `FileSystem`, `Path`, `Crypto`, and `ChildProcessSpawner` services.
+6. Add the ordered mission-root host preflights and the strict public-host embedded record.
+7. Run one direct staged explanation, one staged assembly call, strict collected-record decodes, audit, and schema publication in-process.
+8. Inject one assembly collector into `compileSelectedAssembly`. Use its complete entries for the single final publication.
+9. Resolve the real Erlang-store escript and run the copied artifact with the frozen argument vector, working directory, and replacement environment.
+10. Reuse the M036 loader and import-log pattern. Freeze and decode the exact Node invocation.
+11. Compare the two 21-file producer inventories and five-record observation projections. Build 15 source references, validate 27 claims, and decode the report.
+12. Scan owned directories for unlisted members. Add only the report to the 21 producer entries and call the house atomic publisher once.
+13. Add the positive journey, 20 failure cases, one stale-member case, and M036 byte parity. Pin the workflow's `setup-just` input to `1.58.0` and add the merge-blocking steps.
 
 No implementation step changes an M030 through M036 producer.
 
@@ -1153,56 +1304,62 @@ M037 has these maximum counts:
 | Detached clean runs                                                                                     |     2 |
 | Producer files per clean run                                                                            |    21 |
 | Final enumerated files                                                                                  |    22 |
-| Report stage observations                                                                               |    23 |
-| Source references                                                                                       |    14 |
+| Mission-root public-host records                                                                        |     1 |
+| Detached no-checkout capability probes                                                                  |     1 |
+| Report stage observations                                                                               |    24 |
+| Source references                                                                                       |    15 |
 | Warranted claim rows                                                                                    |    11 |
-| Unsupported claim rows                                                                                  |    15 |
-| Total claim rows                                                                                        |    26 |
+| Unsupported claim rows                                                                                  |    16 |
+| Total claim rows                                                                                        |    27 |
 | Scorecard rows                                                                                          |     6 |
 | Qualified targets                                                                                       |     2 |
-| Negative failure cases                                                                                  |    11 |
+| Negative failure cases                                                                                  |    20 |
 | Changes to M030 through M036 producers                                                                  |     0 |
 | New schema-publication files                                                                            |     0 |
 | New domains, theories, providers, targets, evidence classes, Core constructs, CLI verbs, or deployments |     0 |
 
 # Acceptance
 
-1. Start from a clean checkout of the M037 candidate revision.
+1. Start from a clean `x86_64-linux` checkout of the M037 candidate revision.
 2. Follow only the public README and committed input.
-3. Run `just install`.
-4. Run `bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json`.
-5. Observe only `.bang/evidence/M037.json` on standard output.
-6. Strictly decode the staged report inside the command before publication.
-7. Run `bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.json` and observe one canonical `valid` result from the reloaded bytes.
-8. Observe the exact seven committed input paths and their digests.
-9. Observe exactly 23 report stages in the specified order and no `publication` stage.
-10. Observe one direct explanation call, one assembly call, strict collected-record decodes, and no child BANG CLI invocation.
-11. Observe one `Applicable` exact-one theory result.
-12. Observe two ordered fresh `Qualified` target records.
-13. Observe one selected Gleam plan with the exact public objective.
-14. Observe one assembly that binds the qualified Gleam bytes by digest.
-15. Run the copied escript and observe one equal Clinic result without BANG or Gleam.
-16. Observe a clean audit with zero changed and zero retired records.
-17. Observe schema major 2 with exactly six files.
-18. Observe manifest digests for exactly four schema payloads.
-19. Observe that the declaration and manifest are each bound by the six-file producer inventory, while `manifestSha256` also binds the manifest.
-20. Observe `x86_64-linux`, the immutable Nixpkgs revision, `nodejs_24`, version `v24.7.0`, the executable digest, and the frozen M036 loader invocation.
-21. Observe only the exact sandbox import set in the decoded module log.
-22. Observe one `valid` verdict with exact material-role strings.
-23. Observe exactly 14 source references with the specified paths, selectors, identities, and digests.
-24. Observe exactly 26 ordered claims with exact source-reference projections.
-25. Observe six scorecard rows that distinguish historical citations from current evidence.
-26. Observe equality of the two ordered 21-file producer inventories and five-record observation projections.
-27. Observe a final ordered 22-file output inventory whose last path is `.bang/evidence/M037.json`.
-28. Exercise the stale-member case and observe the sorted path, ignored status, and unchanged byte.
-29. Treat successful command exit plus strict report presence as the publication observation.
-30. Exercise all 11 negative failure cases and decode each exact stage and reason, plus the cause when present.
-31. Observe unchanged enumerated bytes after every failure whose rollback succeeds.
-32. Observe a typed limitation, and no restoration claim, when rollback fails.
-33. Run `bun run evidence:m036` and observe all 15 protected files unchanged byte for byte.
-34. Run `bun test tests/m037-full-compiler-candidate.test.ts`.
-35. Run `just verify`.
-36. Confirm that `.github/workflows/quality.yml` runs M036 parity, the focused M037 test, and `just verify` in its existing merge-blocking job.
+3. Observe exact Bun `1.3.13`, Just `1.58.0`, and `x86_64-linux` preflight results.
+4. Observe normalized Git, Bash, and Nix versions and every frozen capability result.
+5. Run `just install`.
+6. Run `bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json`.
+7. Observe only `.bang/evidence/M037.json` on standard output.
+8. Strictly decode the staged report inside the command before publication.
+9. Run `bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.json` and observe one canonical `valid` result.
+10. Observe the exact seven committed input paths and their digests.
+11. Observe exactly 24 report stages in the specified order and no `publication` stage.
+12. Observe one direct explanation call, one assembly call, strict collected-record decodes, and no child BANG CLI invocation.
+13. Observe one `Applicable` exact-one theory result.
+14. Observe two ordered fresh `Qualified` target records.
+15. Observe one selected Gleam plan with the exact public objective.
+16. Observe one assembly that binds the qualified Gleam bytes by digest.
+17. Resolve the real Erlang-store `escript` path and record its executable digest.
+18. Run the copied artifact with the exact argument vector, artifact-only working directory, and replacement environment.
+19. Observe false workspace and Gleam resolution facts without a filesystem-sandboxing claim.
+20. Observe a clean audit with zero changed and zero retired records.
+21. Observe schema major 2 with exactly six files.
+22. Observe manifest digests for exactly four schema payloads.
+23. Observe that the declaration and manifest are each bound by the six-file producer inventory.
+24. Observe the manifest digest in `manifestSha256`.
+25. Observe the Nixpkgs revision, `nodejs_24`, Node `v24.7.0`, executable digest, and frozen M036 loader invocation.
+26. Observe only the exact consumer-sandbox import set in the decoded module log.
+27. Observe one `valid` verdict with exact material-role strings.
+28. Observe exactly 15 source references with the specified paths, selectors, identities, and digests.
+29. Observe exactly 27 ordered claims with exact source-reference projections.
+30. Observe six scorecard rows that distinguish historical citations from current evidence.
+31. Observe equality of the two ordered 21-file producer inventories and five-record observation projections.
+32. Observe a final ordered 22-file output inventory whose last path is `.bang/evidence/M037.json`.
+33. Exercise the stale-member case and observe the sorted path, ignored status, and unchanged byte.
+34. Treat successful command exit plus strict report presence as the publication observation.
+35. Exercise all 20 negative failure cases and decode each exact stage and reason, plus the cause when present.
+36. Observe unchanged enumerated bytes after every failure whose rollback succeeds.
+37. Observe a typed limitation, and no restoration claim, when rollback fails.
+38. Run `bun run evidence:m036` and observe all 15 protected files unchanged byte for byte.
+39. Run `bun test tests/m037-full-compiler-candidate.test.ts`.
+40. Confirm that `.github/workflows/quality.yml` sets `with.just-version` to `1.58.0`. Run `just verify` and retain the existing merge-blocking quality job.
 
 Acceptance requires all items.
 
@@ -1229,6 +1386,9 @@ Acceptance requires all items.
 - protected historical reference `f2673c1b:design-specs/M036-full-compiler-candidate.md`.
 - `package.json`.
 - `bun.lock`.
+- `Justfile`.
+- `nix/gleam.nix`.
+- `.github/workflows/quality.yml`.
 - `apps/bang/src/explain.ts`.
 - `apps/bang/src/classify.ts`.
 - `apps/bang/src/plan.ts`.

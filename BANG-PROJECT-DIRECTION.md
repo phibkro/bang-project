@@ -317,6 +317,12 @@ The verifier is [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts). 
 The M036 unsupported claims remain in its completed contract. M036 does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
 M037 composes the existing Clinic path through one root Bun command. It adds no BANG CLI verb or semantic authority.
 
+The public host is `x86_64-linux`. Mission-root preflights check Git worktrees, Bash, Just 1.58.0, Bun 1.3.13, and Nix network and cache access.
+
+The copied artifact runs with the real Erlang-store `escript`. It receives an artifact-only working directory and an Erlang-only replacement `PATH`.
+
+M037 records narrow path-resolution facts. It does not claim filesystem sandboxing.
+
 The command runs two clean worktrees. It compares 21 producer files and five observation records before it publishes one recoverable 22-file batch.
 
 The accumulated report separates historical mission citations from current digest-bound sources. Its six-family scorecard does not claim universal semantic unification.

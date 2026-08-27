@@ -77,6 +77,12 @@ No package or CLI verb was added. M036 does not add a generic target plugin prot
 
 The command composes existing Clinic explanation, qualification, planning, assembly, audit, schema publication, and external consumption. It adds no BANG CLI verb.
 
+Mission-root preflights check the supported `x86_64-linux` host, Git worktrees, Bash, Just, Bun, and Nix network and cache access.
+
+The copied artifact uses the real Erlang-store `escript`. Its child receives an artifact-only working directory and an Erlang-only replacement `PATH`.
+
+The report records narrow path-resolution facts. It does not claim filesystem sandboxing.
+
 The report separates historical mission citations from current digest-bound sources and new observations. It does not copy or combine evidence grades. Its six-family scorecard does not claim author-independent Clinic design or universal unification.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.

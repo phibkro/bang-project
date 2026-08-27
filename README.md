@@ -67,6 +67,21 @@ M037 is the active mission. It freezes one full compiler candidate from a clean 
 
 The command will use the committed Clinic inputs and current typed compiler APIs in-process. It will add no child BANG CLI command, new BANG CLI verb, or semantic construct.
 
+M037 supports this public-host contract:
+
+| Host item | Required value or capability                                                        | Project-host observation     |
+| --------- | ----------------------------------------------------------------------------------- | ---------------------------- |
+| Platform  | `x86_64-linux`                                                                      | `x86_64-linux`               |
+| Git       | detached no-checkout worktree creation and cleanup                                  | `git version 2.55.0`         |
+| Bash      | `-euo pipefail` support because the `Justfile` selects Bash                         | GNU Bash `5.3.15(1)-release` |
+| Just      | exactly `just 1.58.0`                                                               | `just 1.58.0`                |
+| Bun       | exactly `1.3.13`                                                                    | `1.3.13`                     |
+| Nix       | `nix-command`, flakes, refreshed network resolution, and `https://cache.nixos.org/` | `nix (Nix) 2.34.8`           |
+
+The host must let Nix reach GitHub and the public Nix cache. Run `just install` before the candidate command.
+
+The mission root checks every version and capability before it creates the two run worktrees. The report records the normalized results.
+
 The active contract freezes this command:
 
 ```sh
@@ -83,9 +98,31 @@ bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.jso
 
 The decode command prints exactly `.bang/evidence/M037.json: valid`.
 
-The clean `x86_64-linux` host must provide Nix with flake support. The mission script will provision Node 24.7.0 from one immutable Nixpkgs revision and will not use ambient Node. It will not change `package.json` or `bun.lock`. The command is not implemented yet.
+The artifact run resolves the real Erlang-store `escript` from the pinned environment. It hashes that executable.
 
-The existing merge-blocking quality job will run M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
+The child runs this exact process boundary:
+
+```text
+argv = [<absolute-erlang-store>/bin/escript, exact_one]
+cwd = <artifact-only-temp>
+env = {
+  HOME=<artifact-only-temp>
+  LANG=C.UTF-8
+  PATH=<absolute-erlang-store>/bin
+  ERL_ROOTDIR=<absolute-erlang-store>/lib/erlang
+  ERL_CRASH_DUMP_SECONDS=0
+}
+```
+
+The working directory contains only the copied artifact. Workspace sentinels and `gleam` must not resolve through the working directory or `PATH`.
+
+This process boundary is not a filesystem sandbox. The mission does not claim that it denies absolute host paths.
+
+The mission script will provision Node 24.7.0 from one immutable Nixpkgs revision. It will not use ambient Node.
+
+It will not change `package.json` or `bun.lock`. The command is not implemented yet.
+
+The existing merge-blocking quality job will pin its `setup-just` input to `1.58.0`. It will run M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 
@@ -182,11 +219,17 @@ M036 does not establish a Core decrement law or clinical correctness. It does no
 
 It also does not generalize to arbitrary domains. External validity does not prove implementation conformance or evidence truth.
 
-M037 is active. Its one candidate command will compose the existing Clinic chain through artifact-only execution, audit, schema publication, and external consumption.
+M037 is active. Its one candidate command will compose the existing Clinic chain through artifact execution, audit, schema publication, and external consumption.
 
-The command will write `.bang/evidence/M037.json`. It will compare two clean 21-file producer inventories before it publishes one recoverable 22-file enumerated closure.
+The public host has frozen tool preflights. The copied artifact runs with a real Erlang-store `escript`, an artifact-only working directory, and an Erlang-only `PATH`.
 
-The report will bind current sources without copying or combining their evidence grades. It will keep unsupported claims explicit and will not claim author-independent Clinic design or universal six-family unification.
+This boundary does not claim filesystem sandboxing. The command will write `.bang/evidence/M037.json`.
+
+It will compare two clean 21-file producer inventories before it publishes one recoverable 22-file enumerated closure.
+
+The report will bind current sources without copying or combining their evidence grades. It will keep unsupported claims explicit.
+
+It will not claim author-independent Clinic design or universal six-family unification.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 
