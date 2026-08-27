@@ -6,9 +6,9 @@ import { join, resolve } from "node:path";
 const workspaceRoot = resolve(import.meta.dir, "..");
 const recordPath = join(workspaceRoot, "tests/m036-tiny-bank-protected-baseline.json");
 const protectedRevision = "f2673c1b74726adcbf6b56a8655d5efee505b1b2";
-// M036 defines the candidate as the implementation checkpoint. The evidence record is
-// committed later, so its containing commit supplies record integrity.
-const candidateRevision = "8c0d590b08a1432ede1279cf501a46e88efb96d2";
+// GitHub rebase-merged M036 at this integrated implementation checkpoint. The
+// evidence record is committed later, so its containing commit supplies record integrity.
+const candidateRevision = "d2fa7ea4575e6b4e026e369435a21c1d0897d5e6";
 const dependencyLockPath = "bun.lock";
 const setupCommands = ["just install", "bun run build"] as const;
 const journeyCommands = [
