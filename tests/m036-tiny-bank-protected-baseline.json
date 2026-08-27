@@ -1,0 +1,91 @@
+{
+  "bangM036TinyBankParity": 1,
+  "protectedRevision": "f2673c1b74726adcbf6b56a8655d5efee505b1b2",
+  "candidateRevision": "8c0d590b08a1432ede1279cf501a46e88efb96d2",
+  "dependencyLock": {
+    "path": "bun.lock",
+    "sha256": "e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa"
+  },
+  "commands": [
+    "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
+    "bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json",
+    "bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json"
+  ],
+  "files": [
+    {
+      "path": ".bang/artifacts/tiny-bank-packaged-exact-one.json",
+      "protectedSha256": "ea4d1e2a8293fb70cc43c2f7990ac8348d6a45d7a4b66142aabcc4a17e16690e",
+      "candidateSha256": "ea4d1e2a8293fb70cc43c2f7990ac8348d6a45d7a4b66142aabcc4a17e16690e"
+    },
+    {
+      "path": ".bang/theory-locks/tiny-bank-packaged-exact-one.json",
+      "protectedSha256": "207effbf5268366133a489bbdbb7ddc88e6f81ee23783a3b1a28f3955139f535",
+      "candidateSha256": "207effbf5268366133a489bbdbb7ddc88e6f81ee23783a3b1a28f3955139f535"
+    },
+    {
+      "path": ".bang/qualifications/tiny-bank-two-qualified-exact-one/effect-typescript/boundary.ts",
+      "protectedSha256": "886051d68aaff26be76693dac6cd1a644d75b4d3604bf4523eecad94ffbb5257",
+      "candidateSha256": "886051d68aaff26be76693dac6cd1a644d75b4d3604bf4523eecad94ffbb5257"
+    },
+    {
+      "path": ".bang/qualifications/tiny-bank-two-qualified-exact-one/effect-typescript/evidence.json",
+      "protectedSha256": "ee1ef9782ffa8bc6a71236cfc362908515ff1188287b20c6ad20afc94a5b1238",
+      "candidateSha256": "ee1ef9782ffa8bc6a71236cfc362908515ff1188287b20c6ad20afc94a5b1238"
+    },
+    {
+      "path": ".bang/qualifications/tiny-bank-two-qualified-exact-one/gleam-beam/src/bang/account_entity.gleam",
+      "protectedSha256": "927f406e4da7315d41120ba2c17542d302c51553a831b831e6cf4307cbc238ab",
+      "candidateSha256": "927f406e4da7315d41120ba2c17542d302c51553a831b831e6cf4307cbc238ab"
+    },
+    {
+      "path": ".bang/qualifications/tiny-bank-two-qualified-exact-one/gleam-beam/evidence.json",
+      "protectedSha256": "47f2cd4cf8cf949c96fbe987af3888be34f04e1393abacf7b8e42057c08d0dc5",
+      "candidateSha256": "47f2cd4cf8cf949c96fbe987af3888be34f04e1393abacf7b8e42057c08d0dc5"
+    },
+    {
+      "path": ".bang/qualifications/tiny-bank-two-qualified-exact-one/report.json",
+      "protectedSha256": "edbf00cc5204dfda6cf49c8ff00c5c31fa9dc60f2e54a88e9d9e4a11d0df8305",
+      "candidateSha256": "edbf00cc5204dfda6cf49c8ff00c5c31fa9dc60f2e54a88e9d9e4a11d0df8305"
+    },
+    {
+      "path": ".bang/plans/tiny-bank-supervised-exact-one/report.json",
+      "protectedSha256": "056965724369459b0314e8866c698e9696663ec9cfd86aba96f42a7526217fc6",
+      "candidateSha256": "056965724369459b0314e8866c698e9696663ec9cfd86aba96f42a7526217fc6"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/gleam.toml",
+      "protectedSha256": "87154c9cca9e4685ae76717a75f42f813b8ce3c7526eb6eb23066335d25fae7b",
+      "candidateSha256": "87154c9cca9e4685ae76717a75f42f813b8ce3c7526eb6eb23066335d25fae7b"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/manifest.toml",
+      "protectedSha256": "be485f291a93a46ca05665ab112e431df2f7ed10c805e942cf980bb0e7e76341",
+      "candidateSha256": "be485f291a93a46ca05665ab112e431df2f7ed10c805e942cf980bb0e7e76341"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/canonicalize_escript.escript",
+      "protectedSha256": "984013c4539246060ec84120f51f5f493f2345a663e02ac165a79e6f9b1219c9",
+      "candidateSha256": "984013c4539246060ec84120f51f5f493f2345a663e02ac165a79e6f9b1219c9"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/src/bang/account_entity.gleam",
+      "protectedSha256": "927f406e4da7315d41120ba2c17542d302c51553a831b831e6cf4307cbc238ab",
+      "candidateSha256": "927f406e4da7315d41120ba2c17542d302c51553a831b831e6cf4307cbc238ab"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/src/main.gleam",
+      "protectedSha256": "5a23b6fc2966e8a36c28abab1d68fad0127af8c3279a22520e7cb40d73504204",
+      "candidateSha256": "5a23b6fc2966e8a36c28abab1d68fad0127af8c3279a22520e7cb40d73504204"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/bin/exact_one",
+      "protectedSha256": "c11039d885de8ed56a9133e78b3c12f16534b81178228f4cac443bf2beea3494",
+      "candidateSha256": "c11039d885de8ed56a9133e78b3c12f16534b81178228f4cac443bf2beea3494"
+    },
+    {
+      "path": ".bang/assemblies/tiny-bank-supervised-exact-one/report.json",
+      "protectedSha256": "84cfb37bc7f56e7d0ed0ae19f2cc09ba215847dcb06b8b4a89e4efd4687a0ae4",
+      "candidateSha256": "84cfb37bc7f56e7d0ed0ae19f2cc09ba215847dcb06b8b4a89e4efd4687a0ae4"
+    }
+  ]
+}

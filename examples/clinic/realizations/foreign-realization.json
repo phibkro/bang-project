@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "clinic-foreign-realization",
+  "explanationSelection": "examples/clinic/theories/packaged-exact-one.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "WithdrawAccountOnce",
+      "probe": "fresh"
+    }
+  ]
+}

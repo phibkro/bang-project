@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "clinic-unsupported-two-state-fields",
+  "explanationSelection": "examples/clinic/theories/unsupported-two-state-fields.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "BookAppointmentOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "BookAppointmentOnce",
+      "probe": "fresh"
+    }
+  ]
+}
