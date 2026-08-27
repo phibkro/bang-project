@@ -8,11 +8,14 @@ const root = resolve(import.meta.dir, "..");
 const publicationSource = join(root, "dist", "schemas", "2");
 
 const lockFixture = ".bang/theory-locks/tiny-bank-packaged-exact-one.json";
-const evidenceFixture =
+const effectEvidenceFixture =
   ".bang/qualifications/tiny-bank-two-qualified-exact-one/effect-typescript/evidence.json";
+const gleamEvidenceFixture =
+  ".bang/qualifications/tiny-bank-two-qualified-exact-one/gleam-beam/evidence.json";
 const materialFixtures = [
   "examples/tiny-bank/account.bang",
-  evidenceFixture.replace(/evidence\.json$/, "boundary.ts"),
+  effectEvidenceFixture.replace(/evidence\.json$/, "boundary.ts"),
+  gleamEvidenceFixture.replace(/evidence\.json$/, "src/bang/account_entity.gleam"),
 ];
 
 interface Verdict {
@@ -67,10 +70,13 @@ const buildSandbox = async (): Promise<Sandbox> => {
   await cp(publicationSource, publicationDirectory, { recursive: true });
   await mkdir(join(directory, "inputs", "materials"), { recursive: true });
   await cp(join(root, lockFixture), join(directory, "inputs", "tiny-bank.lock.json"));
-  await cp(
-    join(root, evidenceFixture),
-    join(directory, "inputs", "effect-typescript.evidence.json"),
-  );
+  await Promise.all([
+    cp(
+      join(root, effectEvidenceFixture),
+      join(directory, "inputs", "effect-typescript.evidence.json"),
+    ),
+    cp(join(root, gleamEvidenceFixture), join(directory, "inputs", "gleam-beam.evidence.json")),
+  ]);
   await Promise.all(
     materialFixtures.map((material) =>
       cp(join(root, material), join(directory, "inputs", "materials", material)),
@@ -151,6 +157,41 @@ const rewriteManifestVersion = async (directory: string, version: number): Promi
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 };
 
+interface MutableMaterial {
+  role: string;
+  path: string;
+  sha256: string;
+}
+
+interface MutableEvidence {
+  materials: Array<MutableMaterial>;
+}
+
+interface MutableManifest {
+  documents: Array<{ file: string; sha256: string }>;
+  types: { entry: string; sha256: string };
+}
+
+const mutateEffectEvidence = async (
+  directory: string,
+  mutate: (evidence: MutableEvidence) => void | Promise<void>,
+): Promise<void> => {
+  const evidencePath = join(directory, "inputs", "effect-typescript.evidence.json");
+  const evidence = JSON.parse(await readFile(evidencePath, "utf8")) as MutableEvidence;
+  await mutate(evidence);
+  await writeFile(evidencePath, JSON.stringify(evidence));
+};
+
+const mutateManifest = async (
+  directory: string,
+  mutate: (manifest: MutableManifest) => void | Promise<void>,
+): Promise<void> => {
+  const manifestPath = join(directory, "publication", "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as MutableManifest;
+  await mutate(manifest);
+  await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+};
+
 beforeAll(async () => {
   const child = Bun.spawn([join(root, "node_modules/.bin/bang"), "export-schemas"], {
     cwd: root,
@@ -193,6 +234,123 @@ describe("M035 external consumer journeys", () => {
       await rm(sandbox.directory, { recursive: true, force: true });
     }
   }, 60_000);
+
+  test("valid Gleam evidence decodes and verifies its target-owned materials", async () => {
+    const sandbox = await buildSandbox();
+    try {
+      await writeConsumer(sandbox.directory);
+      const result = await runConsumer(sandbox, {
+        "inputs/effect-typescript.evidence.json": "inputs/gleam-beam.evidence.json",
+      });
+      expect(result.exitCode).toBe(0);
+      const verdict = parseVerdict(result.stdout);
+      expect(verdict.verdict).toBe("valid");
+      expect(verdict.verifiedMaterials?.map((material) => material.path)).toEqual([
+        "examples/tiny-bank/account.bang",
+        materialFixtures[2]!,
+      ]);
+    } finally {
+      await rm(sandbox.directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("manifest document and types traversal is rejected before published-file reads", async () => {
+    await expectRejected(
+      "manifest-document-traversal",
+      (directory) =>
+        mutateManifest(directory, async (manifest) => {
+          const document = manifest.documents[0];
+          if (document === undefined) throw new Error("publication has no schema document");
+          await cp(
+            join(directory, "publication", document.file),
+            join(directory, "outside-document.schema.json"),
+          );
+          document.file = "../outside-document.schema.json";
+        }),
+      "publication",
+      "schema-unavailable",
+    );
+    await expectRejected(
+      "manifest-types-traversal",
+      (directory) =>
+        mutateManifest(directory, async (manifest) => {
+          await cp(
+            join(directory, "publication", manifest.types.entry),
+            join(directory, "outside-consumer.js"),
+          );
+          manifest.types.entry = "../outside-consumer.js";
+        }),
+      "publication",
+      "schema-unavailable",
+    );
+  });
+
+  test("material traversal is rejected before custody reads", async () => {
+    await expectRejected(
+      "material-traversal",
+      (directory) =>
+        mutateEffectEvidence(directory, async (evidence) => {
+          const material = evidence.materials[0];
+          if (material === undefined) throw new Error("evidence has no Core material");
+          await cp(
+            join(directory, "inputs", "materials", material.path),
+            join(directory, "inputs", "outside-account.bang"),
+          );
+          material.path = "../outside-account.bang";
+        }),
+      "decode",
+      "decode-failed",
+    );
+  });
+
+  test("foreign target material role is rejected before custody", async () => {
+    await expectRejected(
+      "foreign-target-role",
+      (directory) =>
+        mutateEffectEvidence(directory, (evidence) => {
+          const generated = evidence.materials[1];
+          if (generated === undefined) throw new Error("evidence has no generated material");
+          generated.role = "generated-gleam-boundary";
+        }),
+      "decode",
+      "decode-failed",
+    );
+  });
+
+  test("duplicate material role is rejected before custody", async () => {
+    await expectRejected(
+      "duplicate-role",
+      (directory) =>
+        mutateEffectEvidence(directory, (evidence) => {
+          const core = evidence.materials[0];
+          const generated = evidence.materials[1];
+          if (core === undefined || generated === undefined) {
+            throw new Error("evidence does not have two materials");
+          }
+          generated.role = core.role;
+        }),
+      "decode",
+      "decode-failed",
+    );
+  });
+
+  test("duplicate material path is rejected before custody", async () => {
+    await expectRejected(
+      "duplicate-path",
+      (directory) =>
+        mutateEffectEvidence(directory, (evidence) => {
+          const core = evidence.materials[0];
+          const generated = evidence.materials[1];
+          if (core === undefined || generated === undefined) {
+            throw new Error("evidence does not have two materials");
+          }
+          generated.path = core.path;
+          generated.sha256 = core.sha256;
+        }),
+      "decode",
+      "decode-failed",
+    );
+  });
 
   test("fixture 1: tampered material byte -> custody/digest-mismatch", async () => {
     await expectRejected(
