@@ -54,14 +54,17 @@ The completed vertical missions are listed below. See the [capability dependency
 - [M030 local versioned theory package consumption](design-specs/M030-local-theory-package-consumption.md).
 - [M031 fresh two-target exact-one qualification](design-specs/M031-two-target-exact-one-qualification.md).
 - [M032 objective-relative realization planning](design-specs/M032-objective-relative-realization-planning.md).
+- [M033 selected realization assembly](design-specs/M033-selected-realization-assembly.md).
+- [M034 continuous evidence invalidation](design-specs/M034-evidence-invalidation.md).
+- [M035 external extension boundary](design-specs/M035-external-extension-boundary.md).
 
 This monorepo contains the BANG specification language, Core, compilers, target projections, conformance tools, build tools, theories, and future realization packages. See the [repository map](docs/repository-map.md). A frozen mission must create pressure before a subsystem becomes a package.
 
 ## Current frontier
 
-M032 completes the first objective-relative realization planning journey. BANG reruns the fresh Effect TypeScript and supervised Gleam/BEAM qualification probes before it plans.
+M036 is the active mission. Its local acceptance evidence is complete, but delivery awaits protected integration.
 
-Explicit operational objectives select a warranted candidate. An objective that does not distinguish the candidates returns explicit incomparable plans. An unsupported objective returns a typed no-plan result.
+The Clinic journey reuses the M031–M035 path. Checked Core supplies its identities and accepted shape, while each target owns its runtime behavior.
 
 ## Experience the current capability
 
@@ -80,6 +83,12 @@ just preview
 ./node_modules/.bin/bang plan examples/tiny-bank/plans/supervised-exact-one.json
 ./node_modules/.bin/bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json
 ./node_modules/.bin/bang audit tiny-bank-supervised-exact-one
+./node_modules/.bin/bang classify examples/clinic/realizations/two-qualified-exact-one.json
+./node_modules/.bin/bang plan examples/clinic/plans/supervised-exact-one.json
+./node_modules/.bin/bang assemble examples/clinic/assemblies/supervised-exact-one.json
+./node_modules/.bin/bang audit clinic-supervised-exact-one
+./node_modules/.bin/bang export-schemas
+bun run evidence:m036
 ```
 
 The `bang report <selection>` command loads the selected sources and six evidence records, validates the merged Core document, and prints one deterministic accumulated report. Typed failures retain the input stage and path. BANG source failures also retain the span, found token, and expected syntax. The earlier demonstrations carry unchanged Core through Effect TypeScript and Rust conformance boundaries, independent implementations, graded evidence, one real runtime trace, replayable property-test evidence, and one bounded solver-reported relational question. M009 reports Rust's `i128` weakening instead of claiming arbitrary-precision target equivalence. M010 verifies a deterministic four-file SHA-256 closure before replay. M011 reports bounded Z3 results without claiming proof. M012 preserves six typed evidence payloads. M013 lowers one Account source file to the four checked declarations used by six downstream journeys.
@@ -112,7 +121,39 @@ M033 is complete. Run `bun run demo:m033`, or `bang assemble examples/tiny-bank/
 
 M034 is complete. Run `bang audit tiny-bank-supervised-exact-one` to audit the published assembly closure: the command inventories every recorded material, recomputes each SHA-256 digest from current bytes, and classifies every member by its equality class — decoded materials (checked Core sources, theory package) compare semantically so a cosmetic reorder retires nothing, opaque custody bytes compare exactly, and derived members resolve through their owning producer. Changed materials retire records transitively over recorded citation edges only; requalification reruns only retired producers while preserving evidence classes; closure parity is verified before any commit and the fresh closure republishes atomically. Typed failures cover unsafe or unknown assembly identities, missing or unreadable materials, comparison failures, and failed requalification. Focused fixtures cover stale toolchain acceptance, cosmetic package reorder, strengthened-invariant requalification failure with unchanged bytes, deleted material, and idempotent double runs.
 
-M035 is complete. Run `bun run build && bun run bang export-schemas` to publish one versioned schema set under `dist/schemas/1/`: a digest-pinned manifest, three JSON Schema documents generated from the live producer Schemas (semantic artifact, theory lock, target qualification evidence), and generated consumer types with strict decoders. Repeated exports are byte-identical, and any existing same-version publication is replaced atomically. A focused journey copies the publication plus real artifact bytes into one temporary directory outside the workspace and runs a consumer script that imports only publication entries and host built-ins; it verifies every recorded SHA-256 custody digest, strictly decodes the theory lock and evidence record, compares their agreement on theory identity, version, and package semantic digest, and prints exactly one typed verdict — `valid`, or a typed rejection naming its stage and reason. Eight negative fixtures cover tampered materials, unsupported versions, missing or altered publication files, malformed records, foreign imports, and disagreeing records. The verdict proves custody and decodability only; canonical semantic-digest computation stays producer-owned.
+M035 established the public `bang export-schemas` boundary. The current command publishes schema major 2 under `dist/schemas/2/`.
+
+Major 2 accepts checked-Core-selected realization and entity identifiers in target evidence. Major 1 fixed those fields to TinyBank literals.
+
+M036 has complete local acceptance evidence. Protected integration is pending, so the mission remains active.
+
+Checked Core selects `AppointmentBook`, its operation and state shapes, `ConfirmBooking`, `BookingRejectedOnce`, and `BookAppointmentOnce`. Each target owns the decrement.
+
+Effect TypeScript and Gleam/BEAM run fresh probes. Each target writes separate evidence, and planning selects the qualified Gleam candidate.
+
+Assembly retains the selected Gleam boundary byte for byte. The copied escript runs with an Erlang-only `PATH`, without BANG or the Gleam compiler.
+
+Audit checks 18 materials. It reports 10 unchanged, 8 deferred, 0 changed, 0 retirements, and zero requalifications.
+
+The external consumer runs in a sandbox outside the workspace. It strictly decodes the Clinic lock and Effect evidence, then checks both supplied materials.
+
+The loader observes only `consumer.mjs`, `publication/types/consumer.js`, `node:crypto`, `node:fs/promises`, and `node:path`.
+
+The four tracked negative files cover a foreign realization and a two-field state profile. They return `target/missing-declaration` and `target/unsupported-target`.
+
+Changed material bytes return `custody/digest-mismatch`. An excess evidence property returns `decode/decode-failed`, and a late assembly failure returns `publication/publication-failed`.
+
+A second clean Clinic sandbox reproduces all 21 published file digests and command observations. Schema major 2 has six files.
+
+The same journey preserves all six seeded major-1 files. Two clean TinyBank worktrees also match all 15 required files byte for byte.
+
+Run `bun run evidence:m036` for that clean-worktree comparison. The only machine-checkable digest root is [`tests/m036-tiny-bank-protected-baseline.json`](tests/m036-tiny-bank-protected-baseline.json) plus [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts).
+
+Local `just verify` passes its `check`, completed previews, full test chain, and `build` scope.
+
+M036 does not establish a Core decrement law or clinical correctness. It does not establish durable exact-once execution, liveness, fairness, or broader target shapes.
+
+It also does not generalize to arbitrary domains. External validity does not prove implementation conformance or evidence truth.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 

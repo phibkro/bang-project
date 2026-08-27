@@ -28,6 +28,8 @@ Thus, the candidate had no path to pass its own acceptance boundary. M036 now te
 
 The full compiler candidate moves to a future mission only after M036 passes. This contract does not create or reserve M037.
 
+Local Phase 3 acceptance evidence passed on 2026-08-27. Protected integration is pending, so M036 remains `active`.
+
 # Mission
 
 BANG carries one minimal Clinic exact-one operation through the completed M031 through M035 path.
@@ -297,11 +299,11 @@ The consumer must still reject these inputs:
 - disagreement between the theory lock and evidence record;
 - disagreement inside the evidence record.
 
-M036 does not assume a new schema-publication major. Acceptance must record the compatibility decision under the M035 versioning rules.
+Local acceptance changed the accepted encoded shape. The target evidence schema now accepts checked-Core-selected realization and entity identifiers instead of two TinyBank-only literals.
 
-If the encoded schema bytes and accepted shape remain compatible, the existing publication major remains in use. If Clinic acceptance changes encoded schema compatibility, the old publication remains immutable and a new major is required.
+Therefore, `bang export-schemas` publishes major 2. The acceptance sandbox preserved all six version-one publication paths byte for byte.
 
-A new major is not permitted only because the domain name changed. A new major is required only when the encoded schema compatibility demands it under M035.
+The domain name alone did not cause the new major. The change from fixed literals to non-empty identifiers required it under the M035 rules.
 
 # Typed failures
 
@@ -338,7 +340,7 @@ examples/clinic/
 
 `foreign-realization.json` uses the valid Clinic theory selection. Both fresh targets select `WithdrawAccountOnce` instead of `BookAppointmentOnce`.
 
-Classification fails with the existing selection or identity vocabulary before target execution. No Clinic output changes.
+Classification returns stage `target`, reason `missing-declaration`, and address `operationRealization:WithdrawAccountOnce` before probe execution. No Clinic output changes.
 
 ## Unsupported state shape
 
@@ -350,13 +352,13 @@ reserved: Integer
 
 Its theory selection uses the same versioned exact-one package and selects the Clinic exact-one requirement. Its qualification selection uses `BookAppointmentOnce` for both fresh targets.
 
-Theory applicability can succeed. Target projection rejects the two-field shape with `unsupported-target`, and no output changes.
+Theory applicability succeeds. Target projection returns stage `target`, reason `unsupported-target`, and address `stateMachine:AppointmentBook`. No output changes.
 
 ## Evidence identity mismatch
 
-A negative evidence case changes the observed realization or entity. The M031 evidence boundary rejects it with the existing target or identity reason.
+A negative evidence case changes the observed realization or entity. The M031 evidence boundary returns reason `target-mismatch` for identity `observations`.
 
-A second case changes the capability suffix in the requirement address. The boundary rejects it with the existing Core or identity reason.
+A second case changes the capability suffix. The boundary returns reason `identity-mismatch` for identity `requirementAddress`.
 
 ## External custody and decode
 
@@ -366,7 +368,7 @@ One consumer case adds an excess evidence property. The consumer returns `decode
 
 ## Publication failure
 
-A late publication failure leaves every prior Clinic and TinyBank byte unchanged. The command returns the existing publication failure.
+A late publication failure leaves every prior Clinic and TinyBank byte unchanged. The command returns stage `publication` and reason `publication-failed`.
 
 # TinyBank clean-output parity
 
@@ -398,6 +400,33 @@ If a changed shared boundary produces another TinyBank file, that file also ente
 
 The acceptance record stores paths and digests from both clean runs. It does not copy digest values from an existing `.bang` directory.
 
+Local acceptance compared two clean worktrees. The protected revision was `f2673c1b74726adcbf6b56a8655d5efee505b1b2`.
+
+The candidate revision was `8c0d590b08a1432ede1279cf501a46e88efb96d2`. Both worktrees used this `bun.lock` SHA-256:
+
+```text
+e7514199ff3c158fbf561bad227248ab4d28e21c142d63ea087beda0882ef8aa
+```
+
+Each worktree ran these setup commands:
+
+```sh
+bun install --frozen-lockfile
+bun run build
+```
+
+Each worktree then ran these commands in order:
+
+```sh
+bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json
+bun run bang plan examples/tiny-bank/plans/supervised-exact-one.json
+bun run bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json
+```
+
+All 15 required files matched byte for byte. Run `bun run evidence:m036` to repeat both clean runs.
+
+[`tests/m036-tiny-bank-protected-baseline.json`](../tests/m036-tiny-bank-protected-baseline.json) stores the revisions, commands, paths, and digest pairs. [`scripts/m036-clean-parity.ts`](../scripts/m036-clean-parity.ts) verifies that record.
+
 # Evidence statement
 
 M036 can establish these claims:
@@ -422,6 +451,34 @@ M036 cannot establish these claims:
 - the result generalizes to a third realization shape or an arbitrary domain;
 - M035 consumer validity proves implementation conformance or evidence truth;
 - the full compiler candidate is complete.
+
+## Local acceptance observations
+
+The local Phase 3 journey observed this bounded result:
+
+- Checked Core selected `AppointmentBook`, `AppointmentBookState`, `available`, `open(initialAvailable)`, `book(count)`, and `nonnegativeAvailable`.
+- Checked Core also selected `ConfirmBooking`, `BookingRejectedOnce`, and `BookAppointmentOnce`.
+- Both targets selected those identities and the `Integer` parameter and state shapes.
+- The decrement remained target-owned behavior. No Core state-update law was added.
+- Effect TypeScript and Gleam/BEAM ran fresh probes and wrote separate qualification evidence.
+- Planning selected `gleam-beam` for the existing supervised objective.
+- Assembly copied the selected qualified Gleam boundary byte for byte and retained its digest.
+- The copied escript ran with an Erlang-only `PATH`. It had no BANG workspace or Gleam compiler.
+- Audit inspected 18 materials. It reported 10 unchanged, 8 deferred, 0 changed, and 0 records to retire.
+- The clean audit requested zero requalifications.
+- The external consumer strictly decoded the Clinic lock and Effect evidence. It verified `core-source` and `generated-effect-boundary` custody.
+- Its loader observed only `consumer.mjs`, `publication/types/consumer.js`, `node:crypto`, `node:fs/promises`, and `node:path`.
+- All four tracked negative input files ran. The target outcomes were `target/missing-declaration` and `target/unsupported-target`.
+- Runtime-mutated negatives returned `target-mismatch`, `identity-mismatch`, `custody/digest-mismatch`, and `decode/decode-failed`.
+- A late assembly failure returned `publication/publication-failed` and changed no persistent byte.
+- A second clean Clinic sandbox matched all 21 published file digests and all command observations.
+- Schema publication major 2 contained six files. All six seeded major-1 files retained their original bytes.
+- The clean TinyBank comparison matched 15 of 15 files.
+- `just verify` exited zero at clean HEAD `0f68e5d28d130653ba8ecde530096b8d5fdee551`.
+
+That `just verify` run took 649.20 seconds on 2026-08-27. It ran `check`, all completed previews, the full test chain, and `build`.
+
+These are local observations, not protected integration evidence. The unsupported claims above remain unchanged.
 
 # Falsifiers
 
@@ -519,6 +576,12 @@ If implementation pressure exceeds one accepted operation shape, revise the cont
 23. Run `just verify`.
 
 Acceptance requires all items. Clinic success without TinyBank parity is a failure.
+
+## Local acceptance status
+
+All 23 acceptance items passed locally before this documentation update. `bun run evidence:m036 --verify-record` verifies the bound clean-parity record.
+
+Delivery remains pending protected integration. M036 stays `active`, and this result does not activate or reserve M037.
 
 # Sources
 
