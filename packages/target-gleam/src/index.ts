@@ -951,32 +951,329 @@ const exactOneGeneratedSymbols = (
 
 const exactOneGeneratedBindings = (
   projection: ExactOneProjection,
-): ReadonlyArray<ExactOneGeneratedSymbol> => [
-  exactOneGeneratedSymbol(
-    "value",
-    exactOneLowerSnake(projection.machine.id),
-    `stateMachine:${projection.machine.id}.value`,
-    "binding:machine-value",
-  ),
-  exactOneGeneratedSymbol(
-    "value",
-    projection.stateField.id,
-    `stateMachine:${projection.machine.id}.stateField:${projection.stateField.id}`,
-    `field:${projection.machine.state.id}`,
-  ),
-  exactOneGeneratedSymbol(
-    "value",
-    exactOneLowerSnake(projection.initializerParameter.id),
-    `stateMachine:${projection.machine.id}.${projection.initializer.id}.parameter:${projection.initializerParameter.id}`,
-    `parameter:${projection.initializer.id}`,
-  ),
-  exactOneGeneratedSymbol(
-    "value",
-    projection.operationParameter.id,
-    `stateMachine:${projection.machine.id}.${projection.operation.id}.parameter:${projection.operationParameter.id}`,
-    `parameter:${projection.operation.id}`,
-  ),
-];
+): ReadonlyArray<ExactOneGeneratedSymbol> => {
+  const machineId = projection.machine.id;
+  const stateId = projection.machine.state.id;
+  const initializerId = projection.initializer.id;
+  const operationId = projection.operation.id;
+  const operationFunction = exactOneLowerSnake(operationId);
+  const defectOperationFunction = `defect_${operationFunction}`;
+  const handleOperationFunction = `handle_${operationFunction}`;
+  const handleDefectOperationFunction = `handle_${defectOperationFunction}`;
+  const stateFieldFunction = exactOneLowerSnake(projection.stateField.id);
+  const stateValueFunction = `state_${stateFieldFunction}`;
+  const entityIdConstant = `${exactOneLowerSnake(machineId)}_entity_id`;
+  const stateFieldType = exactOneUpperFirst(projection.stateField.id);
+  const operationType = exactOneUpperFirst(operationId);
+  const defectOperationType = `Defect${operationType}`;
+  const invalidInitializerParameter = `Invalid${exactOneUpperFirst(
+    projection.initializerParameter.id,
+  )}`;
+  const machineValueBinding = {
+    identifier: exactOneLowerSnake(machineId),
+    origin: `stateMachine:${machineId}.value`,
+  } as const;
+  const stateFieldBinding = {
+    identifier: projection.stateField.id,
+    origin: `stateMachine:${machineId}.stateField:${projection.stateField.id}`,
+  } as const;
+  const initializerParameterBinding = {
+    identifier: exactOneLowerSnake(projection.initializerParameter.id),
+    origin: `stateMachine:${machineId}.${initializerId}.parameter:${projection.initializerParameter.id}`,
+  } as const;
+  const operationParameterBinding = {
+    identifier: projection.operationParameter.id,
+    origin: `stateMachine:${machineId}.${operationId}.parameter:${projection.operationParameter.id}`,
+  } as const;
+  const scoped = (
+    scope: string,
+    fixedIdentifiers: ReadonlyArray<string>,
+    selectedBindings: ReadonlyArray<Pick<ExactOneGeneratedSymbol, "identifier" | "origin">> = [],
+  ): ReadonlyArray<ExactOneGeneratedSymbol> => [
+    ...fixedIdentifiers.map((identifier) =>
+      exactOneGeneratedSymbol(
+        "value",
+        identifier,
+        `Gleam exact-one fixed binding ${scope}.${identifier}`,
+        scope,
+      ),
+    ),
+    ...selectedBindings.map(({ identifier, origin }) =>
+      exactOneGeneratedSymbol("value", identifier, origin, scope),
+    ),
+  ];
+
+  return [
+    ...scoped(`record:${stateId}`, [], [stateFieldBinding]),
+    ...scoped("record:Grant", ["token", "incarnation"]),
+    ...scoped("constructor:Reply.Success", ["state", "remaining_uses", "implementation_calls"]),
+    ...scoped("constructor:Reply.CapabilityUseRejected", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("constructor:Reply.StaleGrantRejected", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("constructor:Reply.WrongDestination", [
+      "destination",
+      "expected_destination",
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("constructor:Reply.DomainRejected", [
+      "failure_id",
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped(`constructor:StartError.${invalidInitializerParameter}`, [], [stateFieldBinding]),
+    ...scoped(`record:${machineId}`, ["name", "supervisor_pid"]),
+    ...scoped("constructor:Message.IssueGrant", ["reply_to"]),
+    ...scoped(
+      `constructor:Message.${operationType}`,
+      ["reply_to", "grant", "destination"],
+      [operationParameterBinding],
+    ),
+    ...scoped(
+      `constructor:Message.${defectOperationType}`,
+      ["grant", "destination"],
+      [operationParameterBinding],
+    ),
+    ...scoped(`constructor:Message.${stateFieldType}`, ["reply_to"]),
+    ...scoped("constructor:Message.RemainingUses", ["reply_to", "grant"]),
+    ...scoped("constructor:Message.Stop", ["reply_to"]),
+    ...scoped("constructor:CounterMessage.NextIncarnation", ["reply_to"]),
+    ...scoped(
+      "record:ActorState",
+      ["incarnation", "incarnation_id", "next_grant", "consumed_grants", "implementation_calls"],
+      [stateFieldBinding],
+    ),
+
+    ...scoped("function:grant_id", ["grant"]),
+    ...scoped("function:start_counter", ["name"]),
+    ...scoped("function:start_counter.on_message", ["next", "message"]),
+    ...scoped("function:start_counter.on_message.NextIncarnation", ["reply_to"]),
+    ...scoped("function:next_incarnation", ["name"]),
+    ...scoped("function:next_incarnation.callback", ["reply_to"]),
+    ...scoped("function:remaining_for", ["state", "grant"]),
+    ...scoped("function:state_value", ["state"]),
+    ...scoped("function:transition_enabled", ["state"], [operationParameterBinding]),
+    ...scoped("function:consumed_state", ["state", "grant"]),
+    ...scoped(
+      `function:${handleOperationFunction}`,
+      ["state", "reply_to", "grant", "destination", "remaining_uses", "consumed", "next"],
+      [operationParameterBinding],
+    ),
+    ...scoped(
+      `function:${handleDefectOperationFunction}`,
+      ["state", "grant", "destination", "remaining_uses", "_consumed"],
+      [operationParameterBinding],
+    ),
+    ...scoped("function:handle_message", ["state", "message"]),
+    ...scoped("function:handle_message.IssueGrant", ["reply_to", "token", "grant"]),
+    ...scoped(
+      `function:handle_message.${operationType}`,
+      ["reply_to", "grant", "destination"],
+      [operationParameterBinding],
+    ),
+    ...scoped(
+      `function:handle_message.${defectOperationType}`,
+      ["grant", "destination"],
+      [operationParameterBinding],
+    ),
+    ...scoped(`function:handle_message.${stateFieldType}`, ["reply_to"]),
+    ...scoped("function:handle_message.RemainingUses", ["reply_to", "grant"]),
+    ...scoped("function:handle_message.Stop", ["reply_to"]),
+    ...scoped(
+      "function:start_actor",
+      ["name", "counter_name", "incarnation_id", "initial", "next_incarnation", "handle_message"],
+      [initializerParameterBinding],
+    ),
+    ...scoped(
+      "function:start_supervised",
+      [
+        "name",
+        "counter_name",
+        "counter_child",
+        "child",
+        "builder",
+        "started",
+        "start_counter",
+        "start_actor",
+      ],
+      [initializerParameterBinding],
+    ),
+    ...scoped("function:issue_grant", [], [machineValueBinding]),
+    ...scoped("function:issue_grant.callback", ["reply_to"]),
+    ...scoped(
+      `function:${operationFunction}`,
+      ["grant", "destination"],
+      [machineValueBinding, operationParameterBinding],
+    ),
+    ...scoped(`function:${operationFunction}.callback`, ["reply_to"]),
+    ...scoped(
+      "function:competing",
+      ["grant", "destination", "first_reply", "second_reply", "subject"],
+      [machineValueBinding, operationParameterBinding],
+    ),
+    ...scoped("function:competing.receive.Ok", ["first", "second"]),
+    ...scoped(
+      `function:${defectOperationFunction}`,
+      ["grant", "destination"],
+      [machineValueBinding, operationParameterBinding],
+    ),
+    ...scoped(`function:${stateFieldFunction}`, [], [machineValueBinding]),
+    ...scoped("function:remaining_uses", ["grant"], [machineValueBinding]),
+    ...scoped("function:remaining_uses.callback", ["reply_to"]),
+    ...scoped("function:lookup", [], [machineValueBinding]),
+    ...scoped("function:supervisor_alive", [], [machineValueBinding]),
+    ...scoped("function:stop", [], [machineValueBinding]),
+    ...scoped("function:bool_string", ["value"]),
+    ...scoped(`function:state_${stateFieldFunction}`, ["state"]),
+    ...scoped("function:grants_are_distinct", ["first", "second"]),
+    ...scoped(
+      "function:run_exact_one_probe",
+      [
+        "name",
+        entityIdConstant,
+        "core_failure_id",
+        "issue_grant",
+        stateFieldFunction,
+        "remaining_uses",
+        operationFunction,
+        "competing",
+        defectOperationFunction,
+        "stop",
+        "bool_string",
+        stateValueFunction,
+        "grants_are_distinct",
+        "valid_grant",
+        "valid_before",
+        "valid_remaining_before",
+        "valid",
+        "valid_after",
+        "valid_remaining_after",
+        "valid_call",
+        "reuse_before",
+        "reuse_remaining_before",
+        "reuse",
+        "reuse_after",
+        "reuse_remaining_after",
+        "reuse_call",
+        "competing_grant",
+        "competing_before",
+        "competing_remaining_before",
+        "competing_first",
+        "competing_second",
+        "competing_after",
+        "competing_remaining_after",
+        "competing_call",
+        "competing_successes",
+        "competing_rejections",
+        "wrong_grant",
+        "wrong_before",
+        "wrong_remaining_before",
+        "wrong",
+        "wrong_after",
+        "wrong_remaining_after",
+        "wrong_destination",
+        "disabled_grant",
+        "disabled_before",
+        "disabled_remaining_before",
+        "disabled",
+        "disabled_after",
+        "disabled_remaining_after",
+        "disabled_transition",
+        "defect_grant",
+        "defect_before",
+        "defect_remaining_before",
+        "stale_before",
+        "stale_remaining_before",
+        "stale",
+        "stale_after",
+        "stale_remaining_after",
+        "replacement_grant",
+        "replacement_before",
+        "replacement_remaining_before",
+        "replacement",
+        "replacement_after",
+        "replacement_remaining_after",
+        "defect_after",
+        "defect_remaining_after",
+        "defect_call",
+        "actor_restart",
+        "old_grant_rejected",
+        "payload",
+      ],
+      [machineValueBinding],
+    ),
+    ...scoped("function:run_exact_one_probe.valid_call.Success", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.reuse_call.CapabilityUseRejected", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.competing_call", [
+      "first_state",
+      "first_remaining",
+      "first_calls",
+      "second_state",
+      "second_remaining",
+      "second_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.competing_successes.first", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.competing_successes.second", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.competing_rejections.first", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.competing_rejections.second", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.wrong_destination.WrongDestination", [
+      "destination",
+      "expected_destination",
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.disabled_transition.DomainRejected", [
+      "failure_id",
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.defect_call.StaleGrantRejected", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+    ...scoped("function:run_exact_one_probe.actor_restart.Success", [
+      "state",
+      "remaining_uses",
+      "implementation_calls",
+    ]),
+  ];
+};
 
 const exactOneAdditionalGleamKeywords: ReadonlySet<string> = new Set(["opaque", "panic"]);
 
@@ -985,7 +1282,7 @@ const invalidExactOneGeneratedSymbol = (
 ): GleamTargetProjectionResult | undefined => {
   const valid =
     symbol.namespace === "value"
-      ? /^[a-z][a-z0-9_]*$/.test(symbol.identifier)
+      ? /^(?:[a-z][a-z0-9_]*|_+[a-z][a-z0-9_]*)$/.test(symbol.identifier)
       : /^[A-Z][A-Za-z0-9]*$/.test(symbol.identifier);
   if (!valid) {
     return failure(

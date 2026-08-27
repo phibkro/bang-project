@@ -32,6 +32,15 @@ const expectFailure = (
   expect(result.error.reason).toBe(reason);
 };
 
+const expectIdentifierCollision = (
+  result: GleamTargetProjectionResult,
+  identifier: string,
+): void => {
+  expectFailure(result, "identifier-collision");
+  if (result.ok) return;
+  expect(result.error.identifier).toBe(identifier);
+};
+
 describe("M017 Gleam BEAM actor projection", () => {
   test("emits deterministic Account source", async () => {
     const document = await checkedDocument();
@@ -303,5 +312,94 @@ describe("M031 Gleam exact-one actor projection", () => {
       projectGleamExactOneOperationRealization(duplicateTypes, "WithdrawAccountOnce"),
       "identifier-collision",
     );
+  });
+  test("rejects an operation parameter named state at projection", async () => {
+    const document = await mutateCheckedDocument((json) => json.replaceAll('"amount"', '"state"'));
+
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(document, "WithdrawAccountOnce"),
+      "state",
+    );
+  });
+
+  test("rejects an initializer parameter named name at projection", async () => {
+    const document = await mutateCheckedDocument((json) =>
+      json.replaceAll('"initialBalance"', '"name"'),
+    );
+
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(document, "WithdrawAccountOnce"),
+      "name",
+    );
+  });
+
+  test("rejects selected bindings that collide with fixed locals and record members", async () => {
+    const fixedLocal = await mutateCheckedDocument((json) =>
+      json.replaceAll('"amount"', '"consumed"'),
+    );
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(fixedLocal, "WithdrawAccountOnce"),
+      "consumed",
+    );
+
+    const initializerLocal = await mutateCheckedDocument((json) =>
+      json.replaceAll('"initialBalance"', '"counterName"'),
+    );
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(initializerLocal, "WithdrawAccountOnce"),
+      "counter_name",
+    );
+
+    const initializerHelper = await mutateCheckedDocument((json) =>
+      json.replaceAll('"initialBalance"', '"nextIncarnation"'),
+    );
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(initializerHelper, "WithdrawAccountOnce"),
+      "next_incarnation",
+    );
+
+    const recordMember = await mutateCheckedDocument((json) =>
+      json.replaceAll('"balance"', '"incarnation"'),
+    );
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(recordMember, "WithdrawAccountOnce"),
+      "incarnation",
+    );
+  });
+
+  test("rejects a machine binding that shadows a generated probe value", async () => {
+    const machineHelper = structuredClone(await checkedDocument());
+    const helperMachine = machineHelper.declarations.find(
+      (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+    );
+    const helperRealization = machineHelper.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      helperMachine === undefined ||
+      helperMachine.kind !== "stateMachine" ||
+      helperRealization === undefined ||
+      helperRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("exact-one helper-shadow fixtures are missing");
+    }
+    Reflect.set(helperMachine, "id", "CoreFailureId");
+    Reflect.set(helperRealization, "operation", {
+      stateMachine: "CoreFailureId",
+      operation: "withdraw",
+    });
+    expectIdentifierCollision(
+      projectGleamExactOneOperationRealization(machineHelper, "WithdrawAccountOnce"),
+      "core_failure_id",
+    );
+  });
+
+  test("permits a selected binding shadowed only inside a case arm", async () => {
+    const document = await mutateCheckedDocument((json) => json.replaceAll('"amount"', '"first"'));
+    const result = projectGleamExactOneOperationRealization(document, "WithdrawAccountOnce");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toContain("first: Int");
   });
 });

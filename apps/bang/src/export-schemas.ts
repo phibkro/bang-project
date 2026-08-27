@@ -209,7 +209,7 @@ const CONSUMER_RUNTIME_SOURCE = `/**
  */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 /** Publication versions this decoder surface accepts. */
 export const supportedBangSchemaPublicationVersions = [${BANG_SCHEMA_PUBLICATION_VERSION}];
@@ -226,6 +226,38 @@ const isPlainObject = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 const nonEmptyString = (value) => typeof value === "string" && value.length > 0;
+
+const isRepositoryRelativePath = (value) => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.includes("\\\\") ||
+    value.includes("\\u0000") ||
+    value.startsWith("/") ||
+    /^[A-Za-z]:/.test(value)
+  ) {
+    return false;
+  }
+  return value
+    .split("/")
+    .every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+};
+
+const resolveRepositoryPathBeneath = (rootDirectory, repositoryPath) => {
+  if (!isRepositoryRelativePath(repositoryPath)) return undefined;
+  const resolvedRoot = resolve(rootDirectory);
+  const resolvedPath = resolve(resolvedRoot, repositoryPath);
+  const containedPath = relative(resolvedRoot, resolvedPath);
+  if (
+    containedPath.length === 0 ||
+    containedPath === ".." ||
+    containedPath.startsWith(".." + sep) ||
+    isAbsolute(containedPath)
+  ) {
+    return undefined;
+  }
+  return resolvedPath;
+};
 
 const digestString = (value) =>
   typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
@@ -357,17 +389,40 @@ const decodeObservations = (value) => {
   );
 };
 
-const decodeMaterials = (value) =>
-  Array.isArray(value) &&
-  value.length > 0 &&
-  value.every(
-    (material) =>
-      isPlainObject(material) &&
-      nonEmptyString(material.role) &&
-      nonEmptyString(material.path) &&
-      hexSha256(material.sha256) &&
-      exactFields(material, ["role", "path", "sha256"]),
-  );
+const targetMaterialRoles = {
+  "effect-typescript": ["core-source", "generated-effect-boundary"],
+  "gleam-beam": ["core-source", "generated-gleam-boundary"],
+};
+
+const decodeMaterials = (value, targetId) => {
+  const expectedRoles = targetMaterialRoles[targetId];
+  if (
+    expectedRoles === undefined ||
+    !Array.isArray(value) ||
+    value.length !== expectedRoles.length
+  ) {
+    return false;
+  }
+  const roles = new Set();
+  const paths = new Set();
+  for (const material of value) {
+    if (
+      !isPlainObject(material) ||
+      !nonEmptyString(material.role) ||
+      !isRepositoryRelativePath(material.path) ||
+      !hexSha256(material.sha256) ||
+      !exactFields(material, ["role", "path", "sha256"]) ||
+      roles.has(material.role) ||
+      paths.has(material.path) ||
+      !expectedRoles.includes(material.role)
+    ) {
+      return false;
+    }
+    roles.add(material.role);
+    paths.add(material.path);
+  }
+  return expectedRoles.every((role) => roles.has(role));
+};
 
 const evidenceFields = [
   "bangTargetQualificationEvidence",
@@ -421,7 +476,7 @@ export const decodeBangTargetQualificationEvidence = (encoded) => {
     !exactFields(value.package, ["id", "version", "semanticDigest"]) ||
     !nonEmptyString(value.requirementAddress) ||
     !decodeObservations(value.observations) ||
-    !decodeMaterials(value.materials) ||
+    !decodeMaterials(value.materials, value.targetId) ||
     !isPlainObject(value.producer) ||
     !nonEmptyString(value.producer.identity) ||
     !nonEmptyString(value.producer.version) ||
@@ -449,13 +504,13 @@ const readBytes = async (path) => {
 
 const sha256HexOf = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-const verifyPublishedFile = async (relativePath, expectedDigest, publicationDirectory) => {
-  const bytes = await readBytes(join(publicationDirectory, relativePath));
+const verifyPublishedFile = async (relativePath, resolvedPath, expectedDigest) => {
+  const bytes = await readBytes(resolvedPath);
   if (bytes === undefined) {
     return reject(
       "publication",
       "schema-unavailable",
-      \`missing published file \\\${relativePath}\`,
+      "missing published file " + relativePath,
       { path: relativePath },
     );
   }
@@ -464,7 +519,7 @@ const verifyPublishedFile = async (relativePath, expectedDigest, publicationDire
     return reject(
       "publication",
       "digest-mismatch",
-      \`published bytes differ from the manifest digest for \\\${relativePath}\`,
+      "published bytes differ from the manifest digest for " + relativePath,
       { path: relativePath, expected: expectedDigest, observed: observedDigest },
     );
   }
@@ -515,6 +570,8 @@ const verifyManifestIntegrity = async (manifestPath) => {
             ),
     };
   }
+  const publicationDirectory = dirname(manifestPath);
+  const publishedFiles = [];
   for (const document of manifest.documents) {
     if (!isPlainObject(document) || typeof document.file !== "string") {
       return {
@@ -526,12 +583,22 @@ const verifyManifestIntegrity = async (manifestPath) => {
         ),
       };
     }
-    const failure = await verifyPublishedFile(
-      document.file,
-      document.sha256,
-      dirname(manifestPath),
-    );
-    if (failure !== undefined) return { failure };
+    const resolvedPath = resolveRepositoryPathBeneath(publicationDirectory, document.file);
+    if (resolvedPath === undefined) {
+      return {
+        failure: reject(
+          "publication",
+          "schema-unavailable",
+          "manifest document path is not repository-relative and contained",
+          { path: document.file },
+        ),
+      };
+    }
+    publishedFiles.push({
+      relativePath: document.file,
+      resolvedPath,
+      expectedDigest: document.sha256,
+    });
   }
   if (typeof manifest.types.entry !== "string") {
     return {
@@ -543,25 +610,58 @@ const verifyManifestIntegrity = async (manifestPath) => {
       ),
     };
   }
-  const typesFailure = await verifyPublishedFile(
+  const resolvedTypesPath = resolveRepositoryPathBeneath(
+    publicationDirectory,
     manifest.types.entry,
-    manifest.types.sha256,
-    dirname(manifestPath),
   );
-  if (typesFailure !== undefined) return { failure: typesFailure };
+  if (resolvedTypesPath === undefined) {
+    return {
+      failure: reject(
+        "publication",
+        "schema-unavailable",
+        "manifest types path is not repository-relative and contained",
+        { path: manifest.types.entry },
+      ),
+    };
+  }
+  publishedFiles.push({
+    relativePath: manifest.types.entry,
+    resolvedPath: resolvedTypesPath,
+    expectedDigest: manifest.types.sha256,
+  });
+  for (const publishedFile of publishedFiles) {
+    const failure = await verifyPublishedFile(
+      publishedFile.relativePath,
+      publishedFile.resolvedPath,
+      publishedFile.expectedDigest,
+    );
+    if (failure !== undefined) return { failure };
+  }
   return { manifest };
 };
 
 const verifyMaterials = async (evidence, materialsDirectory) => {
-  const verifiedMaterials = [];
+  const resolvedMaterials = [];
   for (const material of evidence.materials) {
-    const materialPath = join(materialsDirectory, material.path);
-    const bytes = await readBytes(materialPath);
+    const resolvedPath = resolveRepositoryPathBeneath(materialsDirectory, material.path);
+    if (resolvedPath === undefined) {
+      return reject(
+        "decode",
+        "decode-failed",
+        "material path is not repository-relative and contained",
+        { path: material.path },
+      );
+    }
+    resolvedMaterials.push({ material, resolvedPath });
+  }
+  const verifiedMaterials = [];
+  for (const { material, resolvedPath } of resolvedMaterials) {
+    const bytes = await readBytes(resolvedPath);
     if (bytes === undefined) {
       return reject(
         "custody",
         "material-missing",
-        \`no supplied bytes for recorded material \\\${material.path}\`,
+        "no supplied bytes for recorded material " + material.path,
         { path: material.path },
       );
     }
@@ -570,7 +670,7 @@ const verifyMaterials = async (evidence, materialsDirectory) => {
       return reject(
         "custody",
         "digest-mismatch",
-        \`supplied bytes differ from the recorded digest for \\\${material.path}\`,
+        "supplied bytes differ from the recorded digest for " + material.path,
         { path: material.path, expected: material.sha256, observed: observedDigest },
       );
     }
@@ -723,11 +823,11 @@ const compareRecords = (lock, evidence) => {
 };
 
 /**
- * One consumption journey over supplied artifact bytes: verify publication
- * custody against the manifest, strictly decode both records, recompute every
- * material digest, and compare structural identity agreement within the
- * evidence and against the theory lock. Emits one typed verdict and nothing
- * else.
+ * One consumption journey over supplied artifact bytes: validate and verify
+ * publication custody against the manifest, strictly decode both records,
+ * validate the target-owned material contract, recompute every material digest,
+ * and compare structural identity agreement within the evidence and against the
+ * theory lock. Emits one typed verdict and nothing else.
  */
 export const verifyBangConsumption = async (options) => {
   const integrity = await verifyManifestIntegrity(options.manifestPath);
