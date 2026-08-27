@@ -186,7 +186,7 @@ flowchart LR
 | continuous evidence invalidation         | Change one material and learn exactly which published evidence is invalidated, then requalify only that closure                    | objective-relative planning + actor realization + fresh qualification + selected realization assembly           | M034         | complete |
 | external extension boundary              | Consume BANG's published schemas from one process outside the workspace and receive one typed verdict                              | selected realization assembly + continuous evidence invalidation                                                | M035         | complete |
 | second-domain realization portability    | Carry one Clinic operation through qualification, planning, Gleam assembly, audit, and external consumption without TinyBank drift | second-domain theory portability + external extension boundary                                                  | M036         | complete |
-| full compiler candidate                  | Run the committed Clinic path through one clean-checkout command and receive one honest accumulated report                         | accumulated report + channel evidence + portability + external extension                                        | M037         | active   |
+| full compiler candidate                  | Run the committed Clinic path through one clean-checkout command and receive one honest accumulated report                         | accumulated report + Clinic portability + external extension boundary                                           | M037         | active   |
 
 M025 is complete through `bang project examples/tiny-bank/project.json`. Its tracer composes one project-owned source list and preserves all evidence distinctions.
 
@@ -214,7 +214,7 @@ M026 is complete through `bang database examples/tiny-bank/database/account.json
 
 [M036](design-specs/M036-second-domain-realization-boundary-portability.md) is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`. Checked Core selects the Clinic shape and identities. Effect and Gleam own separate probes. Planning selects Gleam, assembly retains the qualified bytes, and audit requests zero requalifications. The external consumer checks strict decode and custody. Clean runs preserve all Clinic and TinyBank compatibility bytes.
 
-[M037](design-specs/M037-full-compiler-candidate.md) is active. One root Bun command will compose the committed Clinic chain, artifact-only execution, audit, schema publication, and external consumer. One accumulated report will separate reused evidence from new observations. The six-family scorecard will not claim universal unification or author-independent Clinic design.
+[M037](design-specs/M037-full-compiler-candidate.md) is active. One root Bun command will compose the committed Clinic chain, artifact-only execution, audit, schema publication, and external consumer. One accumulated report will bind current sources without copying their evidence grades. Historical mission citations are not current report evidence. The six-family scorecard will not claim universal unification or author-independent Clinic design.
 
 ## Exploratory ecosystem frontier
 

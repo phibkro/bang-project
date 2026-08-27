@@ -276,7 +276,7 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 37. M035 — publish versioned semantic schemas and prove one out-of-workspace typed verdict.
 38. M036 — carry one checked-Core-selected Clinic operation through the M031–M035 path while preserving every TinyBank output byte.
-39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated qualified report.
+39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated report.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
@@ -317,9 +317,9 @@ The verifier is [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts). 
 The M036 unsupported claims remain in its completed contract. M036 does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
 M037 composes the existing Clinic path through one root Bun command. It adds no BANG CLI verb or semantic authority.
 
-The command runs two clean worktrees and compares one 22-file closure. It publishes only after the two runs are equal.
+The command runs two clean worktrees. It compares 21 producer files and five observation records before it publishes one recoverable 22-file batch.
 
-The accumulated report separates reused mission evidence from new end-to-end observations. Its six-family scorecard does not claim universal semantic unification.
+The accumulated report separates historical mission citations from current digest-bound sources. Its six-family scorecard does not claim universal semantic unification.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 

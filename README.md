@@ -65,19 +65,31 @@ This monorepo contains the BANG specification language, Core, compilers, target 
 
 M037 is the active mission. It freezes one full compiler candidate from a clean checkout through one public command.
 
-The command will use the committed Clinic inputs and existing compiler verbs. It will add no new BANG CLI verb or semantic construct.
+The command will use the committed Clinic inputs and current typed compiler APIs in-process. It will add no child BANG CLI command, new BANG CLI verb, or semantic construct.
 
 The active contract freezes this command:
 
 ```sh
-bun run candidate:m037 examples/clinic/full-candidate.json
+bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json
 ```
 
-The command is not implemented yet. The M037 contract defines its exact input, output, failure, evidence, and clean-run boundaries.
+On success, standard output is exactly `.bang/evidence/M037.json`.
+
+A reviewer can strictly decode the report with:
+
+```sh
+bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.json
+```
+
+The decode command prints exactly `.bang/evidence/M037.json: valid`.
+
+The clean `x86_64-linux` host must provide Nix with flake support. The mission script will provision Node 24.7.0 from one immutable Nixpkgs revision and will not use ambient Node. It will not change `package.json` or `bun.lock`. The command is not implemented yet.
+
+The existing merge-blocking quality job will run M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 
-The six-family scorecard will separate reused mission evidence from new end-to-end observations.
+The six-family scorecard will separate historical mission citations from current digest-bound sources and new observations.
 
 ## Experience the current capability
 
@@ -172,9 +184,9 @@ It also does not generalize to arbitrary domains. External validity does not pro
 
 M037 is active. Its one candidate command will compose the existing Clinic chain through artifact-only execution, audit, schema publication, and external consumption.
 
-The command will write `.bang/evidence/M037.json`. It will compare two clean 22-file closures before it publishes the first closure.
+The command will write `.bang/evidence/M037.json`. It will compare two clean 21-file producer inventories before it publishes one recoverable 22-file enumerated closure.
 
-The report will preserve evidence classes and unsupported claims. It will not claim author-independent Clinic design or universal six-family unification.
+The report will bind current sources without copying or combining their evidence grades. It will keep unsupported claims explicit and will not claim author-independent Clinic design or universal six-family unification.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 
