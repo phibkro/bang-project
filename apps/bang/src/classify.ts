@@ -2,6 +2,11 @@ import {
   consumeSemanticArtifact,
   encodeCanonicalJson,
   type CheckedSemanticArtifact,
+  type OperationRealizationDeclaration,
+  type StateMachineDeclaration,
+  type StateOperation,
+  type StatePredicate,
+  type StateValue,
 } from "@bang/core";
 import {
   checkM018SingleUseCapabilityEvidenceManifest,
@@ -210,23 +215,245 @@ const checkTargets = (
       ),
     );
   }
-  if (
-    selection.bangClassification === 2 &&
-    selection.targets.some(
-      ({ realization, probe }) => realization !== "WithdrawAccountOnce" || probe !== "fresh",
-    )
-  ) {
-    return Effect.fail(
-      makeFailure(
-        "selection",
-        selectionPath,
-        "M031 selection must use fresh WithdrawAccountOnce probes for both targets",
-        { reason: "invalid-target-selection" },
-      ),
-    );
+  if (selection.bangClassification === 2) {
+    const realizations = new Set(selection.targets.map(({ realization }) => realization));
+    if (realizations.size !== 1 || selection.targets.some(({ probe }) => probe !== "fresh")) {
+      return Effect.fail(
+        makeFailure(
+          "selection",
+          selectionPath,
+          "M031 selection must use the same fresh realization probe for both targets",
+          { reason: "invalid-target-selection" },
+        ),
+      );
+    }
   }
   return Effect.succeed(undefined);
 };
+interface M031QualificationSubject {
+  readonly machine: StateMachineDeclaration;
+  readonly initializer: StateOperation;
+  readonly operation: StateOperation;
+  readonly realization: OperationRealizationDeclaration;
+  readonly capability: string;
+  readonly stateField: string;
+  readonly initializerParameter: string;
+  readonly operationParameter: string;
+  readonly entityId: string;
+  readonly wrongEntityId: string;
+  readonly gleamModule: string;
+}
+
+const identifierWords = (value: string): ReadonlyArray<string> =>
+  value
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1-$2")
+    .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .toLowerCase()
+    .split("-");
+
+const upperFirst = (value: string): string => `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
+
+const matchesStateValue = (
+  value: StateValue,
+  kind: StateValue["kind"],
+  identity: string,
+): boolean => {
+  switch (kind) {
+    case "parameter":
+      return value.kind === kind && value.id === identity;
+    case "stateField":
+      return value.kind === kind && value.field === identity;
+    case "integerLiteral":
+      return value.kind === kind && value.value === identity;
+  }
+};
+
+const matchesStatePredicate = (
+  predicate: StatePredicate,
+  leftKind: StateValue["kind"],
+  leftIdentity: string,
+  rightKind: StateValue["kind"],
+  rightIdentity: string,
+): boolean =>
+  matchesStateValue(predicate.left, leftKind, leftIdentity) &&
+  matchesStateValue(predicate.right, rightKind, rightIdentity);
+
+const resolveM031QualificationSubject = (
+  core: CheckedSemanticArtifact["core"],
+  realizationId: string,
+  requirementAddress: string,
+  diagnosticPath: string,
+): Effect.Effect<M031QualificationSubject, ClassificationFailure> => {
+  const unsupported = (
+    message: string,
+    address: string,
+  ): Effect.Effect<never, ClassificationFailure> =>
+    Effect.fail(
+      makeFailure("target", diagnosticPath, message, {
+        reason: "unsupported-target",
+        address,
+      }),
+    );
+  const realization = core.declarations.find(
+    (declaration) =>
+      declaration.kind === "operationRealization" && declaration.id === realizationId,
+  );
+  if (realization?.kind !== "operationRealization") {
+    return Effect.fail(
+      makeFailure("target", diagnosticPath, `missing checked realization ${realizationId}`, {
+        reason: "missing-declaration",
+        address: `operationRealization:${realizationId}`,
+      }),
+    );
+  }
+  const requirement = realization.requires[0];
+  if (
+    realization.requires.length !== 1 ||
+    requirement === undefined ||
+    requirement.quantity.kind !== "exactly" ||
+    requirement.quantity.uses !== "1"
+  ) {
+    return unsupported(
+      `M031 requires one exactly-1 capability requirement on ${realization.id}`,
+      `operationRealization:${realization.id}`,
+    );
+  }
+  const expectedRequirementAddress = `operationRealization:${realization.id}.requirement:${requirement.capability}`;
+  if (requirementAddress !== expectedRequirementAddress) {
+    return Effect.fail(
+      makeFailure(
+        "selection",
+        diagnosticPath,
+        "M031 selection realization does not match the applicable theory requirement",
+        {
+          reason: "invalid-target-selection",
+          address: requirementAddress,
+        },
+      ),
+    );
+  }
+  const capability = core.declarations.find(
+    (declaration) => declaration.kind === "capability" && declaration.id === requirement.capability,
+  );
+  if (capability?.kind !== "capability") {
+    return Effect.fail(
+      makeFailure(
+        "target",
+        diagnosticPath,
+        `missing checked capability ${requirement.capability}`,
+        {
+          reason: "missing-declaration",
+          address: `capability:${requirement.capability}`,
+        },
+      ),
+    );
+  }
+  const machine = core.declarations.find(
+    (declaration) =>
+      declaration.kind === "stateMachine" && declaration.id === realization.operation.stateMachine,
+  );
+  if (machine?.kind !== "stateMachine") {
+    return Effect.fail(
+      makeFailure(
+        "target",
+        diagnosticPath,
+        `missing checked state machine ${realization.operation.stateMachine}`,
+        {
+          reason: "missing-declaration",
+          address: `stateMachine:${realization.operation.stateMachine}`,
+        },
+      ),
+    );
+  }
+  const operation = machine.transitions.find(({ id }) => id === realization.operation.operation);
+  if (operation === undefined) {
+    return Effect.fail(
+      makeFailure(
+        "target",
+        diagnosticPath,
+        `missing checked operation ${machine.id}.${realization.operation.operation}`,
+        {
+          reason: "missing-declaration",
+          address: `operation:${machine.id}.${realization.operation.operation}`,
+        },
+      ),
+    );
+  }
+  const stateField = machine.state.fields[0];
+  const initializer = machine.initializers[0];
+  const initializerParameter = initializer?.parameters[0];
+  const operationParameter = operation.parameters[0];
+  const invariant = machine.invariants[0];
+  if (
+    machine.state.fields.length !== 1 ||
+    stateField?.type !== "Integer" ||
+    machine.initializers.length !== 1 ||
+    initializer === undefined ||
+    initializer.parameters.length !== 1 ||
+    initializerParameter?.type !== "Integer" ||
+    machine.transitions.length !== 1 ||
+    operation.parameters.length !== 1 ||
+    operationParameter?.type !== "Integer" ||
+    machine.invariants.length !== 1 ||
+    invariant === undefined
+  ) {
+    return unsupported(
+      `M031 target profile does not support the checked shape of ${machine.id}`,
+      `stateMachine:${machine.id}`,
+    );
+  }
+  if (
+    initializer.requires.length !== 1 ||
+    !matchesStatePredicate(
+      initializer.requires[0]!,
+      "parameter",
+      initializerParameter.id,
+      "integerLiteral",
+      "0",
+    ) ||
+    operation.requires.length !== 2 ||
+    !operation.requires.some((predicate) =>
+      matchesStatePredicate(predicate, "parameter", operationParameter.id, "integerLiteral", "0"),
+    ) ||
+    !operation.requires.some((predicate) =>
+      matchesStatePredicate(
+        predicate,
+        "stateField",
+        stateField.id,
+        "parameter",
+        operationParameter.id,
+      ),
+    ) ||
+    !matchesStatePredicate(
+      invariant.proposition,
+      "stateField",
+      stateField.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return unsupported(
+      `M031 target profile does not support the checked predicates of ${machine.id}`,
+      `stateMachine:${machine.id}`,
+    );
+  }
+  const words = identifierWords(machine.id);
+  const entityBase = words.join("-");
+  return Effect.succeed({
+    machine,
+    initializer,
+    operation,
+    realization,
+    capability: capability.id,
+    stateField: stateField.id,
+    initializerParameter: initializerParameter.id,
+    operationParameter: operationParameter.id,
+    entityId: `${entityBase}-1`,
+    wrongEntityId: `${entityBase}-2`,
+    gleamModule: `${words.join("_")}_entity`,
+  });
+};
+
 const M031ActorRestartSchema = Schema.Struct({
   oldGrantRejected: Schema.Boolean,
   freshGrantDistinct: Schema.Boolean,
@@ -246,8 +473,8 @@ const M031TraceSchema = Schema.Struct({
 
 export const M031ProbeObservationSchema = Schema.Struct({
   target: Schema.Literals(["effect-typescript", "gleam-beam"]),
-  realization: Schema.Literal("WithdrawAccountOnce"),
-  entity: Schema.Literal("account-1"),
+  realization: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
+  entity: Schema.String.pipe(Schema.check(Schema.isNonEmpty())),
   validCall: Schema.Boolean,
   reuse: Schema.Boolean,
   competing: Schema.Boolean,
@@ -559,53 +786,78 @@ const runM031Process = (
     return stdout;
   });
 
-const effectProbeRunnerSource = (): string => `
+const effectProbeRunnerSource = (subject: M031QualificationSubject): string => {
+  const capabilityType = upperFirst(subject.capability);
+  const capabilityValue = `${capabilityType[0]?.toLowerCase() ?? ""}${capabilityType.slice(1)}`;
+  const realizationType = upperFirst(subject.realization.id);
+  const stateField = subject.stateField;
+  const operation = subject.operation.id;
+  const entityId = JSON.stringify(subject.entityId);
+  const wrongEntityId = JSON.stringify(subject.wrongEntityId);
+  return `
 import { Effect, Layer } from "effect";
 import {
-  DebitAccount,
-  debitAccountGrantRemainingUses,
-  makeDebitAccountLayer,
-  makeWithdrawAccountOnceLayer,
-  observeWithdrawAccountOnce,
+  ${capabilityType},
+  ${capabilityValue}GrantRemainingUses,
+  make${capabilityType}Layer,
+  make${realizationType}Layer,
+  observe${realizationType},
 } from "./boundary.ts";
 
 const healthyBoundary = Layer.mergeAll(
-  makeDebitAccountLayer("m031"),
-  makeWithdrawAccountOnceLayer({
-    withdraw: (state, amount) => Effect.succeed({ balance: state.balance - amount }),
+  make${capabilityType}Layer("m031"),
+  make${realizationType}Layer({
+    ${operation}: (state, ${subject.operationParameter}) =>
+      Effect.succeed({ ${stateField}: state.${stateField} - ${subject.operationParameter} }),
   }),
 );
 
 const healthyJourney = Effect.gen(function* () {
-  const debit = yield* DebitAccount;
-  const validGrant = yield* debit.issueGrant;
-  const validBefore = yield* debitAccountGrantRemainingUses(validGrant);
-  const valid = yield* observeWithdrawAccountOnce(validGrant, "account-1", { balance: 10n }, 4n);
-  const reuseBefore = yield* debitAccountGrantRemainingUses(validGrant);
-  const reuse = yield* observeWithdrawAccountOnce(validGrant, "account-1", valid.state, 1n);
+  const ${capabilityValue} = yield* ${capabilityType};
+  const validGrant = yield* ${capabilityValue}.issueGrant;
+  const validBefore = yield* ${capabilityValue}GrantRemainingUses(validGrant);
+  const valid = yield* observe${realizationType}(
+    validGrant,
+    ${entityId},
+    { ${stateField}: 10n },
+    4n,
+  );
+  const reuseBefore = yield* ${capabilityValue}GrantRemainingUses(validGrant);
+  const reuse = yield* observe${realizationType}(
+    validGrant,
+    ${entityId},
+    valid.state,
+    1n,
+  );
 
-  const competingGrant = yield* debit.issueGrant;
-  const competingBefore = yield* debitAccountGrantRemainingUses(competingGrant);
+  const competingGrant = yield* ${capabilityValue}.issueGrant;
+  const competingBefore = yield* ${capabilityValue}GrantRemainingUses(competingGrant);
   const competing = yield* Effect.forEach(
     [0, 1] as const,
-    () => observeWithdrawAccountOnce(competingGrant, "account-1", { balance: 6n }, 2n),
+    () =>
+      observe${realizationType}(
+        competingGrant,
+        ${entityId},
+        { ${stateField}: 6n },
+        2n,
+      ),
     { concurrency: 2 },
   );
 
-  const wrongGrant = yield* debit.issueGrant;
-  const wrongBefore = yield* debitAccountGrantRemainingUses(wrongGrant);
-  const wrongDestination = yield* observeWithdrawAccountOnce(
+  const wrongGrant = yield* ${capabilityValue}.issueGrant;
+  const wrongBefore = yield* ${capabilityValue}GrantRemainingUses(wrongGrant);
+  const wrongDestination = yield* observe${realizationType}(
     wrongGrant,
-    "account-2",
-    { balance: 6n },
+    ${wrongEntityId},
+    { ${stateField}: 6n },
     2n,
   );
-  const disabledGrant = yield* debit.issueGrant;
-  const disabledBefore = yield* debitAccountGrantRemainingUses(disabledGrant);
-  const disabled = yield* observeWithdrawAccountOnce(
+  const disabledGrant = yield* ${capabilityValue}.issueGrant;
+  const disabledBefore = yield* ${capabilityValue}GrantRemainingUses(disabledGrant);
+  const disabled = yield* observe${realizationType}(
     disabledGrant,
-    "account-1",
-    { balance: 6n },
+    ${entityId},
+    { ${stateField}: 6n },
     20n,
   );
   return {
@@ -623,24 +875,34 @@ const healthyJourney = Effect.gen(function* () {
 });
 
 const defectBoundary = Layer.mergeAll(
-  makeDebitAccountLayer("m031-defect"),
-  makeWithdrawAccountOnceLayer({
-    withdraw: () => Effect.die("controlled M031 implementation defect"),
+  make${capabilityType}Layer("m031-defect"),
+  make${realizationType}Layer({
+    ${operation}: () => Effect.die("controlled M031 implementation defect"),
   }),
 );
 const defectJourney = Effect.gen(function* () {
-  const debit = yield* DebitAccount;
-  const grant = yield* debit.issueGrant;
-  const before = yield* debitAccountGrantRemainingUses(grant);
-  const defect = yield* observeWithdrawAccountOnce(grant, "account-1", { balance: 10n }, 4n);
-  const reuseBefore = yield* debitAccountGrantRemainingUses(grant);
-  const reuse = yield* observeWithdrawAccountOnce(grant, "account-1", { balance: 10n }, 1n);
+  const ${capabilityValue} = yield* ${capabilityType};
+  const grant = yield* ${capabilityValue}.issueGrant;
+  const before = yield* ${capabilityValue}GrantRemainingUses(grant);
+  const defect = yield* observe${realizationType}(
+    grant,
+    ${entityId},
+    { ${stateField}: 10n },
+    4n,
+  );
+  const reuseBefore = yield* ${capabilityValue}GrantRemainingUses(grant);
+  const reuse = yield* observe${realizationType}(
+    grant,
+    ${entityId},
+    { ${stateField}: 10n },
+    1n,
+  );
   return { before, defect, reuseBefore, reuse };
 });
 
 const healthy = await Effect.runPromise(healthyJourney.pipe(Effect.provide(healthyBoundary)));
 const defect = await Effect.runPromise(defectJourney.pipe(Effect.provide(defectBoundary)));
-const state = (observation) => observation.state.balance.toString();
+const state = (observation) => observation.state.${stateField}.toString();
 const remaining = (observation) => observation.remainingUses;
 const competingSuccesses = healthy.competing.filter(({ _tag }) => _tag === "Success").length;
 const competingRejections = healthy.competing.filter(
@@ -649,8 +911,8 @@ const competingRejections = healthy.competing.filter(
 console.log(
   JSON.stringify({
     target: "effect-typescript",
-    realization: "WithdrawAccountOnce",
-    entity: "account-1",
+    realization: ${JSON.stringify(subject.realization.id)},
+    entity: ${entityId},
     validCall: healthy.valid._tag === "Success",
     reuse: healthy.reuse._tag === "CapabilityUseRejected",
     competing: competingSuccesses === 1 && competingRejections === 1,
@@ -661,35 +923,38 @@ console.log(
     defect:
       defect.defect._tag === "Defect" && defect.reuse._tag === "CapabilityUseRejected",
     stateTrace: {
-      valid: \`10>\${state(healthy.valid)}\`,
-      reuse: \`\${state(healthy.valid)}>\${state(healthy.reuse)}\`,
-      competing: \`\${state(healthy.competing[0]!)}>\${state(healthy.competing[0]!)}\`,
-      wrongDestination: \`\${state(healthy.wrongDestination)}>\${state(healthy.wrongDestination)}\`,
-      disabled: \`\${state(healthy.disabled)}>\${state(healthy.disabled)}\`,
-      defect: \`10>\${state(defect.defect)}\`,
-      stale: \`10>\${state(defect.reuse)}\`,
+      valid: "10>" + state(healthy.valid),
+      reuse: state(healthy.valid) + ">" + state(healthy.reuse),
+      competing: state(healthy.competing[0]) + ">" + state(healthy.competing[0]),
+      wrongDestination:
+        state(healthy.wrongDestination) + ">" + state(healthy.wrongDestination),
+      disabled: state(healthy.disabled) + ">" + state(healthy.disabled),
+      defect: "10>" + state(defect.defect),
+      stale: "10>" + state(defect.reuse),
       replacement: "10>10",
     },
     remainingTrace: {
-      valid: \`\${healthy.validBefore}>\${remaining(healthy.valid)}\`,
-      reuse: \`\${healthy.reuseBefore}>\${remaining(healthy.reuse)}\`,
-      competing: \`\${healthy.competingBefore}>0\`,
-      wrongDestination: \`\${healthy.wrongBefore}>\${remaining(healthy.wrongDestination)}\`,
-      disabled: \`\${healthy.disabledBefore}>\${remaining(healthy.disabled)}\`,
-      defect: \`\${defect.before}>\${remaining(defect.defect)}\`,
-      stale: \`\${defect.reuseBefore}>\${remaining(defect.reuse)}\`,
+      valid: healthy.validBefore + ">" + remaining(healthy.valid),
+      reuse: healthy.reuseBefore + ">" + remaining(healthy.reuse),
+      competing: healthy.competingBefore + ">0",
+      wrongDestination:
+        healthy.wrongBefore + ">" + remaining(healthy.wrongDestination),
+      disabled: healthy.disabledBefore + ">" + remaining(healthy.disabled),
+      defect: defect.before + ">" + remaining(defect.defect),
+      stale: defect.reuseBefore + ">" + remaining(defect.reuse),
       replacement: "1>1",
     },
   }),
 );
 `;
+};
 
-const gleamProbeRunnerSource = (): string => `
-import bang/account_entity
+const gleamProbeRunnerSource = (moduleName: string): string => `
+import bang/${moduleName}
 import gleam/io
 
 pub fn main() {
-  io.println(account_entity.run_exact_one_probe())
+  io.println(${moduleName}.run_exact_one_probe())
 }
 `;
 
@@ -766,6 +1031,7 @@ const makeM031Evidence = (
   root: string,
   staged: StagedExplanationResult,
   core: CheckedSemanticArtifact["core"],
+  subject: M031QualificationSubject,
   selection: ClassificationSelectionV2,
   targetRun: M031TargetRun,
   diagnosticPath: string,
@@ -806,7 +1072,7 @@ const makeM031Evidence = (
       bangTargetQualificationEvidence: 1 as const,
       selectionId: selection.id,
       targetId: targetRun.target.target,
-      realizationId: "WithdrawAccountOnce" as const,
+      realizationId: subject.realization.id,
       artifactId: staged.result.artifactId,
       artifactFormat: staged.result.artifactFormat,
       theory: staged.result.theory,
@@ -886,7 +1152,7 @@ const makeM031Evidence = (
     const checked = yield* checkM031TargetQualificationEvidence(decoded, {
       selectionId: selection.id,
       targetId: targetRun.target.target,
-      realizationId: "WithdrawAccountOnce",
+      realizationId: subject.realization.id,
       artifactId: staged.result.artifactId,
       artifactFormat: staged.result.artifactFormat,
       theory: staged.result.theory,
@@ -925,6 +1191,7 @@ const compileM031TargetRuns = (
   root: string,
   staged: StagedExplanationResult,
   core: CheckedSemanticArtifact["core"],
+  subject: M031QualificationSubject,
   selection: ClassificationSelectionV2,
   qualificationBase: string,
   diagnosticPath: string,
@@ -959,7 +1226,7 @@ const compileM031TargetRuns = (
         const generatedPath =
           target.target === "effect-typescript"
             ? `${qualificationBase}/effect-typescript/boundary.ts`
-            : `${qualificationBase}/gleam-beam/src/bang/account_entity.gleam`;
+            : `${qualificationBase}/gleam-beam/src/bang/${subject.gleamModule}.gleam`;
         let generatedBytes: Uint8Array;
         let projection: string;
         if (target.target === "effect-typescript") {
@@ -1002,7 +1269,7 @@ const compileM031TargetRuns = (
               ),
             ),
           );
-          yield* fileSystem.writeFileString(runnerPath, effectProbeRunnerSource()).pipe(
+          yield* fileSystem.writeFileString(runnerPath, effectProbeRunnerSource(subject)).pipe(
             Effect.mapError((error) =>
               makeFailure(
                 "execution",
@@ -1065,7 +1332,7 @@ const compileM031TargetRuns = (
             ),
           );
           yield* fileSystem
-            .writeFile(path.join(sourceDirectory, "account_entity.gleam"), generatedBytes)
+            .writeFile(path.join(sourceDirectory, `${subject.gleamModule}.gleam`), generatedBytes)
             .pipe(
               Effect.mapError((error) =>
                 makeFailure(
@@ -1107,7 +1374,10 @@ const compileM031TargetRuns = (
               ),
             );
           yield* fileSystem
-            .writeFileString(path.join(gleamRoot, "src", "main.gleam"), gleamProbeRunnerSource())
+            .writeFileString(
+              path.join(gleamRoot, "src", "main.gleam"),
+              gleamProbeRunnerSource(subject.gleamModule),
+            )
             .pipe(
               Effect.mapError((error) =>
                 makeFailure(
@@ -1430,6 +1700,12 @@ const compileSelectedM031Classification = (
           ),
         );
       }
+      const subject = yield* resolveM031QualificationSubject(
+        artifact.core,
+        selection.targets[0].realization,
+        staged.result.requirementAddress,
+        resolvedSelectionPath,
+      );
       const packageEncoded = encodeExactOneCapabilityExecutionPackage(
         staged.packageResolution.resolved.package,
       );
@@ -1448,6 +1724,7 @@ const compileSelectedM031Classification = (
         root,
         staged,
         artifact.core,
+        subject,
         selection,
         qualificationBase,
         resolvedSelectionPath,
@@ -1461,6 +1738,7 @@ const compileSelectedM031Classification = (
           root,
           staged,
           artifact.core,
+          subject,
           selection,
           run,
           resolvedSelectionPath,

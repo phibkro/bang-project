@@ -811,71 +811,394 @@ export const projectGleamEntityOperationRealization = (
     );
   }
 };
-const exactOneGeneratedIdentifiers: Record<string, true> = {
-  Account: true,
-  AccountState: true,
-  AccountMessage: true,
-  AccountReply: true,
-  AccountGrant: true,
-  AccountEntity: true,
-  ActorState: true,
-  Message: true,
-  RemainingUses: true,
-  Grant: true,
-  Reply: true,
-  StartError: true,
-  InvalidInitialBalance: true,
-  SupervisorStartFailed: true,
-  Success: true,
-  CapabilityUseRejected: true,
-  StaleGrantRejected: true,
-  WrongDestination: true,
-  DomainRejected: true,
-  Withdraw: true,
-  IssueGrant: true,
-  DefectWithdraw: true,
-  Balance: true,
-  CounterMessage: true,
-  NextIncarnation: true,
-  Stop: true,
-  account_entity_id: true,
-  core_state_machine_id: true,
-  core_initializer_id: true,
-  core_operation_id: true,
-  core_realization_id: true,
-  core_capability_id: true,
-  core_failure_id: true,
-  start_supervised: true,
-  start_counter: true,
-  next_incarnation: true,
-  balance: true,
-  issue_grant: true,
-  grant_id: true,
-  withdraw: true,
-  defect_withdraw: true,
-  competing: true,
-  remaining_uses: true,
-  lookup: true,
-  supervisor_alive: true,
-  stop: true,
-  run_exact_one_probe: true,
+interface ExactOneProjection {
+  readonly machine: StateMachineDeclaration;
+  readonly stateField: StateMachineDeclaration["state"]["fields"][number];
+  readonly initializer: StateOperation;
+  readonly initializerParameter: StateOperation["parameters"][number];
+  readonly operation: StateOperation;
+  readonly operationParameter: StateOperation["parameters"][number];
+  readonly invariant: StateMachineDeclaration["invariants"][number];
+  readonly capabilityId: string;
+  readonly realization: OperationRealizationDeclaration;
+}
+
+const exactOneIdentifierWords = (identifier: string): ReadonlyArray<string> =>
+  identifier
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(" ")
+    .map((word) => word.toLowerCase());
+
+const exactOneLowerKebab = (identifier: string): string =>
+  exactOneIdentifierWords(identifier).join("-");
+
+const exactOneLowerSnake = (identifier: string): string =>
+  exactOneIdentifierWords(identifier).join("_");
+
+const exactOneUpperFirst = (identifier: string): string =>
+  identifier.charAt(0).toUpperCase() + identifier.slice(1);
+
+const exactOneGeneratedIdentifiers = (projection: ExactOneProjection): Record<string, true> => {
+  const machineId = projection.machine.id;
+  const operationType = exactOneUpperFirst(projection.operation.id);
+  const stateFieldType = exactOneUpperFirst(projection.stateField.id);
+  const invalidInitializerParameter = `Invalid${exactOneUpperFirst(
+    projection.initializerParameter.id,
+  )}`;
+
+  return {
+    [machineId]: true,
+    [projection.machine.state.id]: true,
+    [`${machineId}Message`]: true,
+    [`${machineId}Reply`]: true,
+    [`${machineId}Grant`]: true,
+    [`${machineId}Entity`]: true,
+    ActorState: true,
+    Message: true,
+    RemainingUses: true,
+    Grant: true,
+    Reply: true,
+    StartError: true,
+    [invalidInitializerParameter]: true,
+    SupervisorStartFailed: true,
+    Success: true,
+    CapabilityUseRejected: true,
+    StaleGrantRejected: true,
+    WrongDestination: true,
+    DomainRejected: true,
+    [operationType]: true,
+    IssueGrant: true,
+    [`Defect${operationType}`]: true,
+    [stateFieldType]: true,
+    CounterMessage: true,
+    NextIncarnation: true,
+    Stop: true,
+    [`${exactOneLowerSnake(machineId)}_entity_id`]: true,
+    core_state_machine_id: true,
+    core_initializer_id: true,
+    core_operation_id: true,
+    core_realization_id: true,
+    core_capability_id: true,
+    core_failure_id: true,
+    start_supervised: true,
+    start_counter: true,
+    next_incarnation: true,
+    [exactOneLowerSnake(projection.stateField.id)]: true,
+    issue_grant: true,
+    grant_id: true,
+    [exactOneLowerSnake(projection.operation.id)]: true,
+    [`defect_${exactOneLowerSnake(projection.operation.id)}`]: true,
+    competing: true,
+    remaining_uses: true,
+    lookup: true,
+    supervisor_alive: true,
+    stop: true,
+    run_exact_one_probe: true,
+  };
 };
 
-const emitExactOneAccountEntity = (
-  machine: StateMachineDeclaration,
-  initializer: StateOperation,
-  operation: StateOperation,
-  realization: OperationRealizationDeclaration,
-): string => {
+const selectExactOneProjection = (
+  document: CheckedCoreDocument,
+  realizationId: string,
+): GleamTargetProjectionResult | ExactOneProjection => {
+  const realization = document.declarations.find(
+    (declaration): declaration is OperationRealizationDeclaration =>
+      declaration.kind === "operationRealization" && declaration.id === realizationId,
+  );
+  if (realization === undefined) {
+    return failure(
+      "missing-declaration",
+      `operationRealization:${realizationId}`,
+      `Gleam exact-one projection cannot resolve checked realization ${realizationId}`,
+    );
+  }
+  const realizationIdentifierFailure = invalidIdentifier(
+    realization.id,
+    `operationRealization:${realization.id}`,
+    "type",
+  );
+  if (realizationIdentifierFailure !== undefined) return realizationIdentifierFailure;
+
+  const requirement = realization.requires[0];
+  if (
+    realization.requires.length !== 1 ||
+    requirement === undefined ||
+    requirement.quantity.kind !== "exactly" ||
+    requirement.quantity.uses !== "1"
+  ) {
+    return unsupported(
+      `operationRealization:${realization.id}.requires`,
+      "Gleam exact-one projection requires one capability with quantity exactly 1",
+    );
+  }
+  if (realization.disabled.kind !== "failure") {
+    return unsupported(
+      `operationRealization:${realization.id}.disabled`,
+      "Gleam exact-one projection requires one disabled failure",
+    );
+  }
+
+  const capability = document.declarations.find(
+    (declaration) => declaration.kind === "capability" && declaration.id === requirement.capability,
+  );
+  if (capability === undefined) {
+    return inconsistent(
+      `capability:${requirement.capability}`,
+      `Gleam exact-one projection cannot resolve checked capability ${requirement.capability}`,
+    );
+  }
+
+  const machine = document.declarations.find(
+    (declaration): declaration is StateMachineDeclaration =>
+      declaration.kind === "stateMachine" && declaration.id === realization.operation.stateMachine,
+  );
+  if (machine === undefined) {
+    return inconsistent(
+      `operationRealization:${realization.id}.stateMachine:${realization.operation.stateMachine}`,
+      `Gleam exact-one projection cannot resolve checked state machine ${realization.operation.stateMachine}`,
+    );
+  }
+  const machineIdentifierFailure = invalidIdentifier(
+    machine.id,
+    `stateMachine:${machine.id}`,
+    "type",
+  );
+  if (machineIdentifierFailure !== undefined) return machineIdentifierFailure;
+  const stateIdentifierFailure = invalidIdentifier(
+    machine.state.id,
+    `stateMachine:${machine.id}.state:${machine.state.id}`,
+    "type",
+  );
+  if (stateIdentifierFailure !== undefined) return stateIdentifierFailure;
+
+  if (machine.state.fields.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.state`,
+      "Gleam exact-one projection requires exactly one state field",
+    );
+  }
+  const stateField = machine.state.fields[0];
+  if (stateField === undefined) {
+    return unsupported(
+      `stateMachine:${machine.id}.state`,
+      "Gleam exact-one projection cannot recover the state field",
+    );
+  }
+  const stateFieldIdentifierFailure = invalidIdentifier(
+    stateField.id,
+    `stateMachine:${machine.id}.stateField:${stateField.id}`,
+    "value",
+  );
+  if (stateFieldIdentifierFailure !== undefined) return stateFieldIdentifierFailure;
+  if (stateField.type !== "Integer") {
+    return unsupported(
+      `stateMachine:${machine.id}.stateField:${stateField.id}`,
+      `Gleam exact-one projection requires Integer field ${machine.id}.${stateField.id}`,
+    );
+  }
+
+  if (machine.initializers.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.initializers`,
+      "Gleam exact-one projection requires exactly one initializer",
+    );
+  }
+  const initializer = machine.initializers[0];
+  if (initializer === undefined) {
+    return unsupported(
+      `stateMachine:${machine.id}.initializers`,
+      "Gleam exact-one projection cannot recover the initializer",
+    );
+  }
+  const initializerIdentifierFailure = invalidIdentifier(
+    initializer.id,
+    `stateMachine:${machine.id}.initializer:${initializer.id}`,
+    "value",
+  );
+  if (initializerIdentifierFailure !== undefined) return initializerIdentifierFailure;
+  if (initializer.parameters.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.${initializer.id}.parameters`,
+      "Gleam exact-one projection requires exactly one initializer parameter",
+    );
+  }
+  const initializerParameter = initializer.parameters[0];
+  if (initializerParameter === undefined) {
+    return unsupported(
+      `stateMachine:${machine.id}.${initializer.id}.parameters`,
+      "Gleam exact-one projection cannot recover the initializer parameter",
+    );
+  }
+  const initializerParameterIdentifierFailure = invalidIdentifier(
+    initializerParameter.id,
+    `stateMachine:${machine.id}.${initializer.id}.parameter:${initializerParameter.id}`,
+    "value",
+  );
+  if (initializerParameterIdentifierFailure !== undefined)
+    return initializerParameterIdentifierFailure;
+  const initializerRequirement = initializer.requires[0];
+  if (
+    initializerParameter.type !== "Integer" ||
+    initializer.requires.length !== 1 ||
+    initializerRequirement === undefined ||
+    !matchesPredicate(
+      initializerRequirement,
+      "parameter",
+      initializerParameter.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return unsupported(
+      `stateMachine:${machine.id}.${initializer.id}`,
+      `Gleam exact-one projection requires ${initializerParameter.id} >= 0`,
+    );
+  }
+
+  const operation = machine.transitions.find(({ id }) => id === realization.operation.operation);
+  if (operation === undefined) {
+    return inconsistent(
+      `operationRealization:${realization.id}.transition:${machine.id}.${realization.operation.operation}`,
+      `Gleam exact-one projection cannot resolve checked transition ${machine.id}.${realization.operation.operation}`,
+    );
+  }
+  if (machine.transitions.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.transitions`,
+      "Gleam exact-one projection requires exactly one transition",
+    );
+  }
+  const operationIdentifierFailure = invalidIdentifier(
+    operation.id,
+    `stateMachine:${machine.id}.transition:${operation.id}`,
+    "value",
+  );
+  if (operationIdentifierFailure !== undefined) return operationIdentifierFailure;
+  if (operation.parameters.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.${operation.id}.parameters`,
+      "Gleam exact-one projection requires exactly one transition parameter",
+    );
+  }
+  const operationParameter = operation.parameters[0];
+  if (operationParameter === undefined) {
+    return unsupported(
+      `stateMachine:${machine.id}.${operation.id}.parameters`,
+      "Gleam exact-one projection cannot recover the transition parameter",
+    );
+  }
+  const operationParameterIdentifierFailure = invalidIdentifier(
+    operationParameter.id,
+    `stateMachine:${machine.id}.${operation.id}.parameter:${operationParameter.id}`,
+    "value",
+  );
+  if (operationParameterIdentifierFailure !== undefined) return operationParameterIdentifierFailure;
+  if (
+    operationParameter.type !== "Integer" ||
+    operation.requires.length !== 2 ||
+    !hasPredicate(operation.requires, "parameter", operationParameter.id, "integerLiteral", "0") ||
+    !hasPredicate(
+      operation.requires,
+      "stateField",
+      stateField.id,
+      "parameter",
+      operationParameter.id,
+    )
+  ) {
+    return unsupported(
+      `stateMachine:${machine.id}.${operation.id}`,
+      `Gleam exact-one projection requires ${operationParameter.id} >= 0 and ${stateField.id} >= ${operationParameter.id}`,
+    );
+  }
+
+  if (machine.invariants.length !== 1) {
+    return unsupported(
+      `stateMachine:${machine.id}.invariants`,
+      "Gleam exact-one projection requires exactly one invariant",
+    );
+  }
+  const invariant = machine.invariants[0];
+  if (
+    invariant === undefined ||
+    !matchesPredicate(invariant.proposition, "stateField", stateField.id, "integerLiteral", "0")
+  ) {
+    return unsupported(
+      `stateMachine:${machine.id}.invariants`,
+      `Gleam exact-one projection requires invariant ${stateField.id} >= 0`,
+    );
+  }
+
+  const projection: ExactOneProjection = {
+    machine,
+    stateField,
+    initializer,
+    initializerParameter,
+    operation,
+    operationParameter,
+    invariant,
+    capabilityId: capability.id,
+    realization,
+  };
+  const selectedIdentifiers = new Set([
+    machine.id,
+    machine.state.id,
+    stateField.id,
+    initializer.id,
+    initializerParameter.id,
+    operation.id,
+    operationParameter.id,
+    invariant.id,
+    capability.id,
+    realization.id,
+    realization.disabled.id,
+  ]);
+  const exactOneIdentifiers = exactOneGeneratedIdentifiers(projection);
+  const collision = document.declarations.find(
+    (declaration) =>
+      !selectedIdentifiers.has(declaration.id) && exactOneIdentifiers[declaration.id] === true,
+  );
+  if (collision !== undefined) {
+    return failure(
+      "identifier-collision",
+      `operationRealization:${realization.id}`,
+      `Gleam generated identifier ${collision.id} collides with checked Core declaration ${collision.id}`,
+      collision.id,
+    );
+  }
+
+  return projection;
+};
+
+const emitExactOneEntity = (projection: ExactOneProjection): string => {
+  const machine = projection.machine;
   const machineId = machine.id;
+  const machineValue = exactOneLowerSnake(machineId);
   const stateId = machine.state.id;
-  const stateField = machine.state.fields[0]?.id ?? expected.stateField;
-  const initializerId = initializer.id;
-  const operationId = operation.id;
-  const parameterId = operation.parameters[0]?.id ?? expected.transitionParameter;
-  const capabilityId = projectCapabilityIds(realization.requires)[0] ?? expected.capability;
-  const realizationId = realization.id;
-  const failureId = realization.disabled.id;
+  const stateField = projection.stateField.id;
+  const stateFieldType = exactOneUpperFirst(stateField);
+  const stateFieldFunction = exactOneLowerSnake(stateField);
+  const stateValueFunction = `state_${stateFieldFunction}`;
+  const initializerId = projection.initializer.id;
+  const initializerParameter = exactOneLowerSnake(projection.initializerParameter.id);
+  const invalidInitializerParameter = `Invalid${exactOneUpperFirst(
+    projection.initializerParameter.id,
+  )}`;
+  const operationId = projection.operation.id;
+  const operationType = exactOneUpperFirst(operationId);
+  const operationFunction = exactOneLowerSnake(operationId);
+  const defectOperationType = `Defect${operationType}`;
+  const defectOperationFunction = `defect_${operationFunction}`;
+  const handleOperationFunction = `handle_${operationFunction}`;
+  const handleDefectOperationFunction = `handle_${defectOperationFunction}`;
+  const parameterId = projection.operationParameter.id;
+  const capabilityId = projection.capabilityId;
+  const realizationId = projection.realization.id;
+  const failureId = projection.realization.disabled.id;
+  const entityName = exactOneLowerKebab(machineId);
+  const entityId = `${entityName}-1`;
+  const otherEntityId = `${entityName}-2`;
+  const entityIdConstant = `${exactOneLowerSnake(machineId)}_entity_id`;
 
   return [
     "//// Generated by BANG M031. Do not edit.",
@@ -897,8 +1220,8 @@ const emitExactOneAccountEntity = (
     `pub const core_realization_id = ${quote(realizationId)}`,
     `pub const core_capability_id = ${quote(capabilityId)}`,
     `pub const core_failure_id = ${quote(failureId)}`,
-    'pub const message_type = "WithdrawAccountOnce"',
-    'pub const account_entity_id = "account-1"',
+    `pub const message_type = ${quote(realizationId)}`,
+    `pub const ${entityIdConstant} = ${quote(entityId)}`,
     "",
     `pub type ${stateId} {`,
     `  ${stateId}(${stateField}: Int)`,
@@ -921,12 +1244,12 @@ const emitExactOneAccountEntity = (
     "}",
     "",
     "pub type StartError {",
-    "  InvalidInitialBalance(balance: Int)",
+    `  ${invalidInitializerParameter}(${stateField}: Int)`,
     "  SupervisorStartFailed",
     "}",
     "",
-    "pub opaque type Account {",
-    "  Account(",
+    `pub opaque type ${machineId} {`,
+    `  ${machineId}(`,
     "    name: process.Name(Message),",
     "    supervisor_pid: process.Pid,",
     "  )",
@@ -934,18 +1257,18 @@ const emitExactOneAccountEntity = (
     "",
     "pub type Message {",
     "  IssueGrant(reply_to: process.Subject(Grant))",
-    "  Withdraw(",
+    `  ${operationType}(`,
     "    reply_to: process.Subject(Reply),",
     "    grant: Grant,",
     "    destination: String,",
     `    ${parameterId}: Int,`,
     "  )",
-    "  DefectWithdraw(",
+    `  ${defectOperationType}(`,
     "    grant: Grant,",
     "    destination: String,",
     `    ${parameterId}: Int,`,
     "  )",
-    "  Balance(reply_to: process.Subject(Int))",
+    `  ${stateFieldType}(reply_to: process.Subject(Int))`,
     "  RemainingUses(reply_to: process.Subject(Int), grant: Grant)",
     "  Stop(reply_to: process.Subject(Nil))",
     "}",
@@ -976,7 +1299,7 @@ const emitExactOneAccountEntity = (
     "",
     "type ActorState {",
     "  ActorState(",
-    "    balance: Int,",
+    `    ${stateField}: Int,`,
     "    incarnation: reference.Reference,",
     "    incarnation_id: Int,",
     "    next_grant: Int,",
@@ -995,17 +1318,17 @@ const emitExactOneAccountEntity = (
     "  }",
     "}",
     "",
-    "fn state_value(state: ActorState) -> AccountState {",
-    `  ${stateId}(${stateField}: state.balance)`,
+    `fn state_value(state: ActorState) -> ${stateId} {`,
+    `  ${stateId}(${stateField}: state.${stateField})`,
     "}",
     "",
-    "fn transition_enabled(state: ActorState, amount: Int) -> Bool {",
-    "  amount >= 0 && state.balance >= amount",
+    `fn transition_enabled(state: ActorState, ${parameterId}: Int) -> Bool {`,
+    `  ${parameterId} >= 0 && state.${stateField} >= ${parameterId}`,
     "}",
     "",
     "fn consumed_state(state: ActorState, grant: Grant) -> ActorState {",
     "  ActorState(",
-    "    balance: state.balance,",
+    `    ${stateField}: state.${stateField},`,
     "    incarnation: state.incarnation,",
     "    incarnation_id: state.incarnation_id,",
     "    next_grant: state.next_grant,",
@@ -1014,7 +1337,7 @@ const emitExactOneAccountEntity = (
     "  )",
     "}",
     "",
-    "fn handle_withdraw(",
+    `fn ${handleOperationFunction}(`,
     "  state: ActorState,",
     "  reply_to: process.Subject(Reply),",
     "  grant: Grant,",
@@ -1034,13 +1357,13 @@ const emitExactOneAccountEntity = (
     "      )",
     "      actor.continue(state)",
     "    }",
-    "    True -> case destination == account_entity_id {",
+    `    True -> case destination == ${entityIdConstant} {`,
     "      False -> {",
     "        actor.send(",
     "          reply_to,",
     "          WrongDestination(",
     "            destination: destination,",
-    "            expected_destination: account_entity_id,",
+    `            expected_destination: ${entityIdConstant},`,
     "            state: state_value(state),",
     "            remaining_uses: remaining_uses,",
     "            implementation_calls: state.implementation_calls,",
@@ -1048,7 +1371,7 @@ const emitExactOneAccountEntity = (
     "        )",
     "        actor.continue(state)",
     "      }",
-    "      True -> case transition_enabled(state, amount) {",
+    `      True -> case transition_enabled(state, ${parameterId}) {`,
     "        False -> {",
     "          actor.send(",
     "            reply_to,",
@@ -1076,7 +1399,7 @@ const emitExactOneAccountEntity = (
     "          _ -> {",
     "            let consumed = consumed_state(state, grant)",
     "            let next = ActorState(",
-    `              balance: consumed.balance - ${parameterId},`,
+    `              ${stateField}: consumed.${stateField} - ${parameterId},`,
     "              incarnation: consumed.incarnation,",
     "              incarnation_id: consumed.incarnation_id,",
     "              next_grant: consumed.next_grant,",
@@ -1099,7 +1422,7 @@ const emitExactOneAccountEntity = (
     "  }",
     "}",
     "",
-    "fn handle_defect_withdraw(",
+    `fn ${handleDefectOperationFunction}(`,
     "  state: ActorState,",
     "  grant: Grant,",
     "  destination: String,",
@@ -1108,9 +1431,9 @@ const emitExactOneAccountEntity = (
     "  let remaining_uses = remaining_for(state, grant)",
     "  case grant.incarnation == state.incarnation {",
     "    False -> actor.continue(state)",
-    "    True -> case destination == account_entity_id {",
+    `    True -> case destination == ${entityIdConstant} {`,
     "      False -> actor.continue(state)",
-    "      True -> case transition_enabled(state, amount) {",
+    `      True -> case transition_enabled(state, ${parameterId}) {`,
     "        False -> actor.continue(state)",
     "        True -> case remaining_uses {",
     "          0 -> actor.continue(state)",
@@ -1134,7 +1457,7 @@ const emitExactOneAccountEntity = (
     "      let grant = Grant(token: token, incarnation: state.incarnation)",
     "      actor.send(reply_to, grant)",
     "      actor.continue(ActorState(",
-    "        balance: state.balance,",
+    `        ${stateField}: state.${stateField},`,
     "        incarnation: state.incarnation,",
     "        next_grant: state.next_grant + 1,",
     "        incarnation_id: state.incarnation_id,",
@@ -1142,12 +1465,12 @@ const emitExactOneAccountEntity = (
     "        implementation_calls: state.implementation_calls,",
     "      ))",
     "    }",
-    "    Withdraw(reply_to, grant, destination, amount) ->",
-    "      handle_withdraw(state, reply_to, grant, destination, amount)",
-    "    DefectWithdraw(grant, destination, amount) ->",
-    "      handle_defect_withdraw(state, grant, destination, amount)",
-    "    Balance(reply_to) -> {",
-    "      actor.send(reply_to, state.balance)",
+    `    ${operationType}(reply_to, grant, destination, ${parameterId}) ->`,
+    `      ${handleOperationFunction}(state, reply_to, grant, destination, ${parameterId})`,
+    `    ${defectOperationType}(grant, destination, ${parameterId}) ->`,
+    `      ${handleDefectOperationFunction}(state, grant, destination, ${parameterId})`,
+    `    ${stateFieldType}(reply_to) -> {`,
+    `      actor.send(reply_to, state.${stateField})`,
     "      actor.continue(state)",
     "    }",
     "    RemainingUses(reply_to, grant) -> {",
@@ -1163,12 +1486,12 @@ const emitExactOneAccountEntity = (
     "",
     "fn start_actor(",
     "  name: process.Name(Message),",
-    "  initial_balance: Int,",
+    `  ${initializerParameter}: Int,`,
     "  counter_name: process.Name(CounterMessage),",
     ") -> actor.StartResult(process.Subject(Message)) {",
     "  let incarnation_id = next_incarnation(counter_name)",
     "  let initial = ActorState(",
-    "    balance: initial_balance,",
+    `    ${stateField}: ${initializerParameter},`,
     "    incarnation: reference.new(),",
     "    incarnation_id: incarnation_id,",
     "    next_grant: 1,",
@@ -1183,10 +1506,10 @@ const emitExactOneAccountEntity = (
     "",
     "pub fn start_supervised(",
     "  name: process.Name(Message),",
-    "  initial_balance: Int,",
-    ") -> Result(Account, StartError) {",
-    "  case initial_balance < 0 {",
-    "    True -> Error(InvalidInitialBalance(initial_balance))",
+    `  ${initializerParameter}: Int,`,
+    `) -> Result(${machineId}, StartError) {`,
+    `  case ${initializerParameter} < 0 {`,
+    `    True -> Error(${invalidInitializerParameter}(${initializerParameter}))`,
     "    False -> {",
     '      let counter_name = process.new_name("bang_m031_counter")',
     "      let counter_child =",
@@ -1194,7 +1517,7 @@ const emitExactOneAccountEntity = (
     "        |> supervision.restart(supervision.Transient)",
     "        |> supervision.significant(False)",
     "      let child =",
-    "        supervision.worker(fn() { start_actor(name, initial_balance, counter_name) })",
+    `        supervision.worker(fn() { start_actor(name, ${initializerParameter}, counter_name) })`,
     "        |> supervision.restart(supervision.Transient)",
     "        |> supervision.significant(True)",
     "      let builder =",
@@ -1205,7 +1528,7 @@ const emitExactOneAccountEntity = (
     "      case static_supervisor.start(builder) {",
     "        Ok(started) -> {",
     "          process.unlink(started.pid)",
-    "          Ok(Account(name: name, supervisor_pid: started.pid))",
+    `          Ok(${machineId}(name: name, supervisor_pid: started.pid))`,
     "        }",
     "        Error(_) -> Error(SupervisorStartFailed)",
     "      }",
@@ -1213,20 +1536,20 @@ const emitExactOneAccountEntity = (
     "  }",
     "}",
     "",
-    "pub fn issue_grant(account: Account) -> Grant {",
-    "  actor.call(process.named_subject(account.name), 5_000, fn(reply_to) {",
+    `pub fn issue_grant(${machineValue}: ${machineId}) -> Grant {`,
+    `  actor.call(process.named_subject(${machineValue}.name), 5_000, fn(reply_to) {`,
     "    IssueGrant(reply_to)",
     "  })",
     "}",
     "",
-    "pub fn withdraw(",
-    "  account: Account,",
+    `pub fn ${operationFunction}(`,
+    `  ${machineValue}: ${machineId},`,
     "  grant: Grant,",
     "  destination: String,",
     `  ${parameterId}: Int,`,
     ") -> Reply {",
-    "  actor.call(process.named_subject(account.name), 5_000, fn(reply_to) {",
-    "    Withdraw(",
+    `  actor.call(process.named_subject(${machineValue}.name), 5_000, fn(reply_to) {`,
+    `    ${operationType}(`,
     "      reply_to: reply_to,",
     "      grant: grant,",
     "      destination: destination,",
@@ -1236,21 +1559,21 @@ const emitExactOneAccountEntity = (
     "}",
     "",
     "pub fn competing(",
-    "  account: Account,",
+    `  ${machineValue}: ${machineId},`,
     "  grant: Grant,",
     "  destination: String,",
     `  ${parameterId}: Int,`,
     ") -> Result(#(Reply, Reply), Nil) {",
     "  let first_reply = process.new_subject()",
     "  let second_reply = process.new_subject()",
-    "  let subject = process.named_subject(account.name)",
-    "  actor.send(subject, Withdraw(",
+    `  let subject = process.named_subject(${machineValue}.name)`,
+    `  actor.send(subject, ${operationType}(`,
     "    reply_to: first_reply,",
     "    grant: grant,",
     "    destination: destination,",
     `    ${parameterId}: ${parameterId},`,
     "  ))",
-    "  actor.send(subject, Withdraw(",
+    `  actor.send(subject, ${operationType}(`,
     "    reply_to: second_reply,",
     "    grant: grant,",
     "    destination: destination,",
@@ -1262,15 +1585,15 @@ const emitExactOneAccountEntity = (
     "  }",
     "}",
     "",
-    "pub fn defect_withdraw(",
-    "  account: Account,",
+    `pub fn ${defectOperationFunction}(`,
+    `  ${machineValue}: ${machineId},`,
     "  grant: Grant,",
     "  destination: String,",
     `  ${parameterId}: Int,`,
     ") -> Nil {",
     "  actor.send(",
-    "    process.named_subject(account.name),",
-    "    DefectWithdraw(",
+    `    process.named_subject(${machineValue}.name),`,
+    `    ${defectOperationType}(`,
     "      grant: grant,",
     "      destination: destination,",
     `      ${parameterId}: ${parameterId},`,
@@ -1278,31 +1601,31 @@ const emitExactOneAccountEntity = (
     "  )",
     "}",
     "",
-    "pub fn balance(account: Account) -> Int {",
-    "  actor.call(process.named_subject(account.name), 5_000, Balance)",
+    `pub fn ${stateFieldFunction}(${machineValue}: ${machineId}) -> Int {`,
+    `  actor.call(process.named_subject(${machineValue}.name), 5_000, ${stateFieldType})`,
     "}",
     "",
-    "pub fn remaining_uses(account: Account, grant: Grant) -> Int {",
+    `pub fn remaining_uses(${machineValue}: ${machineId}, grant: Grant) -> Int {`,
     "  actor.call(",
-    "    process.named_subject(account.name),",
+    `    process.named_subject(${machineValue}.name),`,
     "    5_000,",
     "    fn(reply_to) { RemainingUses(reply_to, grant) },",
     "  )",
     "}",
     "",
-    "pub fn lookup(account: Account) -> Result(Account, Nil) {",
-    "  case process.named(account.name) {",
-    "    Ok(_) -> Ok(account)",
+    `pub fn lookup(${machineValue}: ${machineId}) -> Result(${machineId}, Nil) {`,
+    `  case process.named(${machineValue}.name) {`,
+    `    Ok(_) -> Ok(${machineValue})`,
     "    Error(_) -> Error(Nil)",
     "  }",
     "}",
     "",
-    "pub fn supervisor_alive(account: Account) -> Bool {",
-    "  process.is_alive(account.supervisor_pid)",
+    `pub fn supervisor_alive(${machineValue}: ${machineId}) -> Bool {`,
+    `  process.is_alive(${machineValue}.supervisor_pid)`,
     "}",
     "",
-    "pub fn stop(account: Account) -> Nil {",
-    "  actor.call(process.named_subject(account.name), 5_000, Stop)",
+    `pub fn stop(${machineValue}: ${machineId}) -> Nil {`,
+    `  actor.call(process.named_subject(${machineValue}.name), 5_000, Stop)`,
     "}",
     "",
     "fn bool_string(value: Bool) -> String {",
@@ -1312,7 +1635,7 @@ const emitExactOneAccountEntity = (
     "  }",
     "}",
     "",
-    "fn state_balance(state: AccountState) -> Int {",
+    `fn ${stateValueFunction}(state: ${stateId}) -> Int {`,
     `  state.${stateField}`,
     "}",
     "",
@@ -1322,43 +1645,43 @@ const emitExactOneAccountEntity = (
     "",
     "pub fn run_exact_one_probe() -> String {",
     '  let name = process.new_name("bang_m031_exact_one")',
-    "  let assert Ok(account) = start_supervised(name, 10)",
-    "  let valid_grant = issue_grant(account)",
-    "  let valid_before = balance(account)",
-    "  let valid_remaining_before = remaining_uses(account, valid_grant)",
-    `  let valid = withdraw(account, valid_grant, account_entity_id, 4)`,
-    "  let valid_after = balance(account)",
-    "  let valid_remaining_after = remaining_uses(account, valid_grant)",
+    `  let assert Ok(${machineValue}) = start_supervised(name, 10)`,
+    `  let valid_grant = issue_grant(${machineValue})`,
+    `  let valid_before = ${stateFieldFunction}(${machineValue})`,
+    `  let valid_remaining_before = remaining_uses(${machineValue}, valid_grant)`,
+    `  let valid = ${operationFunction}(${machineValue}, valid_grant, ${entityIdConstant}, 4)`,
+    `  let valid_after = ${stateFieldFunction}(${machineValue})`,
+    `  let valid_remaining_after = remaining_uses(${machineValue}, valid_grant)`,
     "  let valid_call = case valid {",
-    `    Success(state:, remaining_uses:, implementation_calls:) -> state_balance(state) == 6 && remaining_uses == 0 && implementation_calls == 1`,
+    `    Success(state:, remaining_uses:, implementation_calls:) -> ${stateValueFunction}(state) == 6 && remaining_uses == 0 && implementation_calls == 1`,
     "    _ -> False",
     "  }",
     "",
-    "  let reuse_before = balance(account)",
-    "  let reuse_remaining_before = remaining_uses(account, valid_grant)",
-    `  let reuse = withdraw(account, valid_grant, account_entity_id, 1)`,
-    "  let reuse_after = balance(account)",
-    "  let reuse_remaining_after = remaining_uses(account, valid_grant)",
+    `  let reuse_before = ${stateFieldFunction}(${machineValue})`,
+    `  let reuse_remaining_before = remaining_uses(${machineValue}, valid_grant)`,
+    `  let reuse = ${operationFunction}(${machineValue}, valid_grant, ${entityIdConstant}, 1)`,
+    `  let reuse_after = ${stateFieldFunction}(${machineValue})`,
+    `  let reuse_remaining_after = remaining_uses(${machineValue}, valid_grant)`,
     "  let reuse_call = case reuse {",
     "    CapabilityUseRejected(state:, remaining_uses:, implementation_calls:) ->",
-    "      state_balance(state) == 6 && remaining_uses == 0 && implementation_calls == 1",
+    `      ${stateValueFunction}(state) == 6 && remaining_uses == 0 && implementation_calls == 1`,
     "    _ -> False",
     "  }",
     "",
-    "  let competing_grant = issue_grant(account)",
-    "  let competing_before = balance(account)",
-    "  let competing_remaining_before = remaining_uses(account, competing_grant)",
+    `  let competing_grant = issue_grant(${machineValue})`,
+    `  let competing_before = ${stateFieldFunction}(${machineValue})`,
+    `  let competing_remaining_before = remaining_uses(${machineValue}, competing_grant)`,
     "  let assert Ok(#(competing_first, competing_second)) = competing(",
-    "    account,",
+    `    ${machineValue},`,
     "    competing_grant,",
-    "    account_entity_id,",
+    `    ${entityIdConstant},`,
     "    2,",
     "  )",
-    "  let competing_after = balance(account)",
-    "  let competing_remaining_after = remaining_uses(account, competing_grant)",
+    `  let competing_after = ${stateFieldFunction}(${machineValue})`,
+    `  let competing_remaining_after = remaining_uses(${machineValue}, competing_grant)`,
     "  let competing_call = case #(competing_first, competing_second) {",
     "    #(Success(state: first_state, remaining_uses: first_remaining, implementation_calls: first_calls), CapabilityUseRejected(state: second_state, remaining_uses: second_remaining, implementation_calls: second_calls)) ->",
-    "      state_balance(first_state) == 4 && first_remaining == 0 && first_calls == 2 && state_balance(second_state) == 4 && second_remaining == 0 && second_calls == 2",
+    `      ${stateValueFunction}(first_state) == 4 && first_remaining == 0 && first_calls == 2 && ${stateValueFunction}(second_state) == 4 && second_remaining == 0 && second_calls == 2`,
     "    _ -> False",
     "  }",
     "  let competing_successes = case competing_first {",
@@ -1376,65 +1699,65 @@ const emitExactOneAccountEntity = (
     "    _ -> 0",
     "  }",
     "",
-    "  let wrong_grant = issue_grant(account)",
-    "  let wrong_before = balance(account)",
-    "  let wrong_remaining_before = remaining_uses(account, wrong_grant)",
-    '  let wrong = withdraw(account, wrong_grant, "account-2", 1)',
-    "  let wrong_after = balance(account)",
-    "  let wrong_remaining_after = remaining_uses(account, wrong_grant)",
+    `  let wrong_grant = issue_grant(${machineValue})`,
+    `  let wrong_before = ${stateFieldFunction}(${machineValue})`,
+    `  let wrong_remaining_before = remaining_uses(${machineValue}, wrong_grant)`,
+    `  let wrong = ${operationFunction}(${machineValue}, wrong_grant, ${quote(otherEntityId)}, 1)`,
+    `  let wrong_after = ${stateFieldFunction}(${machineValue})`,
+    `  let wrong_remaining_after = remaining_uses(${machineValue}, wrong_grant)`,
     "  let wrong_destination = case wrong {",
     "    WrongDestination(destination:, expected_destination:, state:, remaining_uses:, implementation_calls:) ->",
-    '      destination == "account-2" && expected_destination == account_entity_id && state_balance(state) == 4 && remaining_uses == 1 && implementation_calls == 2',
+    `      destination == ${quote(otherEntityId)} && expected_destination == ${entityIdConstant} && ${stateValueFunction}(state) == 4 && remaining_uses == 1 && implementation_calls == 2`,
     "    _ -> False",
     "  }",
     "",
-    "  let disabled_grant = issue_grant(account)",
-    "  let disabled_before = balance(account)",
-    "  let disabled_remaining_before = remaining_uses(account, disabled_grant)",
-    `  let disabled = withdraw(account, disabled_grant, account_entity_id, 9)`,
-    "  let disabled_after = balance(account)",
-    "  let disabled_remaining_after = remaining_uses(account, disabled_grant)",
+    `  let disabled_grant = issue_grant(${machineValue})`,
+    `  let disabled_before = ${stateFieldFunction}(${machineValue})`,
+    `  let disabled_remaining_before = remaining_uses(${machineValue}, disabled_grant)`,
+    `  let disabled = ${operationFunction}(${machineValue}, disabled_grant, ${entityIdConstant}, 9)`,
+    `  let disabled_after = ${stateFieldFunction}(${machineValue})`,
+    `  let disabled_remaining_after = remaining_uses(${machineValue}, disabled_grant)`,
     "  let disabled_transition = case disabled {",
     "    DomainRejected(failure_id:, state:, remaining_uses:, implementation_calls:) ->",
-    `      failure_id == core_failure_id && state_balance(state) == 4 && remaining_uses == 1 && implementation_calls == 2`,
+    `      failure_id == core_failure_id && ${stateValueFunction}(state) == 4 && remaining_uses == 1 && implementation_calls == 2`,
     "    _ -> False",
     "  }",
     "",
-    "  let defect_grant = issue_grant(account)",
-    "  let defect_before = balance(account)",
-    "  let defect_remaining_before = remaining_uses(account, defect_grant)",
-    `  defect_withdraw(account, defect_grant, account_entity_id, 1)`,
+    `  let defect_grant = issue_grant(${machineValue})`,
+    `  let defect_before = ${stateFieldFunction}(${machineValue})`,
+    `  let defect_remaining_before = remaining_uses(${machineValue}, defect_grant)`,
+    `  ${defectOperationFunction}(${machineValue}, defect_grant, ${entityIdConstant}, 1)`,
     "  process.sleep(50)",
-    "  let stale_before = balance(account)",
-    "  let stale_remaining_before = remaining_uses(account, defect_grant)",
-    "  let stale = withdraw(account, defect_grant, account_entity_id, 1)",
-    "  let stale_after = balance(account)",
-    "  let stale_remaining_after = remaining_uses(account, defect_grant)",
-    "  let replacement_grant = issue_grant(account)",
-    "  let replacement_before = balance(account)",
-    "  let replacement_remaining_before = remaining_uses(account, replacement_grant)",
-    "  let replacement = withdraw(account, replacement_grant, account_entity_id, 3)",
-    "  let replacement_after = balance(account)",
-    "  let replacement_remaining_after = remaining_uses(account, replacement_grant)",
+    `  let stale_before = ${stateFieldFunction}(${machineValue})`,
+    `  let stale_remaining_before = remaining_uses(${machineValue}, defect_grant)`,
+    `  let stale = ${operationFunction}(${machineValue}, defect_grant, ${entityIdConstant}, 1)`,
+    `  let stale_after = ${stateFieldFunction}(${machineValue})`,
+    `  let stale_remaining_after = remaining_uses(${machineValue}, defect_grant)`,
+    `  let replacement_grant = issue_grant(${machineValue})`,
+    `  let replacement_before = ${stateFieldFunction}(${machineValue})`,
+    `  let replacement_remaining_before = remaining_uses(${machineValue}, replacement_grant)`,
+    `  let replacement = ${operationFunction}(${machineValue}, replacement_grant, ${entityIdConstant}, 3)`,
+    `  let replacement_after = ${stateFieldFunction}(${machineValue})`,
+    `  let replacement_remaining_after = remaining_uses(${machineValue}, replacement_grant)`,
     "  let defect_after = stale_after",
     "  let defect_remaining_after = stale_remaining_after",
     "  let defect_call = case stale {",
     "    StaleGrantRejected(state:, remaining_uses:, implementation_calls:) ->",
-    "      state_balance(state) == 10 && remaining_uses == 0 && implementation_calls == 0",
+    `      ${stateValueFunction}(state) == 10 && remaining_uses == 0 && implementation_calls == 0`,
     "    _ -> False",
     "  }",
     "  let actor_restart = case replacement {",
     "    Success(state:, remaining_uses:, implementation_calls:) ->",
-    `      state_balance(state) == 7 && remaining_uses == 0 && implementation_calls == 1 && grants_are_distinct(defect_grant, replacement_grant)`,
+    `      ${stateValueFunction}(state) == 7 && remaining_uses == 0 && implementation_calls == 1 && grants_are_distinct(defect_grant, replacement_grant)`,
     "    _ -> False",
     "  }",
     "  let old_grant_rejected = case stale {",
     "    StaleGrantRejected(_, _, _) -> True",
     "    _ -> False",
     "  }",
-    "  stop(account)",
+    `  stop(${machineValue})`,
     "  let payload =",
-    `    ${quote('{"target":"gleam-beam","realization":"WithdrawAccountOnce","entity":"account-1",')}`,
+    `    ${quote(`{"target":"gleam-beam","realization":"${realizationId}","entity":"${entityId}",`)}`,
     `    <> ${quote('"validCall":')} <> bool_string(valid_call) <> ${quote(",")}`,
     `    <> ${quote('"reuse":')} <> bool_string(reuse_call) <> ${quote(",")}`,
     `    <> ${quote('"competing":')} <> bool_string(competing_call) <> ${quote(",")}`,
@@ -1469,7 +1792,7 @@ const emitExactOneAccountEntity = (
   ].join("\n");
 };
 
-/** Projects the checked M031 Account exact-one realization into a supervised Gleam actor module. */
+/** Projects a checked M031 exact-one realization into a supervised Gleam actor module. */
 export const projectGleamExactOneOperationRealization = (
   document: CheckedCoreDocument,
   realizationId: string,
@@ -1479,28 +1802,12 @@ export const projectGleamExactOneOperationRealization = (
     if (document.bangCore !== 1 || !Array.isArray(document.declarations)) {
       return inconsistent(source, "Gleam exact-one projection requires a checked Core document");
     }
-    if (realizationId !== "WithdrawAccountOnce") {
-      return unsupported(
-        source,
-        "Gleam M031 exact-one projection supports only WithdrawAccountOnce",
-      );
-    }
-    const projection = validateAccountProjection(document, "Account", realizationId, {
-      quantityKind: "exactly",
-      quantityUses: "1",
-      failureId: "WithdrawalRejectedOnce",
-      generatedIdentifiers: exactOneGeneratedIdentifiers,
-    });
+    const projection = selectExactOneProjection(document, realizationId);
     if ("ok" in projection) return projection;
     return {
       ok: true,
       _tag: "Success",
-      value: emitExactOneAccountEntity(
-        projection.machine,
-        projection.initializer,
-        projection.operation,
-        projection.realization,
-      ),
+      value: emitExactOneEntity(projection),
     };
   } catch (error) {
     return failure(

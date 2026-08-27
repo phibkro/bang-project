@@ -1,0 +1,17 @@
+{
+  "bangClassification": 2,
+  "id": "clinic-two-qualified-exact-one",
+  "explanationSelection": "examples/clinic/theories/packaged-exact-one.json",
+  "targets": [
+    {
+      "target": "effect-typescript",
+      "realization": "BookAppointmentOnce",
+      "probe": "fresh"
+    },
+    {
+      "target": "gleam-beam",
+      "realization": "BookAppointmentOnce",
+      "probe": "fresh"
+    }
+  ]
+}

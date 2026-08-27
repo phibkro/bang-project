@@ -4882,8 +4882,8 @@ const M031ActorRestartObservationSchema = Schema.Struct({
  */
 const M031ObservationsSchema = Schema.Struct({
   target: M031TargetIdSchema,
-  realization: Schema.Literal("WithdrawAccountOnce"),
-  entity: Schema.Literal("account-1"),
+  realization: M031Identifier,
+  entity: M031Identifier,
   validCall: Schema.Boolean,
   reuse: Schema.Boolean,
   competing: Schema.Boolean,
@@ -4930,7 +4930,7 @@ export const M031TargetQualificationEvidenceSchema = Schema.Struct({
   bangTargetQualificationEvidence: Schema.Literal(1),
   selectionId: M031Identifier,
   targetId: M031TargetIdSchema,
-  realizationId: Schema.Literal("WithdrawAccountOnce"),
+  realizationId: M031Identifier,
   artifactId: M031Identifier,
   artifactFormat: Schema.Literal("bangSemanticArtifact:1"),
   theory: M031TheoryIdentitySchema,
@@ -5039,7 +5039,7 @@ export interface M031TargetQualificationResultIdentity {
 export interface M031TargetQualificationEvidenceContext {
   readonly selectionId?: string;
   readonly targetId?: M031TargetId;
-  readonly realizationId?: "WithdrawAccountOnce";
+  readonly realizationId?: string;
   readonly artifactId?: string;
   readonly artifactFormat?: "bangSemanticArtifact:1";
   readonly theory?: {
@@ -5057,8 +5057,59 @@ export interface M031TargetQualificationEvidenceContext {
   readonly core?: CheckedCoreDocument;
 }
 
-const m031ExpectedRequirementAddress = (realizationId: string): string =>
-  `operationRealization:${realizationId}.requirement:DebitAccount`;
+const m031LowerKebab = (value: string): string =>
+  value
+    .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .replace(/([A-Z])([A-Z][a-z])/gu, "$1-$2")
+    .toLowerCase();
+
+const m031ExpectedRequirementAddress = (realizationId: string, capabilityId: string): string =>
+  `operationRealization:${realizationId}.requirement:${capabilityId}`;
+
+const m031RequirementAddressIdentities = (
+  address: string,
+): readonly [realizationId: string, capabilityId: string] | undefined => {
+  const match =
+    /^operationRealization:([A-Za-z][A-Za-z0-9]*)\.requirement:([A-Za-z][A-Za-z0-9]*)$/u.exec(
+      address,
+    );
+  return match === null ? undefined : [match[1]!, match[2]!];
+};
+
+type M031StateValueIdentity = {
+  readonly kind: "parameter" | "stateField" | "integerLiteral";
+  readonly id?: string;
+  readonly field?: string;
+  readonly value?: string;
+};
+
+const m031MatchesStateValue = (
+  value: M031StateValueIdentity,
+  kind: M031StateValueIdentity["kind"],
+  identity: string,
+): boolean => {
+  switch (kind) {
+    case "parameter":
+      return value.kind === "parameter" && value.id === identity;
+    case "stateField":
+      return value.kind === "stateField" && value.field === identity;
+    case "integerLiteral":
+      return value.kind === "integerLiteral" && value.value === identity;
+  }
+};
+
+const m031MatchesStatePredicate = (
+  predicate: {
+    readonly left: M031StateValueIdentity;
+    readonly right: M031StateValueIdentity;
+  },
+  leftKind: M031StateValueIdentity["kind"],
+  leftIdentity: string,
+  rightKind: M031StateValueIdentity["kind"],
+  rightIdentity: string,
+): boolean =>
+  m031MatchesStateValue(predicate.left, leftKind, leftIdentity) &&
+  m031MatchesStateValue(predicate.right, rightKind, rightIdentity);
 
 const m031CheckMaterialUniqueness = (
   manifest: M031TargetQualificationEvidence,
@@ -5114,13 +5165,12 @@ const m031CheckObservations = (
   const observation = manifest.observations;
   if (
     observation.target !== manifest.targetId ||
-    observation.realization !== manifest.realizationId ||
-    observation.entity !== "account-1"
+    observation.realization !== manifest.realizationId
   ) {
     return m031EvidenceError(
       "target-mismatch",
       "observations",
-      "M031 observations must identify the selected target, realization, and Account entity",
+      "M031 observations must identify the selected target and realization",
     );
   }
   if (
@@ -5213,34 +5263,6 @@ const m031CheckCore = (
   manifest: M031TargetQualificationEvidence,
   core: CheckedCoreDocument,
 ): M031TargetQualificationEvidenceError | undefined => {
-  const stateMachine = core.declarations.find(
-    (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
-  );
-  if (stateMachine?.kind !== "stateMachine") {
-    return m031EvidenceError(
-      "core-identity-mismatch",
-      "stateMachine:Account",
-      "M031 evidence requires the checked Account state machine",
-    );
-  }
-  const operation = stateMachine.transitions.find(({ id }) => id === "withdraw");
-  if (operation === undefined) {
-    return m031EvidenceError(
-      "core-identity-mismatch",
-      "operation:Account.withdraw",
-      "M031 evidence requires Account.withdraw",
-    );
-  }
-  const capability = core.declarations.find(
-    (declaration) => declaration.kind === "capability" && declaration.id === "DebitAccount",
-  );
-  if (capability?.kind !== "capability") {
-    return m031EvidenceError(
-      "core-identity-mismatch",
-      "capability:DebitAccount",
-      "M031 evidence requires the checked DebitAccount capability",
-    );
-  }
   const realization = core.declarations.find(
     (declaration) =>
       declaration.kind === "operationRealization" && declaration.id === manifest.realizationId,
@@ -5252,22 +5274,168 @@ const m031CheckCore = (
       "M031 evidence references an unknown checked operation realization",
     );
   }
-  const requirement = realization.requires.find(
-    ({ capability: requiredCapability }) => requiredCapability === "DebitAccount",
-  );
+
+  const requirement = realization.requires[0];
   if (
+    realization.requires.length !== 1 ||
     requirement === undefined ||
-    realization.operation.stateMachine !== "Account" ||
-    realization.operation.operation !== "withdraw" ||
-    realization.disabled.kind !== "failure" ||
-    realization.disabled.id !== "WithdrawalRejectedOnce" ||
     requirement.quantity.kind !== "exactly" ||
-    requirement.quantity.uses !== "1"
+    requirement.quantity.uses !== "1" ||
+    realization.disabled.kind !== "failure"
   ) {
     return m031EvidenceError(
       "core-identity-mismatch",
-      `operationRealization:${manifest.realizationId}`,
-      "M031 evidence does not match the checked WithdrawAccountOnce exact-one binding",
+      `operationRealization:${realization.id}`,
+      "M031 evidence requires one exactly-1 capability and one disabled failure",
+    );
+  }
+
+  const capability = core.declarations.find(
+    (declaration) => declaration.kind === "capability" && declaration.id === requirement.capability,
+  );
+  if (capability?.kind !== "capability") {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `capability:${requirement.capability}`,
+      "M031 evidence references an unknown checked capability",
+    );
+  }
+
+  const stateMachine = core.declarations.find(
+    (declaration) =>
+      declaration.kind === "stateMachine" && declaration.id === realization.operation.stateMachine,
+  );
+  if (stateMachine?.kind !== "stateMachine") {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `stateMachine:${realization.operation.stateMachine}`,
+      "M031 evidence references an unknown checked state machine",
+    );
+  }
+
+  const stateField = stateMachine.state.fields[0];
+  if (
+    stateMachine.state.fields.length !== 1 ||
+    stateField === undefined ||
+    stateField.type !== "Integer"
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `stateMachine:${stateMachine.id}.state:${stateMachine.state.id}`,
+      "M031 evidence requires exactly one Integer state field",
+    );
+  }
+
+  const initializer = stateMachine.initializers[0];
+  if (stateMachine.initializers.length !== 1 || initializer === undefined) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `stateMachine:${stateMachine.id}.initializers`,
+      "M031 evidence requires exactly one initializer",
+    );
+  }
+  const initializerParameter = initializer.parameters[0];
+  const initializerRequirement = initializer.requires[0];
+  if (
+    initializer.parameters.length !== 1 ||
+    initializerParameter === undefined ||
+    initializerParameter.type !== "Integer" ||
+    initializer.requires.length !== 1 ||
+    initializerRequirement === undefined ||
+    !m031MatchesStatePredicate(
+      initializerRequirement,
+      "parameter",
+      initializerParameter.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `initializer:${stateMachine.id}.${initializer.id}`,
+      "M031 evidence requires one Integer initializer parameter constrained to be nonnegative",
+    );
+  }
+
+  const operation = stateMachine.transitions[0];
+  if (
+    stateMachine.transitions.length !== 1 ||
+    operation === undefined ||
+    operation.id !== realization.operation.operation
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `transition:${stateMachine.id}.${realization.operation.operation}`,
+      "M031 evidence requires the realization to bind the sole checked transition",
+    );
+  }
+  const operationParameter = operation.parameters[0];
+  if (
+    operation.parameters.length !== 1 ||
+    operationParameter === undefined ||
+    operationParameter.type !== "Integer"
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `transition:${stateMachine.id}.${operation.id}`,
+      "M031 evidence requires exactly one Integer transition parameter",
+    );
+  }
+  const parameterIsNonnegative = operation.requires.some((predicate) =>
+    m031MatchesStatePredicate(predicate, "parameter", operationParameter.id, "integerLiteral", "0"),
+  );
+  const fieldCoversParameter = operation.requires.some((predicate) =>
+    m031MatchesStatePredicate(
+      predicate,
+      "stateField",
+      stateField.id,
+      "parameter",
+      operationParameter.id,
+    ),
+  );
+  if (operation.requires.length !== 2 || !parameterIsNonnegative || !fieldCoversParameter) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `transition:${stateMachine.id}.${operation.id}.requires`,
+      "M031 evidence requires parameter >= 0 and state field >= parameter",
+    );
+  }
+
+  const invariant = stateMachine.invariants[0];
+  if (
+    stateMachine.invariants.length !== 1 ||
+    invariant === undefined ||
+    !m031MatchesStatePredicate(
+      invariant.proposition,
+      "stateField",
+      stateField.id,
+      "integerLiteral",
+      "0",
+    )
+  ) {
+    return m031EvidenceError(
+      "core-identity-mismatch",
+      `stateMachine:${stateMachine.id}.invariants`,
+      "M031 evidence requires one invariant constraining the state field to be nonnegative",
+    );
+  }
+
+  const expectedRequirementAddress = m031ExpectedRequirementAddress(realization.id, capability.id);
+  if (manifest.requirementAddress !== expectedRequirementAddress) {
+    return m031EvidenceError(
+      "identity-mismatch",
+      "requirementAddress",
+      "M031 evidence requirement address does not match the resolved exact-one capability",
+    );
+  }
+  if (
+    manifest.observations.realization !== realization.id ||
+    manifest.observations.entity !== `${m031LowerKebab(stateMachine.id)}-1`
+  ) {
+    return m031EvidenceError(
+      "target-mismatch",
+      "observations",
+      "M031 observations do not match the resolved realization and machine entity",
     );
   }
   return undefined;
@@ -5390,12 +5558,16 @@ const decodeM031TargetQualificationEvidenceValue = (
           ),
         );
       }
-      if (manifest.requirementAddress !== m031ExpectedRequirementAddress(manifest.realizationId)) {
+      const requirementIdentities = m031RequirementAddressIdentities(manifest.requirementAddress);
+      if (
+        requirementIdentities === undefined ||
+        requirementIdentities[0] !== manifest.realizationId
+      ) {
         return Effect.fail(
           m031EvidenceError(
             "identity-mismatch",
             "requirementAddress",
-            "M031 evidence must select the DebitAccount requirement of WithdrawAccountOnce",
+            "M031 evidence requirement address must identify its selected realization",
           ),
         );
       }

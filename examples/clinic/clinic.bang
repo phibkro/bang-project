@@ -1,0 +1,25 @@
+machine AppointmentBook {
+  state AppointmentBookState {
+    available: Integer
+  }
+
+  initializer open(initialAvailable: Integer) {
+    requires initialAvailable >= 0
+  }
+
+  transition book(count: Integer) {
+    requires count >= 0
+    requires available >= count
+  }
+
+  invariant nonnegativeAvailable {
+    available >= 0
+  }
+}
+
+capability ConfirmBooking
+
+realization BookAppointmentOnce binds AppointmentBook.book {
+  requires ConfirmBooking exactly 1
+  when disabled fail BookingRejectedOnce
+}
