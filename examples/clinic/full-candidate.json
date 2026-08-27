@@ -1,0 +1,6 @@
+{
+  "bangFullCompilerCandidate": 1,
+  "id": "clinic-full-compiler-candidate",
+  "assemblySelection": "examples/clinic/assemblies/supervised-exact-one.json",
+  "externalConsumer": "examples/clinic/external-consumer/consumer.mjs"
+}
