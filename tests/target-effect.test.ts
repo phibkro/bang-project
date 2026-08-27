@@ -9,6 +9,7 @@ import {
   projectEffectPropertySuite,
   projectEffectService,
   projectEffectSingleUseOperationRealization,
+  projectEffectSingleUseOperationRealizationMaterials,
 } from "@bang/target-effect";
 import {
   DebitAccount,
@@ -233,6 +234,85 @@ describe("M018 single-use capability projection", () => {
       ),
     );
     expect(unsupported.reason).toBe("unsupported-target");
+  });
+
+  test("shares one safe symbol map across exact-one boundary and probe emission", async () => {
+    const lowercaseDocument = structuredClone(await checkedDocument());
+    const lowercaseRealization = lowercaseDocument.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      lowercaseRealization === undefined ||
+      lowercaseRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("WithdrawAccountOnce fixture is missing");
+    }
+    Reflect.set(lowercaseRealization, "id", "withdrawAccountOnce");
+    const lowercase = Effect.runSync(
+      projectEffectSingleUseOperationRealizationMaterials(lowercaseDocument, "withdrawAccountOnce"),
+    );
+    expect(lowercase.boundary).toContain("export class WithdrawAccountOnce");
+    expect(lowercase.probe).toContain("WithdrawAccountOnce");
+
+    const reservedDocument = structuredClone(await checkedDocument());
+    const reservedMachine = reservedDocument.declarations.find(
+      (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+    );
+    const reservedRealization = reservedDocument.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      reservedMachine === undefined ||
+      reservedMachine.kind !== "stateMachine" ||
+      reservedRealization === undefined ||
+      reservedRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("exact-one fixtures are missing");
+    }
+    Reflect.set(reservedMachine.transitions[0]!, "id", "class");
+    Reflect.set(reservedRealization, "operation", {
+      stateMachine: "Account",
+      operation: "class",
+    });
+    const reserved = Effect.runSync(
+      Effect.flip(
+        projectEffectSingleUseOperationRealizationMaterials(
+          reservedDocument,
+          "WithdrawAccountOnce",
+        ),
+      ),
+    );
+    expect(reserved.reason).toBe("invalid-identifier");
+
+    const collisionDocument = structuredClone(await checkedDocument());
+    const collisionCapability = collisionDocument.declarations.find(
+      (declaration) => declaration.kind === "capability" && declaration.id === "DebitAccount",
+    );
+    const collisionRealization = collisionDocument.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      collisionCapability === undefined ||
+      collisionCapability.kind !== "capability" ||
+      collisionRealization === undefined ||
+      collisionRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("exact-one fixtures are missing");
+    }
+    Reflect.set(collisionCapability, "id", "Layer");
+    Reflect.set(collisionRealization.requires[0]!, "capability", "Layer");
+    const collision = Effect.runSync(
+      Effect.flip(
+        projectEffectSingleUseOperationRealizationMaterials(
+          collisionDocument,
+          "WithdrawAccountOnce",
+        ),
+      ),
+    );
+    expect(collision.reason).toBe("identifier-collision");
   });
 
   test("consumes before execution, preserves failed grants, and serializes concurrent reuse", async () => {

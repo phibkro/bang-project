@@ -8,7 +8,7 @@ import { type PlatformError } from "effect/PlatformError";
 import { publishAtomically, type PublicationEntry } from "./publication.ts";
 
 /** The publication-level version. It increments only when the exported schema set changes shape. */
-export const BANG_SCHEMA_PUBLICATION_VERSION = 1;
+export const BANG_SCHEMA_PUBLICATION_VERSION = 2;
 
 /** The repository-relative directory holding every schema publication. */
 export const BANG_SCHEMA_PUBLICATION_DIRECTORY = "dist/schemas";
@@ -86,7 +86,8 @@ const CONSUMER_TYPES_SOURCE = `/**
  *
  * This entry re-exports exactly the three decoded public interchange types,
  * their strict JSON decoders, and the consumption verdict type. Rejection here
- * means custody or decodability, never semantics.
+ * means custody, decodability, or structural identity disagreement, never
+ * semantic interpretation.
  */
 
 /** One recorded material byte set: its role, repository-relative path, and SHA-256 digest. */
@@ -137,7 +138,7 @@ export interface BangTargetQualificationEvidence {
   readonly invalidators: ReadonlyArray<string>;
 }
 
-/** One consumption outcome: custody and decodability, nothing more. */
+/** One consumption outcome: custody, decodability, and structural identity agreement only. */
 export type BangConsumptionVerdict =
   | {
       readonly verdict: "valid";
@@ -285,9 +286,35 @@ const traceKeys = [
   "replacement",
 ];
 
+const observationFields = [
+  "target",
+  "realization",
+  "entity",
+  "validCall",
+  "reuse",
+  "competing",
+  "competingSuccesses",
+  "competingRejections",
+  "wrongDestination",
+  "disabled",
+  "defect",
+  "stateTrace",
+  "remainingTrace",
+];
+
+const observationFieldsWithActorRestart = [...observationFields, "actorRestart"];
+
+const actorRestartFields = [
+  "oldGrantRejected",
+  "freshGrantDistinct",
+  "replacementGrantAccepted",
+  "supervised",
+];
+
 const decodeTrace = (value) =>
   isPlainObject(value) &&
-  traceKeys.every((key) => typeof value[key] === "string" && /^[0-9]+>[0-9]+$/.test(value[key]));
+  traceKeys.every((key) => typeof value[key] === "string" && /^[0-9]+>[0-9]+$/.test(value[key])) &&
+  exactFields(value, traceKeys);
 
 const decodeObservations = (value) => {
   if (!isPlainObject(value)) return false;
@@ -305,27 +332,29 @@ const decodeObservations = (value) => {
     if (!Number.isInteger(value[key]) || value[key] < 0) return false;
   }
   if (
-    value.target !== "effect-typescript" && value.target !== "gleam-beam" ||
-    value.realization !== "WithdrawAccountOnce" ||
-    value.entity !== "account-1" ||
+    (value.target !== "effect-typescript" && value.target !== "gleam-beam") ||
+    !nonEmptyString(value.realization) ||
+    !nonEmptyString(value.entity) ||
     !decodeTrace(value.stateTrace) ||
     !decodeTrace(value.remainingTrace)
   ) {
     return false;
   }
-  if (Object.hasOwn(value, "actorRestart")) {
+  const hasActorRestart = Object.hasOwn(value, "actorRestart");
+  if (hasActorRestart) {
     const restart = value.actorRestart;
     if (
       !isPlainObject(restart) ||
-      typeof restart.oldGrantRejected !== "boolean" ||
-      typeof restart.freshGrantDistinct !== "boolean" ||
-      typeof restart.replacementGrantAccepted !== "boolean" ||
-      typeof restart.supervised !== "boolean"
+      actorRestartFields.some((key) => typeof restart[key] !== "boolean") ||
+      !exactFields(restart, actorRestartFields)
     ) {
       return false;
     }
   }
-  return true;
+  return exactFields(
+    value,
+    hasActorRestart ? observationFieldsWithActorRestart : observationFields,
+  );
 };
 
 const decodeMaterials = (value) =>
@@ -380,7 +409,7 @@ export const decodeBangTargetQualificationEvidence = (encoded) => {
     value.bangTargetQualificationEvidence !== 1 ||
     !nonEmptyString(value.selectionId) ||
     (value.targetId !== "effect-typescript" && value.targetId !== "gleam-beam") ||
-    value.realizationId !== "WithdrawAccountOnce" ||
+    !nonEmptyString(value.realizationId) ||
     !nonEmptyString(value.artifactId) ||
     value.artifactFormat !== "bangSemanticArtifact:1" ||
     !decodeIdentity(value.theory) ||
@@ -551,6 +580,113 @@ const verifyMaterials = async (evidence, materialsDirectory) => {
 };
 
 const compareRecords = (lock, evidence) => {
+  if (lock.selectionId !== evidence.artifactId) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "theory lock selection and evidence artifact identities disagree",
+      {
+        identity: "artifactId",
+        expected: lock.selectionId,
+        observed: evidence.artifactId,
+      },
+    );
+  }
+  if (evidence.targetId !== evidence.producer.targetId) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence target and producer target identities disagree",
+      {
+        identity: "producer.targetId",
+        expected: evidence.targetId,
+        observed: evidence.producer.targetId,
+      },
+    );
+  }
+  if (evidence.targetId !== evidence.observations.target) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence target and observation target identities disagree",
+      {
+        identity: "observations.target",
+        expected: evidence.targetId,
+        observed: evidence.observations.target,
+      },
+    );
+  }
+  if (evidence.realizationId !== evidence.observations.realization) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence and observation realization identities disagree",
+      {
+        identity: "observations.realization",
+        expected: evidence.realizationId,
+        observed: evidence.observations.realization,
+      },
+    );
+  }
+  const requirementPrefix = "operationRealization:";
+  const requirementMarker = ".requirement:";
+  const requirementMarkerIndex = evidence.requirementAddress.indexOf(requirementMarker);
+  if (
+    !evidence.requirementAddress.startsWith(requirementPrefix) ||
+    requirementMarkerIndex <= requirementPrefix.length ||
+    requirementMarkerIndex !== evidence.requirementAddress.lastIndexOf(requirementMarker) ||
+    requirementMarkerIndex + requirementMarker.length >= evidence.requirementAddress.length
+  ) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence requirement address is not a structural realization requirement",
+      {
+        identity: "requirementAddress",
+        observed: evidence.requirementAddress,
+      },
+    );
+  }
+  const requirementRealization = evidence.requirementAddress.slice(
+    requirementPrefix.length,
+    requirementMarkerIndex,
+  );
+  if (requirementRealization !== evidence.realizationId) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence requirement and realization identities disagree",
+      {
+        identity: "requirementAddress.realization",
+        expected: evidence.realizationId,
+        observed: requirementRealization,
+      },
+    );
+  }
+  if (evidence.theory.id !== evidence.package.id) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence theory and package identities disagree",
+      {
+        identity: "package.id",
+        expected: evidence.theory.id,
+        observed: evidence.package.id,
+      },
+    );
+  }
+  if (evidence.theory.version !== evidence.package.version) {
+    return reject(
+      "agreement",
+      "identity-disagreement",
+      "evidence theory and package versions disagree",
+      {
+        identity: "package.version",
+        expected: String(evidence.theory.version),
+        observed: String(evidence.package.version),
+      },
+    );
+  }
   if (lock.package.identity.id !== evidence.theory.id) {
     return reject(
       "agreement",
@@ -589,8 +725,9 @@ const compareRecords = (lock, evidence) => {
 /**
  * One consumption journey over supplied artifact bytes: verify publication
  * custody against the manifest, strictly decode both records, recompute every
- * material digest, and compare the records' agreement on theory identity,
- * version, and semantic digest. Emits one typed verdict and nothing else.
+ * material digest, and compare structural identity agreement within the
+ * evidence and against the theory lock. Emits one typed verdict and nothing
+ * else.
  */
 export const verifyBangConsumption = async (options) => {
   const integrity = await verifyManifestIntegrity(options.manifestPath);

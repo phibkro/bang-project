@@ -189,19 +189,45 @@ const ensureSelectionIdentity = (
       );
 
 const targetIds = ["effect-typescript", "gleam-beam"] as const;
+const requirementRealizationId = (address: string): string | undefined => {
+  const prefix = "operationRealization:";
+  const marker = ".requirement:";
+  const markerIndex = address.indexOf(marker);
+  if (
+    !address.startsWith(prefix) ||
+    markerIndex <= prefix.length ||
+    markerIndex !== address.lastIndexOf(marker) ||
+    markerIndex + marker.length >= address.length
+  ) {
+    return undefined;
+  }
+  return address.slice(prefix.length, markerIndex);
+};
 
 const checkQualificationIdentity = (
   selection: PlanningSelection,
   staged: {
-    readonly selection: { readonly id: string; readonly bangClassification: number };
+    readonly selection: {
+      readonly id: string;
+      readonly bangClassification: number;
+      readonly targets: ReadonlyArray<{
+        readonly target: string;
+        readonly realization: string;
+      }>;
+    };
     readonly artifact: { readonly id: string };
     readonly evidence: ReadonlyArray<{
       readonly selectionId: string;
       readonly targetId: string;
+      readonly realizationId: string;
       readonly artifactId: string;
+      readonly artifactFormat: string;
       readonly requirementAddress: string;
       readonly producer: { readonly targetId: string };
-      readonly observations: { readonly target: string };
+      readonly observations: {
+        readonly target: string;
+        readonly realization: string;
+      };
     }>;
     readonly results: ReadonlyArray<{
       readonly _tag: string;
@@ -228,13 +254,38 @@ const checkQualificationIdentity = (
       ),
     );
   }
-  if (staged.results.length !== targetIds.length) {
+  if (
+    staged.selection.targets.length !== targetIds.length ||
+    staged.results.length !== targetIds.length
+  ) {
     return Effect.fail(
       failure(
         "qualification",
         qualificationPath,
         "invalid-candidate-set",
         "M031 qualification must contain exactly one Effect and one Gleam candidate",
+      ),
+    );
+  }
+  if (staged.evidence.length !== targetIds.length) {
+    return Effect.fail(
+      failure(
+        "qualification",
+        qualificationPath,
+        "invalid-evidence-set",
+        "M031 qualification must contain one checked evidence record per target",
+      ),
+    );
+  }
+  const selectedRealization = requirementRealizationId(selection.requirementAddress);
+  if (selectedRealization === undefined) {
+    return Effect.fail(
+      failure(
+        "qualification",
+        qualificationPath,
+        "requirement-mismatch",
+        "planning requirement address does not select one realization requirement",
+        selection.requirementAddress,
       ),
     );
   }
@@ -271,41 +322,50 @@ const checkQualificationIdentity = (
       );
     }
     seenTargets.add(result.targetId);
+    const selectedTarget = staged.selection.targets.find(
+      ({ target }) => target === result.targetId,
+    );
+    const matchingEvidence = staged.evidence.filter(({ targetId }) => targetId === result.targetId);
+    if (selectedTarget === undefined || matchingEvidence.length !== 1) {
+      return Effect.fail(
+        failure(
+          "qualification",
+          qualificationPath,
+          "invalid-evidence-set",
+          `M031 candidate ${result.targetId} has no unique selected target evidence`,
+          result.targetId,
+        ),
+      );
+    }
+    const evidence = matchingEvidence[0]!;
     if (
+      selectedTarget.realization !== selectedRealization ||
+      result.realizationId !== selectedRealization ||
       result.artifactId !== staged.artifact.id ||
       result.theoryResultIdentity.artifactId !== staged.artifact.id ||
       result.artifactFormat !== result.theoryResultIdentity.artifactFormat ||
-      result.theoryResultIdentity.requirementAddress !== selection.requirementAddress ||
-      result.realizationId !== "WithdrawAccountOnce"
+      result.theoryResultIdentity.requirementAddress !== selection.requirementAddress
     ) {
       return Effect.fail(
         failure(
           "qualification",
           qualificationPath,
           "requirement-mismatch",
-          "M031 candidate identity does not match the planning objective",
+          "M031 candidate identity does not match the checked planning requirement",
           result.theoryResultIdentity.requirementAddress,
         ),
       );
     }
-  }
-  if (seenTargets.size !== targetIds.length) {
-    return Effect.fail(
-      failure(
-        "qualification",
-        qualificationPath,
-        "invalid-candidate-set",
-        "M031 qualification must contain both supported target candidates",
-      ),
-    );
-  }
-  for (const evidence of staged.evidence) {
     if (
       evidence.selectionId !== staged.selection.id ||
+      evidence.targetId !== result.targetId ||
+      evidence.producer.targetId !== result.targetId ||
+      evidence.observations.target !== result.targetId ||
+      evidence.realizationId !== selectedRealization ||
+      evidence.observations.realization !== selectedRealization ||
       evidence.artifactId !== staged.artifact.id ||
-      evidence.requirementAddress !== selection.requirementAddress ||
-      evidence.targetId !== evidence.producer.targetId ||
-      evidence.targetId !== evidence.observations.target
+      evidence.artifactFormat !== result.artifactFormat ||
+      evidence.requirementAddress !== selection.requirementAddress
     ) {
       return Effect.fail(
         failure(
@@ -318,13 +378,13 @@ const checkQualificationIdentity = (
       );
     }
   }
-  if (staged.evidence.length !== targetIds.length) {
+  if (seenTargets.size !== targetIds.length) {
     return Effect.fail(
       failure(
         "qualification",
         qualificationPath,
-        "invalid-evidence-set",
-        "M031 qualification must contain one checked evidence record per target",
+        "invalid-candidate-set",
+        "M031 qualification must contain both supported target candidates",
       ),
     );
   }

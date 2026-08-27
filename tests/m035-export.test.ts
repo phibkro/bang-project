@@ -10,7 +10,7 @@ import { Crypto, Effect } from "effect";
 import { generateSchemaPublication, runExportSchemas } from "../apps/bang/src/export-schemas.ts";
 
 const root = resolve(import.meta.dir, "..");
-const publicationRoot = join(root, "dist", "schemas", "1");
+const publicationRoot = join(root, "dist", "schemas", "2");
 
 const testCrypto = Crypto.make({
   randomBytes: (size) => new Uint8Array(size),
@@ -57,7 +57,7 @@ describe("M035 schema publication", () => {
     });
     const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
     expect(exitCode).toBe(0);
-    expect(stdout.trim()).toBe("dist/schemas/1");
+    expect(stdout.trim()).toBe("dist/schemas/2");
     await Promise.all(
       expectedFiles.map(async (relativePath) => {
         const bytes = await readFile(join(publicationRoot, relativePath));
@@ -68,12 +68,12 @@ describe("M035 schema publication", () => {
 
   test("repeated exports are byte-identical", async () => {
     const first = await Effect.runPromise(provideServices(runExportSchemas(root)));
-    expect(first).toBe("dist/schemas/1");
+    expect(first).toBe("dist/schemas/2");
     const digestsOf = async (): Promise<Record<string, string>> => {
       const entries: Record<string, string> = {};
       await Promise.all(
         expectedFiles.map(async (relativePath) => {
-          const bytes = await readFile(join(root, "dist/schemas/1", relativePath));
+          const bytes = await readFile(join(root, "dist/schemas/2", relativePath));
           entries[relativePath] = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
         }),
       );
@@ -81,7 +81,7 @@ describe("M035 schema publication", () => {
     };
     const before = await digestsOf();
     const second = await Effect.runPromise(provideServices(runExportSchemas(root)));
-    expect(second).toBe("dist/schemas/1");
+    expect(second).toBe("dist/schemas/2");
     expect(await digestsOf()).toEqual(before);
   }, 120_000);
 
@@ -90,7 +90,7 @@ describe("M035 schema publication", () => {
     const manifestText = new TextDecoder().decode(manifestBytes);
     const manifest = JSON.parse(manifestText) as Manifest;
     expect(manifest.bangSchemaPublication).toBe(1);
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
     expect(manifest.documents.map((document) => document.id)).toEqual([
       "semantic-artifact",
       "theory-lock",

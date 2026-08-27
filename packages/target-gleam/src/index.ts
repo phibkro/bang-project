@@ -839,63 +839,218 @@ const exactOneLowerSnake = (identifier: string): string =>
 const exactOneUpperFirst = (identifier: string): string =>
   identifier.charAt(0).toUpperCase() + identifier.slice(1);
 
-const exactOneGeneratedIdentifiers = (projection: ExactOneProjection): Record<string, true> => {
+type ExactOneGleamNamespace = "value" | "type" | "constructor";
+
+interface ExactOneGeneratedSymbol {
+  readonly namespace: ExactOneGleamNamespace;
+  readonly identifier: string;
+  readonly origin: string;
+  readonly scope: string;
+}
+
+const exactOneGeneratedSymbol = (
+  namespace: ExactOneGleamNamespace,
+  identifier: string,
+  origin: string,
+  scope = "module",
+): ExactOneGeneratedSymbol => ({ namespace, identifier, origin, scope });
+
+const exactOneGeneratedSymbols = (
+  projection: ExactOneProjection,
+): ReadonlyArray<ExactOneGeneratedSymbol> => {
   const machineId = projection.machine.id;
+  const stateId = projection.machine.state.id;
+  const operationFunction = exactOneLowerSnake(projection.operation.id);
   const operationType = exactOneUpperFirst(projection.operation.id);
+  const stateFieldFunction = exactOneLowerSnake(projection.stateField.id);
   const stateFieldType = exactOneUpperFirst(projection.stateField.id);
   const invalidInitializerParameter = `Invalid${exactOneUpperFirst(
     projection.initializerParameter.id,
   )}`;
+  const machineOrigin = `stateMachine:${machineId}`;
+  const stateOrigin = `${machineOrigin}.state:${stateId}`;
+  const stateFieldOrigin = `${machineOrigin}.stateField:${projection.stateField.id}`;
+  const operationOrigin = `${machineOrigin}.transition:${projection.operation.id}`;
+  const initializerParameterOrigin = `${machineOrigin}.${projection.initializer.id}.parameter:${projection.initializerParameter.id}`;
+  const fixedValueOrigin = "Gleam exact-one fixed value";
+  const fixedTypeOrigin = "Gleam exact-one fixed type";
+  const fixedConstructorOrigin = "Gleam exact-one fixed constructor";
 
-  return {
-    [machineId]: true,
-    [projection.machine.state.id]: true,
-    [`${machineId}Message`]: true,
-    [`${machineId}Reply`]: true,
-    [`${machineId}Grant`]: true,
-    [`${machineId}Entity`]: true,
-    ActorState: true,
-    Message: true,
-    RemainingUses: true,
-    Grant: true,
-    Reply: true,
-    StartError: true,
-    [invalidInitializerParameter]: true,
-    SupervisorStartFailed: true,
-    Success: true,
-    CapabilityUseRejected: true,
-    StaleGrantRejected: true,
-    WrongDestination: true,
-    DomainRejected: true,
-    [operationType]: true,
-    IssueGrant: true,
-    [`Defect${operationType}`]: true,
-    [stateFieldType]: true,
-    CounterMessage: true,
-    NextIncarnation: true,
-    Stop: true,
-    [`${exactOneLowerSnake(machineId)}_entity_id`]: true,
-    core_state_machine_id: true,
-    core_initializer_id: true,
-    core_operation_id: true,
-    core_realization_id: true,
-    core_capability_id: true,
-    core_failure_id: true,
-    start_supervised: true,
-    start_counter: true,
-    next_incarnation: true,
-    [exactOneLowerSnake(projection.stateField.id)]: true,
-    issue_grant: true,
-    grant_id: true,
-    [exactOneLowerSnake(projection.operation.id)]: true,
-    [`defect_${exactOneLowerSnake(projection.operation.id)}`]: true,
-    competing: true,
-    remaining_uses: true,
-    lookup: true,
-    supervisor_alive: true,
-    stop: true,
-    run_exact_one_probe: true,
-  };
+  return [
+    exactOneGeneratedSymbol("value", "core_state_machine_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "core_initializer_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "core_operation_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "core_realization_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "core_capability_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "core_failure_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "message_type", fixedValueOrigin),
+    exactOneGeneratedSymbol(
+      "value",
+      `${exactOneLowerSnake(machineId)}_entity_id`,
+      `${machineOrigin}.entity-id`,
+    ),
+    exactOneGeneratedSymbol("value", "grant_id", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "start_counter", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "next_incarnation", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "remaining_for", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "state_value", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "transition_enabled", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "consumed_state", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", `handle_${operationFunction}`, `${operationOrigin}.handler`),
+    exactOneGeneratedSymbol(
+      "value",
+      `handle_defect_${operationFunction}`,
+      `${operationOrigin}.defect-handler`,
+    ),
+    exactOneGeneratedSymbol("value", "handle_message", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "start_actor", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "start_supervised", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "issue_grant", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", operationFunction, operationOrigin),
+    exactOneGeneratedSymbol("value", "competing", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", `defect_${operationFunction}`, `${operationOrigin}.defect`),
+    exactOneGeneratedSymbol("value", stateFieldFunction, stateFieldOrigin),
+    exactOneGeneratedSymbol("value", "remaining_uses", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "lookup", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "supervisor_alive", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "stop", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "bool_string", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", `state_${stateFieldFunction}`, `${stateFieldOrigin}.value`),
+    exactOneGeneratedSymbol("value", "grants_are_distinct", fixedValueOrigin),
+    exactOneGeneratedSymbol("value", "run_exact_one_probe", fixedValueOrigin),
+
+    exactOneGeneratedSymbol("type", machineId, machineOrigin),
+    exactOneGeneratedSymbol("type", stateId, stateOrigin),
+    exactOneGeneratedSymbol("type", "Grant", fixedTypeOrigin),
+    exactOneGeneratedSymbol("type", "Reply", fixedTypeOrigin),
+    exactOneGeneratedSymbol("type", "StartError", fixedTypeOrigin),
+    exactOneGeneratedSymbol("type", "Message", fixedTypeOrigin),
+    exactOneGeneratedSymbol("type", "CounterMessage", fixedTypeOrigin),
+    exactOneGeneratedSymbol("type", "ActorState", fixedTypeOrigin),
+
+    exactOneGeneratedSymbol("constructor", machineId, machineOrigin),
+    exactOneGeneratedSymbol("constructor", stateId, stateOrigin),
+    exactOneGeneratedSymbol("constructor", "Grant", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "Success", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "CapabilityUseRejected", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "StaleGrantRejected", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "WrongDestination", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "DomainRejected", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", invalidInitializerParameter, initializerParameterOrigin),
+    exactOneGeneratedSymbol("constructor", "SupervisorStartFailed", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "IssueGrant", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", operationType, operationOrigin),
+    exactOneGeneratedSymbol("constructor", `Defect${operationType}`, `${operationOrigin}.defect`),
+    exactOneGeneratedSymbol("constructor", stateFieldType, stateFieldOrigin),
+    exactOneGeneratedSymbol("constructor", "RemainingUses", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "Stop", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "NextIncarnation", fixedConstructorOrigin),
+    exactOneGeneratedSymbol("constructor", "ActorState", fixedConstructorOrigin),
+  ];
+};
+
+const exactOneGeneratedBindings = (
+  projection: ExactOneProjection,
+): ReadonlyArray<ExactOneGeneratedSymbol> => [
+  exactOneGeneratedSymbol(
+    "value",
+    exactOneLowerSnake(projection.machine.id),
+    `stateMachine:${projection.machine.id}.value`,
+    "binding:machine-value",
+  ),
+  exactOneGeneratedSymbol(
+    "value",
+    projection.stateField.id,
+    `stateMachine:${projection.machine.id}.stateField:${projection.stateField.id}`,
+    `field:${projection.machine.state.id}`,
+  ),
+  exactOneGeneratedSymbol(
+    "value",
+    exactOneLowerSnake(projection.initializerParameter.id),
+    `stateMachine:${projection.machine.id}.${projection.initializer.id}.parameter:${projection.initializerParameter.id}`,
+    `parameter:${projection.initializer.id}`,
+  ),
+  exactOneGeneratedSymbol(
+    "value",
+    projection.operationParameter.id,
+    `stateMachine:${projection.machine.id}.${projection.operation.id}.parameter:${projection.operationParameter.id}`,
+    `parameter:${projection.operation.id}`,
+  ),
+];
+
+const exactOneAdditionalGleamKeywords: ReadonlySet<string> = new Set(["opaque", "panic"]);
+
+const invalidExactOneGeneratedSymbol = (
+  symbol: ExactOneGeneratedSymbol,
+): GleamTargetProjectionResult | undefined => {
+  const valid =
+    symbol.namespace === "value"
+      ? /^[a-z][a-z0-9_]*$/.test(symbol.identifier)
+      : /^[A-Z][A-Za-z0-9]*$/.test(symbol.identifier);
+  if (!valid) {
+    return failure(
+      "invalid-identifier",
+      symbol.origin,
+      `Gleam generated ${symbol.namespace} identifier ${symbol.identifier} is not valid`,
+      symbol.identifier,
+    );
+  }
+  if (
+    gleamKeywords[symbol.identifier] === true ||
+    exactOneAdditionalGleamKeywords.has(symbol.identifier)
+  ) {
+    return failure(
+      "invalid-identifier",
+      symbol.origin,
+      `Gleam generated identifier ${symbol.identifier} is a reserved keyword`,
+      symbol.identifier,
+    );
+  }
+  return undefined;
+};
+
+const exactOneGeneratedSymbolCollision = (
+  symbols: ReadonlyArray<ExactOneGeneratedSymbol>,
+):
+  | {
+      readonly first: ExactOneGeneratedSymbol;
+      readonly second: ExactOneGeneratedSymbol;
+    }
+  | undefined => {
+  const byNamespace = new Map<
+    ExactOneGleamNamespace,
+    Map<string, Map<string, ExactOneGeneratedSymbol[]>>
+  >();
+  for (const symbol of symbols) {
+    let byScope = byNamespace.get(symbol.namespace);
+    if (byScope === undefined) {
+      byScope = new Map();
+      byNamespace.set(symbol.namespace, byScope);
+    }
+    let byIdentifier = byScope.get(symbol.scope);
+    if (byIdentifier === undefined) {
+      byIdentifier = new Map();
+      byScope.set(symbol.scope, byIdentifier);
+    }
+    const matching = byIdentifier.get(symbol.identifier);
+    if (matching === undefined) {
+      byIdentifier.set(symbol.identifier, [symbol]);
+    } else {
+      matching.push(symbol);
+    }
+  }
+
+  for (const namespace of ["value", "type", "constructor"] as const) {
+    const byScope = byNamespace.get(namespace);
+    if (byScope === undefined) continue;
+    for (const byIdentifier of byScope.values()) {
+      for (const matching of byIdentifier.values()) {
+        const [first, second] = matching;
+        if (first !== undefined && second !== undefined) return { first, second };
+      }
+    }
+  }
+  return undefined;
 };
 
 const selectExactOneProjection = (
@@ -1140,6 +1295,24 @@ const selectExactOneProjection = (
     capabilityId: capability.id,
     realization,
   };
+  const generatedSymbols = exactOneGeneratedSymbols(projection);
+  const generatedBindings = exactOneGeneratedBindings(projection);
+  const allGeneratedSymbols = [...generatedSymbols, ...generatedBindings];
+  for (const symbol of allGeneratedSymbols) {
+    const identifierFailure = invalidExactOneGeneratedSymbol(symbol);
+    if (identifierFailure !== undefined) return identifierFailure;
+  }
+
+  const generatedCollision = exactOneGeneratedSymbolCollision(allGeneratedSymbols);
+  if (generatedCollision !== undefined) {
+    return failure(
+      "identifier-collision",
+      `operationRealization:${realization.id}`,
+      `Gleam ${generatedCollision.first.namespace} identifier ${generatedCollision.first.identifier} is emitted by both ${generatedCollision.first.origin} and ${generatedCollision.second.origin}`,
+      generatedCollision.first.identifier,
+    );
+  }
+
   const selectedIdentifiers = new Set([
     machine.id,
     machine.state.id,
@@ -1153,17 +1326,17 @@ const selectExactOneProjection = (
     realization.id,
     realization.disabled.id,
   ]);
-  const exactOneIdentifiers = exactOneGeneratedIdentifiers(projection);
-  const collision = document.declarations.find(
+  const declarationCollision = document.declarations.find(
     (declaration) =>
-      !selectedIdentifiers.has(declaration.id) && exactOneIdentifiers[declaration.id] === true,
+      !selectedIdentifiers.has(declaration.id) &&
+      generatedSymbols.some(({ identifier }) => identifier === declaration.id),
   );
-  if (collision !== undefined) {
+  if (declarationCollision !== undefined) {
     return failure(
       "identifier-collision",
       `operationRealization:${realization.id}`,
-      `Gleam generated identifier ${collision.id} collides with checked Core declaration ${collision.id}`,
-      collision.id,
+      `Gleam generated identifier ${declarationCollision.id} collides with checked Core declaration ${declarationCollision.id}`,
+      declarationCollision.id,
     );
   }
 
@@ -1848,7 +2021,7 @@ export interface GleamExactOneAssemblyMaterials {
   readonly paths: Readonly<{
     readonly config: "gleam.toml";
     readonly manifest: "manifest.toml";
-    readonly generatedBoundary: "src/bang/account_entity.gleam";
+    readonly generatedBoundary: string;
     readonly entry: "src/main.gleam";
     readonly canonicalizer: "canonicalize_escript.escript";
   }>;
@@ -1858,13 +2031,7 @@ export interface GleamExactOneAssemblyMaterials {
   readonly canonicalizerEscript: string;
 }
 
-const gleamExactOneAssemblyPaths = Object.freeze({
-  config: "gleam.toml",
-  manifest: "manifest.toml",
-  generatedBoundary: "src/bang/account_entity.gleam",
-  entry: "src/main.gleam",
-  canonicalizer: "canonicalize_escript.escript",
-} as const);
+const gleamExactOneGeneratedBoundaryPath = /^src\/bang\/([a-z][a-z0-9_]*)\.gleam$/;
 
 /**
  * The deterministic M033 project closure around the M031 exact-one boundary.
@@ -1872,69 +2039,93 @@ const gleamExactOneAssemblyPaths = Object.freeze({
  * These are target-owned source materials. The assembler supplies the qualified
  * generated boundary separately and must not regenerate or alter these bytes.
  */
-export const gleamExactOneAssemblyMaterials: GleamExactOneAssemblyMaterials = Object.freeze({
-  paths: gleamExactOneAssemblyPaths,
-  gleamToml: [
-    'name = "main"',
-    'version = "0.1.0"',
-    'target = "erlang"',
-    'gleam = ">= 1.18.1 and < 2.0.0"',
-    "",
-    "[dependencies]",
-    'gleam_erlang = ">= 1.3.0 and < 2.0.0"',
-    'gleam_otp = ">= 1.3.0 and < 2.0.0"',
-    'gleam_stdlib = ">= 1.0.0 and < 2.0.0"',
-    "",
-  ].join("\n"),
-  manifestToml: [
-    "# This file was generated by Gleam",
-    "# You typically do not need to edit this file",
-    "",
-    "packages = [",
-    '  { name = "gleam_erlang", version = "1.3.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_erlang", source = "hex", outer_checksum = "1124AD3AA21143E5AF0FC5CF3D9529F6DB8CA03E43A55711B60B6B7B3874375C" },',
-    '  { name = "gleam_otp", version = "1.3.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "gleam_otp", source = "hex", outer_checksum = "DE4CA6850842F0266EE95317A25DD6A0A0F20CDFAB7C0ADC2E63251D7C3C72EC" },',
-    '  { name = "gleam_stdlib", version = "1.0.5", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "CEE5B6C076A85B45F60C585F4316C63EC8B7127C119D5738C3958A9C4D50404E" },',
-    "]",
-    "",
-    "[requirements]",
-    'gleam_erlang = { version = ">= 1.3.0 and < 2.0.0" }',
-    'gleam_otp = { version = ">= 1.3.0 and < 2.0.0" }',
-    'gleam_stdlib = { version = ">= 1.0.0 and < 2.0.0" }',
-    "",
-  ].join("\n"),
-  mainGleam: [
-    "import bang/account_entity",
-    "import gleam/io",
-    "",
-    "pub fn main() {",
-    "  io.println(account_entity.run_exact_one_probe())",
-    "}",
-    "",
-  ].join("\n"),
-  canonicalizerEscript: [
-    "#!/usr/bin/env escript",
-    "%%! -noshell",
-    "-mode(compile).",
-    '-include_lib("kernel/include/file.hrl").',
-    "",
-    "main([Input, Output]) ->",
-    "  {ok, Full} = file:read_file(Input),",
-    "  {ok, Sections} = escript:extract(Input, []),",
-    "  {archive, Archive} = lists:keyfind(archive, 1, Sections),",
-    "  {Pos, _} = binary:match(Full, Archive),",
-    "  Prefix = binary:part(Full, 0, Pos),",
-    "  Epoch = {{1980, 1, 1}, {0, 0, 0}},",
-    "  {ok, Files0} = zip:foldl(",
-    "    fun(Name, Info, GetBin, Acc) ->",
-    "      Normal = (Info())#file_info{atime = Epoch, mtime = Epoch, ctime = Epoch},",
-    "      [{Name, GetBin(), Normal} | Acc]",
-    "    end,",
-    "    [],",
-    "    Archive",
-    "  ),",
-    "  Files = lists:keysort(1, Files0),",
-    '  {ok, {_, CanonicalArchive}} = zip:create("archive.zip", Files, [memory]),',
-    "  ok = file:write_file(Output, [Prefix, CanonicalArchive]).",
-    "",
-  ].join("\n"),
-});
+export const makeGleamExactOneAssemblyMaterials = (
+  generatedBoundaryPath: string,
+): GleamExactOneAssemblyMaterials => {
+  const match = gleamExactOneGeneratedBoundaryPath.exec(generatedBoundaryPath);
+  const generatedBoundaryModule = match?.[1];
+  if (
+    generatedBoundaryModule === undefined ||
+    gleamKeywords[generatedBoundaryModule] === true ||
+    exactOneAdditionalGleamKeywords.has(generatedBoundaryModule)
+  ) {
+    throw new TypeError(
+      `Gleam exact-one generated boundary path ${quote(generatedBoundaryPath)} must have shape src/bang/<module>.gleam with a safe lower_snake_case module`,
+    );
+  }
+
+  const paths = Object.freeze({
+    config: "gleam.toml",
+    manifest: "manifest.toml",
+    generatedBoundary: generatedBoundaryPath,
+    entry: "src/main.gleam",
+    canonicalizer: "canonicalize_escript.escript",
+  } as const);
+
+  return Object.freeze({
+    paths,
+    gleamToml: [
+      'name = "main"',
+      'version = "0.1.0"',
+      'target = "erlang"',
+      'gleam = ">= 1.18.1 and < 2.0.0"',
+      "",
+      "[dependencies]",
+      'gleam_erlang = ">= 1.3.0 and < 2.0.0"',
+      'gleam_otp = ">= 1.3.0 and < 2.0.0"',
+      'gleam_stdlib = ">= 1.0.0 and < 2.0.0"',
+      "",
+    ].join("\n"),
+    manifestToml: [
+      "# This file was generated by Gleam",
+      "# You typically do not need to edit this file",
+      "",
+      "packages = [",
+      '  { name = "gleam_erlang", version = "1.3.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_erlang", source = "hex", outer_checksum = "1124AD3AA21143E5AF0FC5CF3D9529F6DB8CA03E43A55711B60B6B7B3874375C" },',
+      '  { name = "gleam_otp", version = "1.3.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "gleam_otp", source = "hex", outer_checksum = "DE4CA6850842F0266EE95317A25DD6A0A0F20CDFAB7C0ADC2E63251D7C3C72EC" },',
+      '  { name = "gleam_stdlib", version = "1.0.5", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "CEE5B6C076A85B45F60C585F4316C63EC8B7127C119D5738C3958A9C4D50404E" },',
+      "]",
+      "",
+      "[requirements]",
+      'gleam_erlang = { version = ">= 1.3.0 and < 2.0.0" }',
+      'gleam_otp = { version = ">= 1.3.0 and < 2.0.0" }',
+      'gleam_stdlib = { version = ">= 1.0.0 and < 2.0.0" }',
+      "",
+    ].join("\n"),
+    mainGleam: [
+      `import bang/${generatedBoundaryModule}`,
+      "import gleam/io",
+      "",
+      "pub fn main() {",
+      `  io.println(${generatedBoundaryModule}.run_exact_one_probe())`,
+      "}",
+      "",
+    ].join("\n"),
+    canonicalizerEscript: [
+      "#!/usr/bin/env escript",
+      "%%! -noshell",
+      "-mode(compile).",
+      '-include_lib("kernel/include/file.hrl").',
+      "",
+      "main([Input, Output]) ->",
+      "  {ok, Full} = file:read_file(Input),",
+      "  {ok, Sections} = escript:extract(Input, []),",
+      "  {archive, Archive} = lists:keyfind(archive, 1, Sections),",
+      "  {Pos, _} = binary:match(Full, Archive),",
+      "  Prefix = binary:part(Full, 0, Pos),",
+      "  Epoch = {{1980, 1, 1}, {0, 0, 0}},",
+      "  {ok, Files0} = zip:foldl(",
+      "    fun(Name, Info, GetBin, Acc) ->",
+      "      Normal = (Info())#file_info{atime = Epoch, mtime = Epoch, ctime = Epoch},",
+      "      [{Name, GetBin(), Normal} | Acc]",
+      "    end,",
+      "    [],",
+      "    Archive",
+      "  ),",
+      "  Files = lists:keysort(1, Files0),",
+      '  {ok, {_, CanonicalArchive}} = zip:create("archive.zip", Files, [memory]),',
+      "  ok = file:write_file(Output, [Prefix, CanonicalArchive]).",
+      "",
+    ].join("\n"),
+  });
+};

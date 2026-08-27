@@ -21,7 +21,10 @@ import {
   type CheckedM018SingleUseCapabilityEvidenceManifest,
   type CheckedM031TargetQualificationEvidence,
 } from "@bang/evidence";
-import { projectEffectSingleUseOperationRealization } from "@bang/target-effect";
+import {
+  projectEffectSingleUseOperationRealization,
+  projectEffectSingleUseOperationRealizationMaterials,
+} from "@bang/target-effect";
 import {
   projectGleamEntityOperationRealization,
   projectGleamExactOneOperationRealization,
@@ -251,8 +254,6 @@ const identifierWords = (value: string): ReadonlyArray<string> =>
     .toLowerCase()
     .split("-");
 
-const upperFirst = (value: string): string => `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
-
 const matchesStateValue = (
   value: StateValue,
   kind: StateValue["kind"],
@@ -410,7 +411,14 @@ const resolveM031QualificationSubject = (
       initializerParameter.id,
       "integerLiteral",
       "0",
-    ) ||
+    )
+  ) {
+    return unsupported(
+      `M031 target profile does not support initializer predicate ${initializer.id}`,
+      `stateMachine:${machine.id}.initializer:${initializer.id}`,
+    );
+  }
+  if (
     operation.requires.length !== 2 ||
     !operation.requires.some((predicate) =>
       matchesStatePredicate(predicate, "parameter", operationParameter.id, "integerLiteral", "0"),
@@ -423,7 +431,14 @@ const resolveM031QualificationSubject = (
         "parameter",
         operationParameter.id,
       ),
-    ) ||
+    )
+  ) {
+    return unsupported(
+      `M031 target profile does not support transition predicates ${operation.id}`,
+      `stateMachine:${machine.id}.transition:${operation.id}`,
+    );
+  }
+  if (
     !matchesStatePredicate(
       invariant.proposition,
       "stateField",
@@ -433,8 +448,8 @@ const resolveM031QualificationSubject = (
     )
   ) {
     return unsupported(
-      `M031 target profile does not support the checked predicates of ${machine.id}`,
-      `stateMachine:${machine.id}`,
+      `M031 target profile does not support invariant ${invariant.id}`,
+      `stateMachine:${machine.id}.invariant:${invariant.id}`,
     );
   }
   const words = identifierWords(machine.id);
@@ -786,169 +801,6 @@ const runM031Process = (
     return stdout;
   });
 
-const effectProbeRunnerSource = (subject: M031QualificationSubject): string => {
-  const capabilityType = upperFirst(subject.capability);
-  const capabilityValue = `${capabilityType[0]?.toLowerCase() ?? ""}${capabilityType.slice(1)}`;
-  const realizationType = upperFirst(subject.realization.id);
-  const stateField = subject.stateField;
-  const operation = subject.operation.id;
-  const entityId = JSON.stringify(subject.entityId);
-  const wrongEntityId = JSON.stringify(subject.wrongEntityId);
-  return `
-import { Effect, Layer } from "effect";
-import {
-  ${capabilityType},
-  ${capabilityValue}GrantRemainingUses,
-  make${capabilityType}Layer,
-  make${realizationType}Layer,
-  observe${realizationType},
-} from "./boundary.ts";
-
-const healthyBoundary = Layer.mergeAll(
-  make${capabilityType}Layer("m031"),
-  make${realizationType}Layer({
-    ${operation}: (state, ${subject.operationParameter}) =>
-      Effect.succeed({ ${stateField}: state.${stateField} - ${subject.operationParameter} }),
-  }),
-);
-
-const healthyJourney = Effect.gen(function* () {
-  const ${capabilityValue} = yield* ${capabilityType};
-  const validGrant = yield* ${capabilityValue}.issueGrant;
-  const validBefore = yield* ${capabilityValue}GrantRemainingUses(validGrant);
-  const valid = yield* observe${realizationType}(
-    validGrant,
-    ${entityId},
-    { ${stateField}: 10n },
-    4n,
-  );
-  const reuseBefore = yield* ${capabilityValue}GrantRemainingUses(validGrant);
-  const reuse = yield* observe${realizationType}(
-    validGrant,
-    ${entityId},
-    valid.state,
-    1n,
-  );
-
-  const competingGrant = yield* ${capabilityValue}.issueGrant;
-  const competingBefore = yield* ${capabilityValue}GrantRemainingUses(competingGrant);
-  const competing = yield* Effect.forEach(
-    [0, 1] as const,
-    () =>
-      observe${realizationType}(
-        competingGrant,
-        ${entityId},
-        { ${stateField}: 6n },
-        2n,
-      ),
-    { concurrency: 2 },
-  );
-
-  const wrongGrant = yield* ${capabilityValue}.issueGrant;
-  const wrongBefore = yield* ${capabilityValue}GrantRemainingUses(wrongGrant);
-  const wrongDestination = yield* observe${realizationType}(
-    wrongGrant,
-    ${wrongEntityId},
-    { ${stateField}: 6n },
-    2n,
-  );
-  const disabledGrant = yield* ${capabilityValue}.issueGrant;
-  const disabledBefore = yield* ${capabilityValue}GrantRemainingUses(disabledGrant);
-  const disabled = yield* observe${realizationType}(
-    disabledGrant,
-    ${entityId},
-    { ${stateField}: 6n },
-    20n,
-  );
-  return {
-    validBefore,
-    valid,
-    reuseBefore,
-    reuse,
-    competingBefore,
-    competing,
-    wrongBefore,
-    wrongDestination,
-    disabledBefore,
-    disabled,
-  };
-});
-
-const defectBoundary = Layer.mergeAll(
-  make${capabilityType}Layer("m031-defect"),
-  make${realizationType}Layer({
-    ${operation}: () => Effect.die("controlled M031 implementation defect"),
-  }),
-);
-const defectJourney = Effect.gen(function* () {
-  const ${capabilityValue} = yield* ${capabilityType};
-  const grant = yield* ${capabilityValue}.issueGrant;
-  const before = yield* ${capabilityValue}GrantRemainingUses(grant);
-  const defect = yield* observe${realizationType}(
-    grant,
-    ${entityId},
-    { ${stateField}: 10n },
-    4n,
-  );
-  const reuseBefore = yield* ${capabilityValue}GrantRemainingUses(grant);
-  const reuse = yield* observe${realizationType}(
-    grant,
-    ${entityId},
-    { ${stateField}: 10n },
-    1n,
-  );
-  return { before, defect, reuseBefore, reuse };
-});
-
-const healthy = await Effect.runPromise(healthyJourney.pipe(Effect.provide(healthyBoundary)));
-const defect = await Effect.runPromise(defectJourney.pipe(Effect.provide(defectBoundary)));
-const state = (observation) => observation.state.${stateField}.toString();
-const remaining = (observation) => observation.remainingUses;
-const competingSuccesses = healthy.competing.filter(({ _tag }) => _tag === "Success").length;
-const competingRejections = healthy.competing.filter(
-  ({ _tag }) => _tag === "CapabilityUseRejected",
-).length;
-console.log(
-  JSON.stringify({
-    target: "effect-typescript",
-    realization: ${JSON.stringify(subject.realization.id)},
-    entity: ${entityId},
-    validCall: healthy.valid._tag === "Success",
-    reuse: healthy.reuse._tag === "CapabilityUseRejected",
-    competing: competingSuccesses === 1 && competingRejections === 1,
-    competingSuccesses,
-    competingRejections,
-    wrongDestination: healthy.wrongDestination._tag === "WrongDestination",
-    disabled: healthy.disabled._tag === "DomainRejected",
-    defect:
-      defect.defect._tag === "Defect" && defect.reuse._tag === "CapabilityUseRejected",
-    stateTrace: {
-      valid: "10>" + state(healthy.valid),
-      reuse: state(healthy.valid) + ">" + state(healthy.reuse),
-      competing: state(healthy.competing[0]) + ">" + state(healthy.competing[0]),
-      wrongDestination:
-        state(healthy.wrongDestination) + ">" + state(healthy.wrongDestination),
-      disabled: state(healthy.disabled) + ">" + state(healthy.disabled),
-      defect: "10>" + state(defect.defect),
-      stale: "10>" + state(defect.reuse),
-      replacement: "10>10",
-    },
-    remainingTrace: {
-      valid: healthy.validBefore + ">" + remaining(healthy.valid),
-      reuse: healthy.reuseBefore + ">" + remaining(healthy.reuse),
-      competing: healthy.competingBefore + ">0",
-      wrongDestination:
-        healthy.wrongBefore + ">" + remaining(healthy.wrongDestination),
-      disabled: healthy.disabledBefore + ">" + remaining(healthy.disabled),
-      defect: defect.before + ">" + remaining(defect.defect),
-      stale: defect.reuseBefore + ">" + remaining(defect.reuse),
-      replacement: "1>1",
-    },
-  }),
-);
-`;
-};
-
 const gleamProbeRunnerSource = (moduleName: string): string => `
 import bang/${moduleName}
 import gleam/io
@@ -1230,7 +1082,7 @@ const compileM031TargetRuns = (
         let generatedBytes: Uint8Array;
         let projection: string;
         if (target.target === "effect-typescript") {
-          projection = yield* projectEffectSingleUseOperationRealization(
+          const effectMaterials = yield* projectEffectSingleUseOperationRealizationMaterials(
             core,
             target.realization,
           ).pipe(
@@ -1241,6 +1093,7 @@ const compileM031TargetRuns = (
               }),
             ),
           );
+          projection = effectMaterials.boundary;
           generatedBytes = new TextEncoder().encode(projection);
           const targetDirectory = path.join(temporaryRoot, "effect-typescript");
           yield* fileSystem.makeDirectory(targetDirectory, { recursive: true }).pipe(
@@ -1269,7 +1122,7 @@ const compileM031TargetRuns = (
               ),
             ),
           );
-          yield* fileSystem.writeFileString(runnerPath, effectProbeRunnerSource(subject)).pipe(
+          yield* fileSystem.writeFileString(runnerPath, effectMaterials.probe).pipe(
             Effect.mapError((error) =>
               makeFailure(
                 "execution",
