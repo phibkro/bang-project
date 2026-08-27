@@ -7,11 +7,10 @@ const workspaceRoot = resolve(import.meta.dir, "..");
 const recordPath = join(workspaceRoot, "tests/m036-tiny-bank-protected-baseline.json");
 const protectedRevision = "f2673c1b74726adcbf6b56a8655d5efee505b1b2";
 // M036 defines the candidate as the implementation checkpoint. The evidence record is
-// committed later, so binding it to its own containing commit would be recursive.
+// committed later, so its containing commit supplies record integrity.
 const candidateRevision = "8c0d590b08a1432ede1279cf501a46e88efb96d2";
-const expectedRecordSha256 = "b456a217afa00279e6cd6710bc99b35dab41fbbb618822d31b93764cca644680";
 const dependencyLockPath = "bun.lock";
-const setupCommands = ["bun install --frozen-lockfile", "bun run build"] as const;
+const setupCommands = ["just install", "bun run build"] as const;
 const journeyCommands = [
   {
     display: "bun run bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json",
@@ -106,7 +105,6 @@ interface ObservedRun {
 }
 
 const textDecoder = new TextDecoder();
-const textEncoder = new TextEncoder();
 const environment = Object.freeze({
   ...globalThis.process.env,
   CI: "1",
@@ -160,6 +158,91 @@ const requireSuccess = async (
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const exactObject = (
+  value: unknown,
+  expectedKeys: ReadonlyArray<string>,
+  label: string,
+): Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`M036 parity record ${label} must be an object`);
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (
+    keys.length !== expectedKeys.length ||
+    expectedKeys.some((key) => !Object.hasOwn(record, key))
+  ) {
+    throw new Error(`M036 parity record ${label} must contain exactly ${expectedKeys.join(", ")}`);
+  }
+  return record;
+};
+
+const stringValue = (value: unknown, label: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(`M036 parity record ${label} must be a string`);
+  }
+  return value;
+};
+
+const stringArray = (value: unknown, label: string): ReadonlyArray<string> => {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new Error(`M036 parity record ${label} must be an array of strings`);
+  }
+  return value;
+};
+
+const decodeRunEvidence = (value: unknown, label: string): RunEvidence => {
+  const run = exactObject(
+    value,
+    ["revision", "dependencyLock", "setupCommands", "commands"],
+    label,
+  );
+  const dependencyLock = exactObject(
+    run.dependencyLock,
+    ["path", "sha256"],
+    `${label}.dependencyLock`,
+  );
+  return {
+    revision: stringValue(run.revision, `${label}.revision`),
+    dependencyLock: {
+      path: stringValue(dependencyLock.path, `${label}.dependencyLock.path`),
+      sha256: stringValue(dependencyLock.sha256, `${label}.dependencyLock.sha256`),
+    },
+    setupCommands: stringArray(run.setupCommands, `${label}.setupCommands`),
+    commands: stringArray(run.commands, `${label}.commands`),
+  };
+};
+
+const decodeFileEvidence = (value: unknown, index: number): ParityRecord["files"][number] => {
+  const label = `files[${index}]`;
+  const file = exactObject(value, ["path", "protectedSha256", "candidateSha256"], label);
+  return {
+    path: stringValue(file.path, `${label}.path`),
+    protectedSha256: stringValue(file.protectedSha256, `${label}.protectedSha256`),
+    candidateSha256: stringValue(file.candidateSha256, `${label}.candidateSha256`),
+  };
+};
+
+const decodeParityRecord = (value: unknown): ParityRecord => {
+  const record = exactObject(
+    value,
+    ["bangM036TinyBankParity", "protectedRun", "candidateRun", "files"],
+    "root",
+  );
+  if (record.bangM036TinyBankParity !== 1) {
+    throw new Error("M036 parity record has an unsupported format tag");
+  }
+  if (!Array.isArray(record.files)) {
+    throw new Error("M036 parity record files must be an array");
+  }
+  return {
+    bangM036TinyBankParity: 1,
+    protectedRun: decodeRunEvidence(record.protectedRun, "protectedRun"),
+    candidateRun: decodeRunEvidence(record.candidateRun, "candidateRun"),
+    files: record.files.map(decodeFileEvidence),
+  };
+};
 
 const digestPaths = async (
   root: string,
@@ -234,13 +317,25 @@ const assertImplementationBinding = async (): Promise<void> => {
   }
 };
 
-const readRecord = async (): Promise<ParityRecord> => {
-  const record = JSON.parse(await readFile(recordPath, "utf8")) as ParityRecord;
-  const observedSha256 = sha256(textEncoder.encode(JSON.stringify(record)));
-  if (observedSha256 !== expectedRecordSha256) {
-    throw new Error(
-      `M036 parity record hash is stale or unbound: expected ${expectedRecordSha256}, observed ${observedSha256}`,
+const encodeParityRecord = (record: ParityRecord): string => {
+  // Oxfmt keeps these short arrays inline; match that canonical repository style.
+  let encoded = JSON.stringify(record, undefined, 2);
+  for (const setup of [record.protectedRun.setupCommands, record.candidateRun.setupCommands]) {
+    const expanded = JSON.stringify(setup, undefined, 2).replaceAll("\n", "\n    ");
+    encoded = encoded.replace(
+      expanded,
+      `[${setup.map((command) => JSON.stringify(command)).join(", ")}]`,
     );
+  }
+  return `${encoded}\n`;
+};
+
+const readRecord = async (): Promise<ParityRecord> => {
+  const encoded = await readFile(recordPath, "utf8");
+  const record = decodeParityRecord(JSON.parse(encoded) as unknown);
+  const canonical = encodeParityRecord(record);
+  if (encoded !== canonical) {
+    throw new Error("M036 parity record is not in canonical JSON encoding");
   }
   return record;
 };
@@ -290,7 +385,7 @@ const observeCleanRun = async (worktreePath: string, revision: string): Promise<
   if (head !== revision) {
     throw new Error(`clean worktree resolved ${revision} to unexpected HEAD ${head}`);
   }
-  await requireSuccess(["bun", "install", "--frozen-lockfile"], worktreePath, 300_000);
+  await requireSuccess(["just", "install"], worktreePath, 300_000);
   await requireSuccess(["bun", "run", "build"], worktreePath, 300_000);
   await Promise.all(
     publicationRoots.map((path) => rm(join(worktreePath, path), { recursive: true, force: true })),
@@ -307,13 +402,10 @@ const observeCleanRun = async (worktreePath: string, revision: string): Promise<
   }
   const lockDigest = sha256(await readFile(join(worktreePath, dependencyLockPath)));
   const trackedStatus = textDecoder
-    .decode(
-      (await requireSuccess(["git", "status", "--porcelain", "--untracked-files=no"], worktreePath))
-        .stdout,
-    )
+    .decode((await requireSuccess(["git", "status", "--porcelain"], worktreePath)).stdout)
     .trim();
   if (trackedStatus !== "") {
-    throw new Error(`clean ${revision} run changed tracked bytes:\n${trackedStatus}`);
+    throw new Error(`clean ${revision} run left a dirty worktree:\n${trackedStatus}`);
   }
   return {
     run: {
@@ -390,12 +482,18 @@ if (mode !== undefined && mode !== "--verify-record" && mode !== "--write") {
 if (mode === "--verify-record") {
   const record = await verifyRecord();
   console.log(
-    JSON.stringify({ protectedRun: record.protectedRun, candidateRun: record.candidateRun }),
+    JSON.stringify({
+      validation: "record-only",
+      reobserved: false,
+      protectedRun: record.protectedRun,
+      candidateRun: record.candidateRun,
+      files: record.files.length,
+    }),
   );
 } else {
   const observed = await observeBothCleanRuns();
   if (mode === "--write") {
-    await writeFile(recordPath, `${JSON.stringify(observed, undefined, 2)}\n`);
+    await writeFile(recordPath, encodeParityRecord(observed));
   } else {
     const recorded = await verifyRecord();
     if (JSON.stringify(observed) !== JSON.stringify(recorded)) {
@@ -404,11 +502,12 @@ if (mode === "--verify-record") {
   }
   console.log(
     JSON.stringify({
+      validation: mode === "--write" ? "record-written" : "clean-runs-compared",
+      reobserved: true,
       protectedRun: observed.protectedRun,
       candidateRun: observed.candidateRun,
       files: observed.files.length,
       parity: "equal",
-      recordSha256: sha256(textEncoder.encode(JSON.stringify(observed))),
     }),
   );
 }
