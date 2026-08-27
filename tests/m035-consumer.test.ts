@@ -2,7 +2,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 const root = resolve(import.meta.dir, "..");
 const publicationSource = join(root, "dist", "schemas", "1");
@@ -150,6 +150,24 @@ const rewriteManifestVersion = async (directory: string, version: number): Promi
   manifest.version = version;
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 };
+
+beforeAll(async () => {
+  const child = Bun.spawn([join(root, "node_modules/.bin/bang"), "export-schemas"], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  if (exitCode !== 0 || stderr !== "" || stdout.trim() !== "dist/schemas/1") {
+    throw new Error(
+      `M035 schema publication setup failed: exit=${exitCode}, stdout=${JSON.stringify(stdout)}, stderr=${JSON.stringify(stderr)}`,
+    );
+  }
+});
 
 describe("M035 external consumer journeys", () => {
   test("valid journey returns identical typed verdicts across repeated runs", async () => {

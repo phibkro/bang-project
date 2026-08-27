@@ -69,7 +69,7 @@
     "test:m032": "bun run demo:m032 >/dev/null && bun test tests/m032-plan.test.ts",
     "test:m033": "bun run demo:m033 >/dev/null && bun test tests/m033-assembly-unit.test.ts tests/m033-assembly.test.ts",
     "test:m034": "bun test tests/m034-audit.test.ts",
-    "test:m035": "bun test tests/m035-export.test.ts tests/m035-consumer.test.ts",
+    "test:m035": "bun test tests/m035-export.test.ts && bun test tests/m035-consumer.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --deny-warnings .",
     "fix": "bun run scripts/fix.ts",
