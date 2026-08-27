@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, test } from "bun:test";
 
 const root = resolve(import.meta.dir, "..");
-const publicationSource = join(root, "dist", "schemas", "1");
+const publicationSource = join(root, "dist", "schemas", "2");
 
 const lockFixture = ".bang/theory-locks/tiny-bank-packaged-exact-one.json";
 const evidenceFixture =
@@ -162,7 +162,7 @@ beforeAll(async () => {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  if (exitCode !== 0 || stderr !== "" || stdout.trim() !== "dist/schemas/1") {
+  if (exitCode !== 0 || stderr !== "" || stdout.trim() !== "dist/schemas/2") {
     throw new Error(
       `M035 schema publication setup failed: exit=${exitCode}, stdout=${JSON.stringify(stdout)}, stderr=${JSON.stringify(stderr)}`,
     );

@@ -1,0 +1,20 @@
+{
+  "bangPlanning": 1,
+  "id": "clinic-supervised-exact-one",
+  "qualificationSelection": "examples/clinic/realizations/two-qualified-exact-one.json",
+  "requirementAddress": "operationRealization:BookAppointmentOnce.requirement:ConfirmBooking",
+  "demands": [
+    {
+      "family": "runtime-model",
+      "value": "supervised-actor"
+    },
+    {
+      "family": "restart",
+      "value": "supervised-restart"
+    },
+    {
+      "family": "grant-restart",
+      "value": "invalidated-on-restart"
+    }
+  ]
+}

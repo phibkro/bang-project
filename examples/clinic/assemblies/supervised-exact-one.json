@@ -1,0 +1,9 @@
+{
+  "bangAssembly": 1,
+  "id": "clinic-supervised-exact-one",
+  "planSelection": "examples/clinic/plans/supervised-exact-one.json",
+  "artifact": {
+    "kind": "escript",
+    "entry": "main"
+  }
+}

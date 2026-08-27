@@ -1384,35 +1384,650 @@ const matchesStatePredicate = (
   matchesStateValue(predicate.left, leftKind, leftIdentity) &&
   matchesStateValue(predicate.right, rightKind, rightIdentity);
 
+const typeScriptIdentifierPattern = /^[A-Za-z][A-Za-z0-9]*$/u;
+
+const typeScriptReservedWords: Readonly<Record<string, true>> = {
+  arguments: true,
+  await: true,
+  break: true,
+  case: true,
+  catch: true,
+  class: true,
+  const: true,
+  continue: true,
+  debugger: true,
+  default: true,
+  delete: true,
+  do: true,
+  else: true,
+  enum: true,
+  eval: true,
+  export: true,
+  extends: true,
+  false: true,
+  finally: true,
+  for: true,
+  function: true,
+  if: true,
+  implements: true,
+  import: true,
+  in: true,
+  instanceof: true,
+  interface: true,
+  let: true,
+  new: true,
+  null: true,
+  package: true,
+  private: true,
+  protected: true,
+  public: true,
+  return: true,
+  static: true,
+  super: true,
+  switch: true,
+  this: true,
+  throw: true,
+  true: true,
+  try: true,
+  typeof: true,
+  var: true,
+  void: true,
+  while: true,
+  with: true,
+  yield: true,
+};
+
+interface EffectExactOneSymbolMap {
+  readonly machineType: string;
+  readonly stateType: string;
+  readonly stateField: string;
+  readonly initializer: string;
+  readonly initializerParameter: string;
+  readonly operation: string;
+  readonly operationParameter: string;
+  readonly invariant: string;
+  readonly capabilityType: string;
+  readonly capabilityValue: string;
+  readonly realizationType: string;
+  readonly realizationValue: string;
+  readonly failureType: string;
+  readonly destination: string;
+  readonly isOperationEnabled: string;
+  readonly grantType: string;
+  readonly grantStateType: string;
+  readonly consumedGrantFailure: string;
+  readonly wrongDestinationFailure: string;
+  readonly grantStates: string;
+  readonly makeGrant: string;
+  readonly grantRemainingUses: string;
+  readonly consumeGrant: string;
+  readonly capabilityShape: string;
+  readonly makeCapabilityLayer: string;
+  readonly capabilityLayer: string;
+  readonly realizationShape: string;
+  readonly realizationRequirements: string;
+  readonly realizationImplementation: string;
+  readonly makeRealizationLayer: string;
+  readonly realizationSuccess: string;
+  readonly realizationDomainRejected: string;
+  readonly realizationCapabilityUseRejected: string;
+  readonly realizationWrongDestination: string;
+  readonly realizationDefect: string;
+  readonly realizationObservation: string;
+  readonly observeRealization: string;
+}
+
+interface TypeScriptSymbolCandidate {
+  readonly symbol: string;
+  readonly source: string;
+  readonly owner: string;
+  readonly namespaces: ReadonlyArray<"type" | "value">;
+}
+
+const typeScriptSymbolCandidate = (
+  symbol: string,
+  source: string,
+  owner: string,
+  namespaces: TypeScriptSymbolCandidate["namespaces"],
+): TypeScriptSymbolCandidate => ({ symbol, source, owner, namespaces });
+
+const scopedTypeScriptSymbolCandidate = (
+  symbol: string,
+  source: string,
+  owner: string,
+): Omit<TypeScriptSymbolCandidate, "namespaces"> => ({ symbol, source, owner });
+
+const makeEffectExactOneSymbolMap = Effect.fn("makeEffectExactOneSymbolMap")(function* (
+  machine: StateMachineDeclaration,
+  stateField: (typeof machine.state.fields)[number],
+  initializer: (typeof machine.initializers)[number],
+  initializerParameter: (typeof initializer.parameters)[number],
+  operation: (typeof machine.transitions)[number],
+  operationParameter: (typeof operation.parameters)[number],
+  invariant: (typeof machine.invariants)[number],
+  realization: OperationRealizationDeclaration,
+  capability: string,
+): Effect.fn.Return<EffectExactOneSymbolMap, TargetProjectionError> {
+  const machineSource = `stateMachine:${machine.id}`;
+  const stateSource = `${machineSource}.state:${machine.state.id}`;
+  const stateFieldSource = `${stateSource}.field:${stateField.id}`;
+  const initializerSource = `${machineSource}.initializer:${initializer.id}`;
+  const initializerParameterSource = `${initializerSource}.parameter:${initializerParameter.id}`;
+  const operationSource = `${machineSource}.transition:${operation.id}`;
+  const operationParameterSource = `${operationSource}.parameter:${operationParameter.id}`;
+  const invariantSource = `${machineSource}.invariant:${invariant.id}`;
+  const capabilitySource = `capability:${capability}`;
+  const realizationSource = `operationRealization:${realization.id}`;
+  const failureSource = `${realizationSource}.disabled:${realization.disabled.id}`;
+  const checkedIdentifiers = [
+    { identifier: machine.id, source: machineSource, role: "state machine" },
+    { identifier: machine.state.id, source: stateSource, role: "state" },
+    { identifier: stateField.id, source: stateFieldSource, role: "state field" },
+    { identifier: initializer.id, source: initializerSource, role: "initializer" },
+    {
+      identifier: initializerParameter.id,
+      source: initializerParameterSource,
+      role: "initializer parameter",
+    },
+    { identifier: operation.id, source: operationSource, role: "transition" },
+    {
+      identifier: operationParameter.id,
+      source: operationParameterSource,
+      role: "transition parameter",
+    },
+    { identifier: invariant.id, source: invariantSource, role: "invariant" },
+    { identifier: capability, source: capabilitySource, role: "capability" },
+    { identifier: realization.id, source: realizationSource, role: "realization" },
+    {
+      identifier: realization.disabled.id,
+      source: failureSource,
+      role: "disabled failure",
+    },
+  ] as const;
+
+  for (const { identifier, source, role } of checkedIdentifiers) {
+    if (!typeScriptIdentifierPattern.test(identifier)) {
+      return yield* targetProjectionFailure(
+        "invalid-identifier",
+        source,
+        `Effect exact-one ${role} identifier ${identifier} is not a valid TypeScript identifier`,
+      );
+    }
+    if (typeScriptReservedWords[identifier] === true) {
+      return yield* targetProjectionFailure(
+        "invalid-identifier",
+        source,
+        `Effect exact-one ${role} identifier ${identifier} is a TypeScript reserved word`,
+      );
+    }
+  }
+
+  const machineType = upperFirst(machine.id);
+  const stateType = upperFirst(machine.state.id);
+  const mappedStateField = lowerFirst(stateField.id);
+  const mappedInitializer = lowerFirst(initializer.id);
+  const mappedInitializerParameter = lowerFirst(initializerParameter.id);
+  const mappedOperation = lowerFirst(operation.id);
+  const mappedOperationParameter = lowerFirst(operationParameter.id);
+  const mappedInvariant = lowerFirst(invariant.id);
+  const capabilityType = upperFirst(capability);
+  const capabilityValue = lowerFirst(capabilityType);
+  const realizationType = upperFirst(realization.id);
+  const realizationValue = lowerFirst(realizationType);
+  const failureType = upperFirst(realization.disabled.id);
+  const grantType = `${capabilityType}Grant`;
+  const symbols: EffectExactOneSymbolMap = {
+    machineType,
+    stateType,
+    stateField: mappedStateField,
+    initializer: mappedInitializer,
+    initializerParameter: mappedInitializerParameter,
+    operation: mappedOperation,
+    operationParameter: mappedOperationParameter,
+    invariant: mappedInvariant,
+    capabilityType,
+    capabilityValue,
+    realizationType,
+    realizationValue,
+    failureType,
+    destination: `${realizationValue}Destination`,
+    isOperationEnabled: `is${upperFirst(mappedOperation)}Enabled`,
+    grantType,
+    grantStateType: `${grantType}State`,
+    consumedGrantFailure: `${grantType}AlreadyConsumed`,
+    wrongDestinationFailure: `${realizationType}WrongDestinationError`,
+    grantStates: "grantStates",
+    makeGrant: `make${grantType}`,
+    grantRemainingUses: `${capabilityValue}GrantRemainingUses`,
+    consumeGrant: `consume${grantType}`,
+    capabilityShape: `${capabilityType}Shape`,
+    makeCapabilityLayer: `make${capabilityType}Layer`,
+    capabilityLayer: `${capabilityValue}Layer`,
+    realizationShape: `${realizationType}Shape`,
+    realizationRequirements: `${realizationType}Requirements`,
+    realizationImplementation: `${realizationType}Implementation`,
+    makeRealizationLayer: `make${realizationType}Layer`,
+    realizationSuccess: `${realizationType}Success`,
+    realizationDomainRejected: `${realizationType}DomainRejected`,
+    realizationCapabilityUseRejected: `${realizationType}CapabilityUseRejected`,
+    realizationWrongDestination: `${realizationType}WrongDestination`,
+    realizationDefect: `${realizationType}Defect`,
+    realizationObservation: `${realizationType}Observation`,
+    observeRealization: `observe${realizationType}`,
+  };
+  const generatedIdentifiers = [
+    { identifier: symbols.machineType, source: machineSource, role: "mapped state machine" },
+    { identifier: symbols.stateType, source: stateSource, role: "mapped state" },
+    {
+      identifier: symbols.stateField,
+      source: stateFieldSource,
+      role: "mapped state field",
+    },
+    {
+      identifier: symbols.initializer,
+      source: initializerSource,
+      role: "mapped initializer",
+    },
+    {
+      identifier: symbols.initializerParameter,
+      source: initializerParameterSource,
+      role: "mapped initializer parameter",
+    },
+    {
+      identifier: symbols.operation,
+      source: operationSource,
+      role: "mapped transition",
+    },
+    {
+      identifier: symbols.operationParameter,
+      source: operationParameterSource,
+      role: "mapped transition parameter",
+    },
+    { identifier: symbols.invariant, source: invariantSource, role: "mapped invariant" },
+    {
+      identifier: symbols.capabilityType,
+      source: capabilitySource,
+      role: "mapped capability type",
+    },
+    {
+      identifier: symbols.capabilityValue,
+      source: capabilitySource,
+      role: "mapped capability value",
+    },
+    {
+      identifier: symbols.realizationType,
+      source: realizationSource,
+      role: "mapped realization type",
+    },
+    {
+      identifier: symbols.realizationValue,
+      source: realizationSource,
+      role: "mapped realization value",
+    },
+    {
+      identifier: symbols.failureType,
+      source: failureSource,
+      role: "mapped disabled failure",
+    },
+    ...(
+      [
+        "destination",
+        "isOperationEnabled",
+        "grantType",
+        "grantStateType",
+        "consumedGrantFailure",
+        "wrongDestinationFailure",
+        "grantStates",
+        "makeGrant",
+        "grantRemainingUses",
+        "consumeGrant",
+        "capabilityShape",
+        "makeCapabilityLayer",
+        "capabilityLayer",
+        "realizationShape",
+        "realizationRequirements",
+        "realizationImplementation",
+        "makeRealizationLayer",
+        "realizationSuccess",
+        "realizationDomainRejected",
+        "realizationCapabilityUseRejected",
+        "realizationWrongDestination",
+        "realizationDefect",
+        "realizationObservation",
+        "observeRealization",
+      ] as const
+    ).map((key) => ({
+      identifier: symbols[key],
+      source:
+        key.startsWith("grant") ||
+        key.startsWith("consume") ||
+        key.startsWith("capability") ||
+        key.startsWith("makeCapability")
+          ? capabilitySource
+          : realizationSource,
+      role: `generated ${key}`,
+    })),
+  ];
+  for (const { identifier, source, role } of generatedIdentifiers) {
+    if (
+      !typeScriptIdentifierPattern.test(identifier) ||
+      typeScriptReservedWords[identifier] === true
+    ) {
+      return yield* targetProjectionFailure(
+        "invalid-identifier",
+        source,
+        `Effect exact-one ${role} symbol ${identifier} is not a valid non-reserved TypeScript identifier`,
+      );
+    }
+  }
+
+  const fixedImport = (symbol: string): TypeScriptSymbolCandidate => ({
+    symbol,
+    source: realizationSource,
+    owner: `generated import ${symbol}`,
+    namespaces: ["type", "value"],
+  });
+  const moduleSymbols: ReadonlyArray<TypeScriptSymbolCandidate> = [
+    ...["Cause", "Context", "Effect", "Layer", "Option", "Ref", "Schema"].map(fixedImport),
+    typeScriptSymbolCandidate(symbols.stateType, stateSource, "state schema", ["value"]),
+    typeScriptSymbolCandidate(symbols.stateType, stateSource, "state type", ["type"]),
+    typeScriptSymbolCandidate(symbols.destination, realizationSource, "destination export", [
+      "value",
+    ]),
+    typeScriptSymbolCandidate(symbols.isOperationEnabled, operationSource, "enabled predicate", [
+      "value",
+    ]),
+    typeScriptSymbolCandidate(symbols.failureType, failureSource, "disabled failure class", [
+      "type",
+      "value",
+    ]),
+    typeScriptSymbolCandidate(
+      symbols.wrongDestinationFailure,
+      realizationSource,
+      "wrong-destination failure class",
+      ["type", "value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.consumedGrantFailure,
+      capabilitySource,
+      "consumed-grant failure class",
+      ["type", "value"],
+    ),
+    typeScriptSymbolCandidate(symbols.grantType, capabilitySource, "grant interface", ["type"]),
+    typeScriptSymbolCandidate(symbols.grantStateType, capabilitySource, "grant-state type", [
+      "type",
+    ]),
+    typeScriptSymbolCandidate(symbols.grantStates, capabilitySource, "grant-state registry", [
+      "value",
+    ]),
+    typeScriptSymbolCandidate(symbols.makeGrant, capabilitySource, "grant constructor", ["value"]),
+    typeScriptSymbolCandidate(
+      symbols.grantRemainingUses,
+      capabilitySource,
+      "remaining-use observer",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(symbols.consumeGrant, capabilitySource, "grant consumer", ["value"]),
+    typeScriptSymbolCandidate(symbols.capabilityShape, capabilitySource, "capability shape", [
+      "type",
+    ]),
+    typeScriptSymbolCandidate(
+      symbols.capabilityType,
+      capabilitySource,
+      "capability service class",
+      ["type", "value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.makeCapabilityLayer,
+      capabilitySource,
+      "capability layer factory",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.capabilityLayer,
+      capabilitySource,
+      "default capability layer",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(symbols.realizationShape, realizationSource, "realization shape", [
+      "type",
+    ]),
+    typeScriptSymbolCandidate(
+      symbols.realizationRequirements,
+      realizationSource,
+      "realization requirements",
+      ["type"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.realizationType,
+      realizationSource,
+      "realization service class",
+      ["type", "value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.realizationImplementation,
+      realizationSource,
+      "realization implementation",
+      ["type"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.makeRealizationLayer,
+      realizationSource,
+      "realization layer factory",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(symbols.realizationSuccess, realizationSource, "success schema", [
+      "value",
+    ]),
+    typeScriptSymbolCandidate(
+      symbols.realizationDomainRejected,
+      realizationSource,
+      "domain-rejection schema",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.realizationCapabilityUseRejected,
+      realizationSource,
+      "capability-rejection schema",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.realizationWrongDestination,
+      realizationSource,
+      "wrong-destination schema",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(symbols.realizationDefect, realizationSource, "defect schema", [
+      "value",
+    ]),
+    typeScriptSymbolCandidate(
+      symbols.realizationObservation,
+      realizationSource,
+      "observation schema",
+      ["value"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.realizationObservation,
+      realizationSource,
+      "observation type",
+      ["type"],
+    ),
+    typeScriptSymbolCandidate(
+      symbols.observeRealization,
+      realizationSource,
+      "observation function",
+      ["value"],
+    ),
+  ];
+
+  const checkScope = (
+    namespace: string,
+    candidates: ReadonlyArray<Omit<TypeScriptSymbolCandidate, "namespaces">>,
+  ): TargetProjectionError | undefined => {
+    const seen = new Map<string, Omit<TypeScriptSymbolCandidate, "namespaces">>();
+    for (const current of candidates) {
+      const previous = seen.get(current.symbol);
+      if (previous !== undefined) {
+        return targetProjectionFailure(
+          "identifier-collision",
+          current.source,
+          `Effect exact-one ${namespace} namespace maps ${previous.owner} and ${current.owner} to ${current.symbol}`,
+        );
+      }
+      seen.set(current.symbol, current);
+    }
+    return undefined;
+  };
+  for (const namespace of ["type", "value"] as const) {
+    const collision = checkScope(
+      `module ${namespace}`,
+      moduleSymbols
+        .filter(({ namespaces }) => namespaces.includes(namespace))
+        .map(({ symbol, source, owner }) => ({ symbol, source, owner })),
+    );
+    if (collision !== undefined) return yield* collision;
+  }
+
+  const fixedScoped = (
+    symbol: string,
+    owner: string,
+  ): Omit<TypeScriptSymbolCandidate, "namespaces"> => ({
+    symbol,
+    source: realizationSource,
+    owner,
+  });
+  const memberAndLocalScopes = [
+    {
+      namespace: "operation parameter",
+      candidates: [
+        fixedScoped("grant", "generated grant parameter"),
+        fixedScoped("destination", "generated destination parameter"),
+        fixedScoped("state", "generated state parameter"),
+        scopedTypeScriptSymbolCandidate(
+          symbols.operationParameter,
+          operationParameterSource,
+          "transition parameter",
+        ),
+      ],
+    },
+    {
+      namespace: "realization member",
+      candidates: [
+        fixedScoped("implementationCalls", "generated implementationCalls member"),
+        scopedTypeScriptSymbolCandidate(symbols.operation, operationSource, "transition member"),
+      ],
+    },
+    ...[
+      ["state", "failure state field"],
+      ["destination", "wrong-destination field"],
+      ["expectedDestination", "expected-destination field"],
+      ["grantId", "grant identifier field"],
+      ["failure", "observation failure field"],
+      ["remainingUses", "remaining-use field"],
+      ["implementationCalls", "implementation-call field"],
+      ["defect", "defect field"],
+    ].map(([symbol, owner]) => ({
+      namespace: `transition parameter against ${owner}`,
+      candidates: [
+        fixedScoped(symbol!, owner!),
+        scopedTypeScriptSymbolCandidate(
+          symbols.operationParameter,
+          operationParameterSource,
+          "transition parameter",
+        ),
+      ],
+    })),
+    {
+      namespace: "healthy probe local value",
+      candidates: [
+        ...[
+          "validGrant",
+          "validBefore",
+          "valid",
+          "reuseBefore",
+          "reuse",
+          "competingGrant",
+          "competingBefore",
+          "competing",
+          "wrongGrant",
+          "wrongBefore",
+          "wrongDestination",
+          "disabledGrant",
+          "disabledBefore",
+          "disabled",
+        ].map((symbol) => fixedScoped(symbol, `generated ${symbol} local`)),
+        scopedTypeScriptSymbolCandidate(
+          symbols.capabilityValue,
+          capabilitySource,
+          "capability service local",
+        ),
+      ],
+    },
+    {
+      namespace: "defect probe local value",
+      candidates: [
+        ...["grant", "before", "defect", "reuseBefore", "reuse"].map((symbol) =>
+          fixedScoped(symbol, `generated ${symbol} local`),
+        ),
+        scopedTypeScriptSymbolCandidate(
+          symbols.capabilityValue,
+          capabilitySource,
+          "capability service local",
+        ),
+      ],
+    },
+  ] as const;
+  for (const { namespace, candidates } of memberAndLocalScopes) {
+    const collision = checkScope(namespace, candidates);
+    if (collision !== undefined) return yield* collision;
+  }
+
+  return symbols;
+});
+
 const emitEffectSingleUseOperationRealization = (
   machine: StateMachineDeclaration,
   operation: (typeof machine.transitions)[number],
   realization: OperationRealizationDeclaration,
-  operationParameter: string,
-  capability: string,
+  rawCapability: string,
+  symbols: EffectExactOneSymbolMap,
 ): string => {
-  const stateType = machine.state.id;
-  const stateFields = machine.state.fields.map(({ id }) => `  ${id}: Schema.BigInt,`).join("\n");
-  const methodParameters = operation.parameters.map(({ id }) => `${id}: bigint`).join(", ");
-  const parameterNames = operation.parameters.map(({ id }) => id);
+  const stateType = symbols.stateType;
+  const stateFields = `  ${symbols.stateField}: Schema.BigInt,`;
+  const methodParameters = `${symbols.operationParameter}: bigint`;
+  const parameterNames = [symbols.operationParameter];
   const implementationArguments = ["state", ...parameterNames].join(", ");
   const failureFields = [
     `    state: ${stateType},`,
     ...parameterNames.map((id) => `    ${id}: Schema.BigInt,`),
   ].join("\n");
-  const capabilityValue = lowerFirst(capability);
-  const realizationName = realization.id;
-  const realizationValue = lowerFirst(realizationName);
-  const grantType = `${capability}Grant`;
-  const grantStateType = `${grantType}State`;
-  const consumedGrantFailure = `${grantType}AlreadyConsumed`;
-  const wrongDestinationFailure = `${realizationName}WrongDestinationError`;
-  const destinationName = `${realizationValue}Destination`;
+  const operationName = symbols.operation;
+  const capability = symbols.capabilityType;
+  const capabilityValue = symbols.capabilityValue;
+  const realizationName = symbols.realizationType;
+  const grantType = symbols.grantType;
+  const grantStateType = symbols.grantStateType;
+  const consumedGrantFailure = symbols.consumedGrantFailure;
+  const wrongDestinationFailure = symbols.wrongDestinationFailure;
+  const destinationName = symbols.destination;
   const entityId = `${lowerKebab(machine.id)}-1`;
-  const failure = realization.disabled.id;
+  const failure = symbols.failureType;
+  const failureIdentity = realization.disabled.id;
+  const projectMappedStateValue = (value: StateValue): string => {
+    switch (value.kind) {
+      case "integerLiteral":
+        return projectIntegerLiteral(value.value);
+      case "parameter":
+        return symbols.operationParameter;
+      case "stateField":
+        return `state.${symbols.stateField}`;
+    }
+  };
+  const projectMappedStatePredicate = (predicate: StatePredicate): string =>
+    `${projectMappedStateValue(predicate.left)} >= ${projectMappedStateValue(predicate.right)}`;
   const enabled = [
-    ...machine.invariants.map((invariant) => projectStatePredicate(invariant.proposition, "state")),
-    ...operation.requires.map((requirement) => projectStatePredicate(requirement, "state")),
+    ...machine.invariants.map((invariant) => projectMappedStatePredicate(invariant.proposition)),
+    ...operation.requires.map(projectMappedStatePredicate),
   ]
     .filter((part) => part.length > 0)
     .join(" && ");
@@ -1426,7 +2041,7 @@ const emitEffectSingleUseOperationRealization = (
     .join(",\n  ");
   const observationCallArguments = ["grant", "destination", "state", ...parameterNames].join(", ");
   const domainObservationFields = [
-    `  failure: Schema.Literal("${failure}"),`,
+    `  failure: Schema.Literal("${failureIdentity}"),`,
     `  state: ${stateType},`,
     ...parameterNames.map((id) => `  ${id}: Schema.BigInt,`),
     "  remainingUses: Schema.Int,",
@@ -1447,7 +2062,7 @@ const emitEffectSingleUseOperationRealization = (
 
   return [
     "// Generated by BANG M018. Do not edit.",
-    `// Checked Core: ${machine.id}.${operation.id}, ${realization.id}, ${capability}, ${failure}.`,
+    `// Checked Core: ${machine.id}.${operation.id}, ${realization.id}, ${rawCapability}, ${failureIdentity}.`,
     "// This module is a deterministic target projection, not a Core authority.",
     'import { Cause, Context, Effect, Layer, Option, Ref, Schema } from "effect";',
     "",
@@ -1458,11 +2073,11 @@ const emitEffectSingleUseOperationRealization = (
     "",
     `export const ${destinationName} = "${entityId}" as const;`,
     "",
-    `export const is${upperFirst(operation.id)}Enabled = (state: ${stateType}, ${methodParameters}): boolean =>`,
+    `export const ${symbols.isOperationEnabled} = (state: ${stateType}, ${methodParameters}): boolean =>`,
     `  ${enabled.length === 0 ? "true" : enabled};`,
     "",
     `export class ${failure} extends Schema.TaggedError<${failure}>()(`,
-    `  "${failure}",`,
+    `  "${failureIdentity}",`,
     "  {",
     failureFields,
     "  },",
@@ -1536,7 +2151,7 @@ const emitEffectSingleUseOperationRealization = (
     "}",
     "",
     `export class ${capability} extends Context.Service<${capability}, ${capability}Shape>()(`,
-    `  "@bang/capability/${capability}",`,
+    `  "@bang/capability/${rawCapability}",`,
     ") {}",
     "",
     `export const make${capability}Layer = (grantPrefix = "grant"): Layer.Layer<${capability}> =>`,
@@ -1552,7 +2167,7 @@ const emitEffectSingleUseOperationRealization = (
     `export const ${lowerFirst(capability)}Layer = make${capability}Layer();`,
     "",
     `export interface ${realizationName}Shape {`,
-    `  readonly ${operation.id}: (`,
+    `  readonly ${operationName}: (`,
     `    grant: ${grantType},`,
     "    destination: string,",
     `    state: ${stateType},`,
@@ -1564,11 +2179,11 @@ const emitEffectSingleUseOperationRealization = (
     `export type ${realizationName}Requirements = ${capability};`,
     "",
     `export class ${realizationName} extends Context.Service<${realizationName}, ${realizationName}Shape>()(`,
-    `  "@bang/realization/${realizationName}",`,
+    `  "@bang/realization/${realization.id}",`,
     ") {}",
     "",
     `export interface ${realizationName}Implementation {`,
-    `  readonly ${operation.id}: (state: ${stateType}${methodParameters.length === 0 ? "" : `, ${methodParameters}`}) => Effect.Effect<${stateType}, ${failure}>;`,
+    `  readonly ${operationName}: (state: ${stateType}${methodParameters.length === 0 ? "" : `, ${methodParameters}`}) => Effect.Effect<${stateType}, ${failure}>;`,
     "}",
     "",
     `export const make${realizationName}Layer = (`,
@@ -1578,14 +2193,14 @@ const emitEffectSingleUseOperationRealization = (
     `    ${realizationName},`,
     "    Effect.gen(function* () {",
     "      const implementationCalls = yield* Ref.make(0);",
-    `      const runImplementation = Effect.fn("${realizationName}.implementation")(function* (`,
+    `      const runImplementation = Effect.fn("${realization.id}.implementation")(function* (`,
     `        ${["state: " + stateType, ...parameterNames.map((id) => `${id}: bigint`)].join(", ")}`,
     `      ): Effect.fn.Return<${stateType}, ${failure}> {`,
     "        yield* Ref.update(implementationCalls, (current) => current + 1);",
-    `        return yield* implementation.${operation.id}(${implementationArguments});`,
+    `        return yield* implementation.${operationName}(${implementationArguments});`,
     "      });",
     `      return ${realizationName}.of({`,
-    `        ${operation.id}: Effect.fn("${realizationName}.${operation.id}")(function* (`,
+    `        ${operationName}: Effect.fn("${realization.id}.${operation.id}")(function* (`,
     `          grant: ${grantType},`,
     "          destination: string,",
     `          state: ${stateType},`,
@@ -1600,7 +2215,7 @@ const emitEffectSingleUseOperationRealization = (
     "              grantId: grant.grantId,",
     "            });",
     "          }",
-    `          if (!is${upperFirst(operation.id)}Enabled(state${parameterNames.length === 0 ? "" : `, ${parameterNames.join(", ")}`})) {`,
+    `          if (!${symbols.isOperationEnabled}(state${parameterNames.length === 0 ? "" : `, ${parameterNames.join(", ")}`})) {`,
     `            return yield* new ${failure}({`,
     "              state,",
     ...parameterNames.map((id) => `              ${id},`),
@@ -1626,7 +2241,7 @@ const emitEffectSingleUseOperationRealization = (
     `export const ${realizationName}CapabilityUseRejected = Schema.TaggedStruct("CapabilityUseRejected", {`,
     `  failure: Schema.Literal("${consumedGrantFailure}"),`,
     `  state: ${stateType},`,
-    `  ${operationParameter}: Schema.BigInt,`,
+    `  ${symbols.operationParameter}: Schema.BigInt,`,
     commonObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
     `export const ${realizationName}WrongDestination = Schema.TaggedStruct("WrongDestination", {`,
@@ -1635,7 +2250,7 @@ const emitEffectSingleUseOperationRealization = (
     `export const ${realizationName}Defect = Schema.TaggedStruct("Defect", {`,
     "  failure: Schema.String,",
     `  state: ${stateType},`,
-    `  ${operationParameter}: Schema.BigInt,`,
+    `  ${symbols.operationParameter}: Schema.BigInt,`,
     "  defect: Schema.String,",
     commonObservationFields,
     '}).annotate({ parseOptions: { onExcessProperty: "error" } });',
@@ -1654,7 +2269,7 @@ const emitEffectSingleUseOperationRealization = (
     `  ${observationParameters}`,
     `): Effect.fn.Return<${realizationName}Observation, never, ${realizationName} | ${capability}> {`,
     `  const service = yield* ${realizationName};`,
-    `  const exit = yield* Effect.exit(service.${operation.id}(${observationCallArguments}));`,
+    `  const exit = yield* Effect.exit(service.${operationName}(${observationCallArguments}));`,
     `  const remainingUses = yield* ${capabilityValue}GrantRemainingUses(grant);`,
     "  const implementationCalls = yield* service.implementationCalls;",
     '  if (exit._tag === "Success") {',
@@ -1682,7 +2297,7 @@ const emitEffectSingleUseOperationRealization = (
     `    if (error.value instanceof ${failure}) {`,
     "      return {",
     '        _tag: "DomainRejected",',
-    `        failure: "${failure}",`,
+    `        failure: "${failureIdentity}",`,
     "        state: error.value.state,",
     ...parameterNames.map((id) => `        ${id}: error.value.${id},`),
     "        remainingUses,",
@@ -1694,7 +2309,7 @@ const emitEffectSingleUseOperationRealization = (
     '        _tag: "CapabilityUseRejected",',
     `        failure: "${consumedGrantFailure}",`,
     "        state,",
-    `        ${operationParameter}: ${operationParameter},`,
+    `        ${symbols.operationParameter}: ${symbols.operationParameter},`,
     "        remainingUses,",
     "        implementationCalls,",
     "      };",
@@ -1725,12 +2340,25 @@ const emitEffectSingleUseOperationRealization = (
   ].join("\n");
 };
 
-export const projectEffectSingleUseOperationRealization = Effect.fn(
-  "projectEffectSingleUseOperationRealization",
+interface EffectExactOneProjectionSubject {
+  readonly machine: StateMachineDeclaration;
+  readonly operation: StateMachineDeclaration["transitions"][number];
+  readonly realization: OperationRealizationDeclaration;
+  readonly capability: string;
+  readonly symbols: EffectExactOneSymbolMap;
+}
+
+export interface EffectSingleUseOperationRealizationMaterials {
+  readonly boundary: string;
+  readonly probe: string;
+}
+
+const resolveEffectSingleUseOperationRealization = Effect.fn(
+  "resolveEffectSingleUseOperationRealization",
 )(function* (
   document: CheckedCoreDocument,
   realizationId: string,
-): Effect.fn.Return<string, TargetProjectionError> {
+): Effect.fn.Return<EffectExactOneProjectionSubject, TargetProjectionError> {
   const realization = document.declarations.find(
     (declaration): declaration is OperationRealizationDeclaration =>
       declaration.kind === "operationRealization" && declaration.id === realizationId,
@@ -1940,18 +2568,231 @@ export const projectEffectSingleUseOperationRealization = Effect.fn(
     );
   }
 
+  const symbols = yield* makeEffectExactOneSymbolMap(
+    machine,
+    stateField,
+    initializer,
+    initializerParameter,
+    operation,
+    operationParameter,
+    invariant,
+    realization,
+    capability.id,
+  );
+  return {
+    machine,
+    operation,
+    realization,
+    capability: capability.id,
+    symbols,
+  };
+});
+
+const emitEffectSingleUseProbe = (subject: EffectExactOneProjectionSubject): string => {
+  const { machine, realization, symbols } = subject;
+  const entityId = JSON.stringify(`${lowerKebab(machine.id)}-1`);
+  const wrongEntityId = JSON.stringify(`${lowerKebab(machine.id)}-2`);
+  return `
+import { Effect, Layer } from "effect";
+import {
+  ${symbols.capabilityType},
+  ${symbols.grantRemainingUses},
+  ${symbols.makeCapabilityLayer},
+  ${symbols.makeRealizationLayer},
+  ${symbols.observeRealization},
+} from "./boundary.ts";
+
+const healthyBoundary = Layer.mergeAll(
+  ${symbols.makeCapabilityLayer}("m031"),
+  ${symbols.makeRealizationLayer}({
+    ${symbols.operation}: (state, ${symbols.operationParameter}) =>
+      Effect.succeed({ ${symbols.stateField}: state.${symbols.stateField} - ${symbols.operationParameter} }),
+  }),
+);
+
+const healthyJourney = Effect.gen(function* () {
+  const ${symbols.capabilityValue} = yield* ${symbols.capabilityType};
+  const validGrant = yield* ${symbols.capabilityValue}.issueGrant;
+  const validBefore = yield* ${symbols.grantRemainingUses}(validGrant);
+  const valid = yield* ${symbols.observeRealization}(
+    validGrant,
+    ${entityId},
+    { ${symbols.stateField}: 10n },
+    4n,
+  );
+  const reuseBefore = yield* ${symbols.grantRemainingUses}(validGrant);
+  const reuse = yield* ${symbols.observeRealization}(
+    validGrant,
+    ${entityId},
+    valid.state,
+    1n,
+  );
+
+  const competingGrant = yield* ${symbols.capabilityValue}.issueGrant;
+  const competingBefore = yield* ${symbols.grantRemainingUses}(competingGrant);
+  const competing = yield* Effect.forEach(
+    [0, 1] as const,
+    () =>
+      ${symbols.observeRealization}(
+        competingGrant,
+        ${entityId},
+        { ${symbols.stateField}: 6n },
+        2n,
+      ),
+    { concurrency: 2 },
+  );
+
+  const wrongGrant = yield* ${symbols.capabilityValue}.issueGrant;
+  const wrongBefore = yield* ${symbols.grantRemainingUses}(wrongGrant);
+  const wrongDestination = yield* ${symbols.observeRealization}(
+    wrongGrant,
+    ${wrongEntityId},
+    { ${symbols.stateField}: 6n },
+    2n,
+  );
+  const disabledGrant = yield* ${symbols.capabilityValue}.issueGrant;
+  const disabledBefore = yield* ${symbols.grantRemainingUses}(disabledGrant);
+  const disabled = yield* ${symbols.observeRealization}(
+    disabledGrant,
+    ${entityId},
+    { ${symbols.stateField}: 6n },
+    20n,
+  );
+  return {
+    validBefore,
+    valid,
+    reuseBefore,
+    reuse,
+    competingBefore,
+    competing,
+    wrongBefore,
+    wrongDestination,
+    disabledBefore,
+    disabled,
+  };
+});
+
+const defectBoundary = Layer.mergeAll(
+  ${symbols.makeCapabilityLayer}("m031-defect"),
+  ${symbols.makeRealizationLayer}({
+    ${symbols.operation}: () => Effect.die("controlled M031 implementation defect"),
+  }),
+);
+const defectJourney = Effect.gen(function* () {
+  const ${symbols.capabilityValue} = yield* ${symbols.capabilityType};
+  const grant = yield* ${symbols.capabilityValue}.issueGrant;
+  const before = yield* ${symbols.grantRemainingUses}(grant);
+  const defect = yield* ${symbols.observeRealization}(
+    grant,
+    ${entityId},
+    { ${symbols.stateField}: 10n },
+    4n,
+  );
+  const reuseBefore = yield* ${symbols.grantRemainingUses}(grant);
+  const reuse = yield* ${symbols.observeRealization}(
+    grant,
+    ${entityId},
+    { ${symbols.stateField}: 10n },
+    1n,
+  );
+  return { before, defect, reuseBefore, reuse };
+});
+
+const healthy = await Effect.runPromise(healthyJourney.pipe(Effect.provide(healthyBoundary)));
+const defect = await Effect.runPromise(defectJourney.pipe(Effect.provide(defectBoundary)));
+const state = (observation) => observation.state.${symbols.stateField}.toString();
+const remaining = (observation) => observation.remainingUses;
+const competingSuccesses = healthy.competing.filter(({ _tag }) => _tag === "Success").length;
+const competingRejections = healthy.competing.filter(
+  ({ _tag }) => _tag === "CapabilityUseRejected",
+).length;
+console.log(
+  JSON.stringify({
+    target: "effect-typescript",
+    realization: ${JSON.stringify(realization.id)},
+    entity: ${entityId},
+    validCall: healthy.valid._tag === "Success",
+    reuse: healthy.reuse._tag === "CapabilityUseRejected",
+    competing: competingSuccesses === 1 && competingRejections === 1,
+    competingSuccesses,
+    competingRejections,
+    wrongDestination: healthy.wrongDestination._tag === "WrongDestination",
+    disabled: healthy.disabled._tag === "DomainRejected",
+    defect:
+      defect.defect._tag === "Defect" && defect.reuse._tag === "CapabilityUseRejected",
+    stateTrace: {
+      valid: "10>" + state(healthy.valid),
+      reuse: state(healthy.valid) + ">" + state(healthy.reuse),
+      competing: state(healthy.competing[0]) + ">" + state(healthy.competing[0]),
+      wrongDestination:
+        state(healthy.wrongDestination) + ">" + state(healthy.wrongDestination),
+      disabled: state(healthy.disabled) + ">" + state(healthy.disabled),
+      defect: "10>" + state(defect.defect),
+      stale: "10>" + state(defect.reuse),
+      replacement: "10>10",
+    },
+    remainingTrace: {
+      valid: healthy.validBefore + ">" + remaining(healthy.valid),
+      reuse: healthy.reuseBefore + ">" + remaining(healthy.reuse),
+      competing: healthy.competingBefore + ">0",
+      wrongDestination:
+        healthy.wrongBefore + ">" + remaining(healthy.wrongDestination),
+      disabled: healthy.disabledBefore + ">" + remaining(healthy.disabled),
+      defect: defect.before + ">" + remaining(defect.defect),
+      stale: defect.reuseBefore + ">" + remaining(defect.reuse),
+      replacement: "1>1",
+    },
+  }),
+);
+`;
+};
+
+export const projectEffectSingleUseOperationRealizationMaterials = Effect.fn(
+  "projectEffectSingleUseOperationRealizationMaterials",
+)(function* (
+  document: CheckedCoreDocument,
+  realizationId: string,
+): Effect.fn.Return<EffectSingleUseOperationRealizationMaterials, TargetProjectionError> {
+  const subject = yield* resolveEffectSingleUseOperationRealization(document, realizationId);
+  try {
+    return {
+      boundary: emitEffectSingleUseOperationRealization(
+        subject.machine,
+        subject.operation,
+        subject.realization,
+        subject.capability,
+        subject.symbols,
+      ),
+      probe: emitEffectSingleUseProbe(subject),
+    };
+  } catch (error) {
+    return yield* targetProjectionFailure(
+      "unsupported-target",
+      `operationRealization:${subject.realization.id}`,
+      thrownMessage(error),
+    );
+  }
+});
+
+export const projectEffectSingleUseOperationRealization = Effect.fn(
+  "projectEffectSingleUseOperationRealization",
+)(function* (
+  document: CheckedCoreDocument,
+  realizationId: string,
+): Effect.fn.Return<string, TargetProjectionError> {
+  const subject = yield* resolveEffectSingleUseOperationRealization(document, realizationId);
   try {
     return emitEffectSingleUseOperationRealization(
-      machine,
-      operation,
-      realization,
-      operationParameter.id,
-      requirement.capability,
+      subject.machine,
+      subject.operation,
+      subject.realization,
+      subject.capability,
+      subject.symbols,
     );
   } catch (error) {
     return yield* targetProjectionFailure(
       "unsupported-target",
-      `operationRealization:${realization.id}`,
+      `operationRealization:${subject.realization.id}`,
       thrownMessage(error),
     );
   }

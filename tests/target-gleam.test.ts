@@ -237,4 +237,71 @@ describe("M031 Gleam exact-one actor projection", () => {
     );
     expect(unbounded.ok).toBe(true);
   });
+
+  test("rejects selected exact-one names that are reserved or collide by namespace", async () => {
+    const operationCollision = structuredClone(await checkedDocument());
+    const operationMachine = operationCollision.declarations.find(
+      (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+    );
+    const operationRealization = operationCollision.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      operationMachine === undefined ||
+      operationMachine.kind !== "stateMachine" ||
+      operationRealization === undefined ||
+      operationRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("exact-one fixtures are missing");
+    }
+    Reflect.set(operationMachine.transitions[0]!, "id", "stop");
+    Reflect.set(operationRealization, "operation", {
+      stateMachine: "Account",
+      operation: "stop",
+    });
+    expectFailure(
+      projectGleamExactOneOperationRealization(operationCollision, "WithdrawAccountOnce"),
+      "identifier-collision",
+    );
+
+    const reservedMachine = structuredClone(await checkedDocument());
+    const machine = reservedMachine.declarations.find(
+      (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+    );
+    const machineRealization = reservedMachine.declarations.find(
+      (declaration) =>
+        declaration.kind === "operationRealization" && declaration.id === "WithdrawAccountOnce",
+    );
+    if (
+      machine === undefined ||
+      machine.kind !== "stateMachine" ||
+      machineRealization === undefined ||
+      machineRealization.kind !== "operationRealization"
+    ) {
+      throw new Error("exact-one fixtures are missing");
+    }
+    Reflect.set(machine, "id", "Type");
+    Reflect.set(machineRealization, "operation", {
+      stateMachine: "Type",
+      operation: "withdraw",
+    });
+    expectFailure(
+      projectGleamExactOneOperationRealization(reservedMachine, "WithdrawAccountOnce"),
+      "invalid-identifier",
+    );
+
+    const duplicateTypes = structuredClone(await checkedDocument());
+    const duplicateMachine = duplicateTypes.declarations.find(
+      (declaration) => declaration.kind === "stateMachine" && declaration.id === "Account",
+    );
+    if (duplicateMachine === undefined || duplicateMachine.kind !== "stateMachine") {
+      throw new Error("Account fixture is missing");
+    }
+    Reflect.set(duplicateMachine.state, "id", "Account");
+    expectFailure(
+      projectGleamExactOneOperationRealization(duplicateTypes, "WithdrawAccountOnce"),
+      "identifier-collision",
+    );
+  });
 });

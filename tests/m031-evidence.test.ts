@@ -101,6 +101,18 @@ const makeEvidence = (targetId: "effect-typescript" | "gleam-beam"): M031Evidenc
     invalidators: ["checked Core or target material changes"],
   });
 
+const replaceMaterial = (
+  materials: M031Evidence["materials"],
+  role: string,
+  replace: (material: M031Evidence["materials"][number]) => M031Evidence["materials"][number],
+): M031Evidence["materials"] => {
+  const [first, ...rest] = materials;
+  return [
+    first.role === role ? replace(first) : first,
+    ...rest.map((material) => (material.role === role ? replace(material) : material)),
+  ];
+};
+
 describe("M031 target qualification evidence boundary", () => {
   test("checks valid Effect and Gleam records independently", async () => {
     const effect = await Effect.runPromise(
@@ -126,6 +138,47 @@ describe("M031 target qualification evidence boundary", () => {
     );
     expect(error).toBeInstanceOf(M031TargetQualificationEvidenceError);
     expect(error.reason).toBe("target-mismatch");
+  });
+
+  test("requires target-owned roles and permits only identical shared core material", async () => {
+    const effect = makeEvidence("effect-typescript");
+    const wrongTargetRole = M031TargetQualificationEvidence.make({
+      ...effect,
+      materials: replaceMaterial(effect.materials, "generated-effect-boundary", (material) =>
+        Object.assign({}, material, { role: "generated-gleam-boundary" }),
+      ),
+    });
+    const roleError = await Effect.runPromise(
+      Effect.flip(checkM031TargetQualificationEvidence(wrongTargetRole)),
+    );
+    expect(roleError.reason).toBe("target-mismatch");
+
+    const gleam = makeEvidence("gleam-beam");
+    const effectBoundaryPath = effect.materials.find(
+      ({ role }) => role === "generated-effect-boundary",
+    )?.path;
+    if (effectBoundaryPath === undefined) throw new Error("Effect boundary material is missing");
+    const sharedTargetMaterial = M031TargetQualificationEvidence.make({
+      ...gleam,
+      materials: replaceMaterial(gleam.materials, "generated-gleam-boundary", (material) =>
+        Object.assign({}, material, { path: effectBoundaryPath }),
+      ),
+    });
+    const sharedTargetError = await Effect.runPromise(
+      Effect.flip(checkM031TargetQualificationEvidenceSet([effect, sharedTargetMaterial])),
+    );
+    expect(sharedTargetError.reason).toBe("shared-evidence");
+
+    const mismatchedSharedDigest = M031TargetQualificationEvidence.make({
+      ...gleam,
+      materials: replaceMaterial(gleam.materials, "core-source", (material) =>
+        Object.assign({}, material, { sha256: "b".repeat(64) }),
+      ),
+    });
+    const sharedDigestError = await Effect.runPromise(
+      Effect.flip(checkM031TargetQualificationEvidenceSet([effect, mismatchedSharedDigest])),
+    );
+    expect(sharedDigestError.reason).toBe("shared-evidence");
   });
 
   test("rejects contradictory competing and restart observations", async () => {

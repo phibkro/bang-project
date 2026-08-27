@@ -4,7 +4,7 @@ import {
 } from "@bang/evidence";
 import { encodeCanonicalJson } from "@bang/core";
 import { PlanningReportSchema } from "@bang/planning";
-import { gleamExactOneAssemblyMaterials } from "@bang/target-gleam";
+import { makeGleamExactOneAssemblyMaterials } from "@bang/target-gleam";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { Crypto, Effect, Encoding, FileSystem, Path, Schema, Stream, type Scope } from "effect";
 
@@ -408,6 +408,7 @@ export const selectedGleamEvidence = (
     readonly evidence: (typeof staged.qualification.evidence)[number];
     readonly evidencePath: string;
     readonly generatedPath: string;
+    readonly generatedBoundaryPath: string;
     readonly generatedBytes: Uint8Array;
     readonly generatedSha256: string;
     readonly evidenceSha256: string;
@@ -453,6 +454,16 @@ export const selectedGleamEvidence = (
         "checked M031 Gleam evidence has no generated boundary material",
       );
     }
+    const generatedPathPrefix = `.bang/qualifications/${staged.qualification.selection.id}/gleam-beam/`;
+    if (!generated.path.startsWith(generatedPathPrefix)) {
+      return yield* fail(
+        "material",
+        generated.path,
+        "material-mismatch",
+        "checked M031 generated boundary is outside the selected Gleam staging directory",
+      );
+    }
+    const generatedBoundaryPath = generated.path.slice(generatedPathPrefix.length);
     const generatedEntry = staged.publicationEntries.find(({ path }) => path === generated.path);
     if (generatedEntry === undefined) {
       return yield* fail(
@@ -494,6 +505,7 @@ export const selectedGleamEvidence = (
       evidence,
       evidencePath,
       generatedPath: generated.path,
+      generatedBoundaryPath,
       generatedBytes: generatedEntry.bytes,
       generatedSha256,
       evidenceSha256,
@@ -733,7 +745,16 @@ export const compileSelectedAssembly = (
           ),
         );
 
-      const materials = gleamExactOneAssemblyMaterials;
+      const materials = yield* Effect.try({
+        try: () => makeGleamExactOneAssemblyMaterials(evidenceMaterial.generatedBoundaryPath),
+        catch: (error) =>
+          failure(
+            "material",
+            evidenceMaterial.generatedPath,
+            "material-mismatch",
+            errorMessage(error),
+          ),
+      });
       yield* writeString(
         fileSystem,
         path.join(projectRoot, materials.paths.config),

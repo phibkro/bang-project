@@ -5130,29 +5130,28 @@ const m031CheckMaterialUniqueness = (
   return undefined;
 };
 
-const m031CheckTargetMaterialPaths = (
+const m031TargetMaterialRoles = {
+  "effect-typescript": ["core-source", "generated-effect-boundary"],
+  "gleam-beam": ["core-source", "generated-gleam-boundary"],
+} as const;
+
+const m031CheckTargetMaterials = (
   manifest: M031TargetQualificationEvidence,
 ): M031TargetQualificationEvidenceError | undefined => {
-  for (const material of manifest.materials) {
-    const path = material.path.toLowerCase();
-    if (
-      manifest.targetId === "effect-typescript" &&
-      (path.includes("gleam") || path.includes("gleam-beam"))
-    ) {
+  const expectedRoles = m031TargetMaterialRoles[manifest.targetId];
+  if (manifest.materials.length !== expectedRoles.length) {
+    return m031EvidenceError(
+      "target-mismatch",
+      "materials",
+      `${manifest.targetId} M031 evidence must contain exactly ${expectedRoles.join(" and ")}`,
+    );
+  }
+  for (const expectedRole of expectedRoles) {
+    if (!manifest.materials.some(({ role }) => role === expectedRole)) {
       return m031EvidenceError(
         "target-mismatch",
-        material.path,
-        "Effect M031 evidence cannot use a Gleam target material",
-      );
-    }
-    if (
-      manifest.targetId === "gleam-beam" &&
-      (path.includes("target-effect") || path.includes("effect-typescript"))
-    ) {
-      return m031EvidenceError(
-        "target-mismatch",
-        material.path,
-        "Gleam M031 evidence cannot use an Effect target material",
+        "materials",
+        `${manifest.targetId} M031 evidence is missing required material role ${expectedRole}`,
       );
     }
   }
@@ -5545,7 +5544,7 @@ const decodeM031TargetQualificationEvidenceValue = (
     Effect.flatMap((manifest) => {
       const materialError = m031CheckMaterialUniqueness(manifest);
       if (materialError !== undefined) return Effect.fail(materialError);
-      const targetMaterialError = m031CheckTargetMaterialPaths(manifest);
+      const targetMaterialError = m031CheckTargetMaterials(manifest);
       if (targetMaterialError !== undefined) return Effect.fail(targetMaterialError);
       const observationError = m031CheckObservations(manifest);
       if (observationError !== undefined) return Effect.fail(observationError);
@@ -5679,19 +5678,21 @@ export const checkM031TargetQualificationEvidenceSet = Effect.fn(
       "M031 target evidence records must share the checked selection, artifact, package, and requirement identity",
     );
   }
-  const gleamPaths = new Set(gleam.materials.map(({ path }) => path));
-  for (const material of effect.materials) {
-    if (!gleamPaths.has(material.path)) continue;
-    const sharedRole = material.role.toLowerCase();
+  const gleamMaterialsByPath = new Map(
+    gleam.materials.map((material) => [material.path, material]),
+  );
+  for (const effectMaterial of effect.materials) {
+    const gleamMaterial = gleamMaterialsByPath.get(effectMaterial.path);
+    if (gleamMaterial === undefined) continue;
     if (
-      !sharedRole.includes("core") &&
-      !sharedRole.includes("package") &&
-      !sharedRole.includes("theory")
+      effectMaterial.role !== "core-source" ||
+      gleamMaterial.role !== "core-source" ||
+      effectMaterial.sha256 !== gleamMaterial.sha256
     ) {
       return yield* m031EvidenceError(
         "shared-evidence",
-        material.path,
-        "M031 target evidence must not share target-specific material paths",
+        effectMaterial.path,
+        "M031 targets may share only identical core-source material",
       );
     }
   }
