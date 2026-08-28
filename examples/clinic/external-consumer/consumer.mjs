@@ -7,4 +7,4 @@ const verdict = await verifyBangConsumption({
   materialsDirectory: "inputs/materials",
 });
 process.stdout.write(JSON.stringify(verdict));
-if (verdict.verdict !== "valid") process.exit(1);
+if (verdict.verdict !== "valid") process.exitCode = 1;

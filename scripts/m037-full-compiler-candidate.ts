@@ -46,6 +46,8 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 const CANDIDATE_ID = "clinic-full-compiler-candidate" as const;
+const CANDIDATE_SELECTION = "examples/clinic/full-candidate.json" as const;
+
 const CANDIDATE_COMMAND =
   "bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json" as const;
 const REPORT_PATH = ".bang/evidence/M037.json" as const;
@@ -214,55 +216,6 @@ export const M037FullCompilerCandidateSelectionFromJson = Schema.fromJsonString(
 export type M037FullCompilerCandidateSelection =
   typeof M037FullCompilerCandidateSelectionSchema.Type;
 
-export const M037FailureStageSchema = Schema.Literals([
-  "selection",
-  "preflight",
-  "checkout",
-  "setup",
-  "explain",
-  "classify",
-  "plan",
-  "assemble",
-  "artifact",
-  "audit",
-  "schema-publication",
-  "external-consumer",
-  "comparison",
-  "accumulation",
-  "publication",
-  "decode",
-]);
-export const M037FailureReasonSchema = Schema.Literals([
-  "invalid-selection",
-  "unsafe-path",
-  "reference-disagreement",
-  "unsupported-platform",
-  "bun-version-unsupported",
-  "git-worktree-unavailable",
-  "bash-unavailable",
-  "just-version-unsupported",
-  "nix-unavailable",
-  "dirty-worktree",
-  "revision-unavailable",
-  "cleanup-failed",
-  "process-failed",
-  "producer-failed",
-  "material-missing",
-  "execution-failed",
-  "observation-mismatch",
-  "runtime-boundary-violated",
-  "platform-failed",
-  "custody-mismatch",
-  "consumer-rejected",
-  "isolation-violated",
-  "producer-inventory-diverged",
-  "observation-diverged",
-  "report-invalid",
-  "source-reference-invalid",
-  "unsupported-claim-upgraded",
-  "publication-failed",
-  "rollback-failed",
-]);
 const M037SystemErrorTagSchema = Schema.Literals([
   "AlreadyExists",
   "BadResource",
@@ -293,24 +246,29 @@ const M037PlatformReasonSchema = Schema.Union([
   M037BadArgumentReasonSchema,
   M037SystemReasonSchema,
 ]);
-const ExplanationCauseSchema = Schema.Struct({
-  _tag: Schema.Literals(["ExplanationFailure", "ClassificationFailure"]),
-  stage: Schema.String,
-  path: Schema.String,
-  message: Schema.String,
-  reason: Schema.optional(Schema.String),
-  address: Schema.optional(Schema.String),
-}).annotate({ parseOptions });
-const ProducerCauseSchema = Schema.Struct({
-  _tag: Schema.Literals(["PlanFailure", "AssemblyFailure", "AuditFailure"]),
+const namedCauseSchema = <const Tag extends string>(tag: Tag, reasonOptional: boolean) =>
+  Schema.Struct({
+    _tag: Schema.Literal(tag),
+    stage: Schema.String,
+    path: Schema.String,
+    message: Schema.String,
+    ...(reasonOptional ? { reason: Schema.optional(Schema.String) } : { reason: Schema.String }),
+    address: Schema.optional(Schema.String),
+  }).annotate({ parseOptions });
+const ExplanationCauseSchema = namedCauseSchema("ExplanationFailure", true);
+const ClassificationCauseSchema = namedCauseSchema("ClassificationFailure", true);
+const PlanCauseSchema = namedCauseSchema("PlanFailure", false);
+const AssemblyCauseSchema = namedCauseSchema("AssemblyFailure", false);
+const AuditCauseSchema = namedCauseSchema("AuditFailure", false);
+const PublicationCauseSchema = Schema.Struct({
+  _tag: Schema.Literal("PublicationFailure"),
   stage: Schema.String,
   path: Schema.String,
   reason: Schema.String,
   message: Schema.String,
-  address: Schema.optional(Schema.String),
 }).annotate({ parseOptions });
-const PublicationCauseSchema = Schema.Struct({
-  _tag: Schema.Literals(["BangSchemaPublicationFailure", "PublicationFailure"]),
+const SchemaPublicationCauseSchema = Schema.Struct({
+  _tag: Schema.Literal("BangSchemaPublicationFailure"),
   stage: Schema.String,
   path: Schema.String,
   reason: Schema.String,
@@ -331,20 +289,108 @@ const ConsumerCauseSchema = Schema.TaggedStruct("M035RejectedVerdict", {
 }).annotate({ parseOptions });
 const M037ProducerCauseSchema = Schema.Union([
   ExplanationCauseSchema,
-  ProducerCauseSchema,
+  ClassificationCauseSchema,
+  PlanCauseSchema,
+  AssemblyCauseSchema,
+  AuditCauseSchema,
   PublicationCauseSchema,
+  SchemaPublicationCauseSchema,
   PlatformCauseSchema,
   ConsumerCauseSchema,
 ]);
-export const M037CandidateFailureSchema = Schema.Struct({
+const M037FailureCommonFields = {
   bangFullCompilerCandidateFailure: Schema.Literal(1),
-  stage: M037FailureStageSchema,
-  reason: M037FailureReasonSchema,
   path: Schema.optional(Schema.String),
   command: Schema.optional(Schema.String),
   cause: Schema.optional(M037ProducerCauseSchema),
   message: Schema.String,
-}).annotate({ parseOptions });
+} as const;
+
+const stageFailureSchema = <
+  const Stage extends string,
+  const Reasons extends ReadonlyArray<string>,
+>(
+  stage: Stage,
+  reasons: Reasons,
+) =>
+  Schema.Struct({
+    ...M037FailureCommonFields,
+    stage: Schema.Literal(stage),
+    reason: Schema.Literals(reasons),
+  }).annotate({ parseOptions });
+const causedStageFailureSchema = <
+  const Stage extends string,
+  const Reasons extends ReadonlyArray<string>,
+  const Cause extends Schema.Top,
+>(
+  stage: Stage,
+  reasons: Reasons,
+  cause: Cause,
+) =>
+  Schema.Struct({
+    bangFullCompilerCandidateFailure: Schema.Literal(1),
+    stage: Schema.Literal(stage),
+    reason: Schema.Literals(reasons),
+    path: Schema.optional(Schema.String),
+    command: Schema.optional(Schema.String),
+    cause,
+    message: Schema.String,
+  }).annotate({ parseOptions });
+
+export const M037CandidateFailureSchema = Schema.Union([
+  stageFailureSchema("selection", ["invalid-selection", "unsafe-path", "reference-disagreement"]),
+  stageFailureSchema("preflight", [
+    "unsupported-platform",
+    "bun-version-unsupported",
+    "git-worktree-unavailable",
+    "bash-unavailable",
+    "just-version-unsupported",
+    "nix-unavailable",
+  ]),
+  stageFailureSchema("checkout", ["dirty-worktree", "revision-unavailable", "cleanup-failed"]),
+  stageFailureSchema("setup", ["process-failed"]),
+  stageFailureSchema("explain", ["producer-failed"]),
+  stageFailureSchema("classify", ["producer-failed"]),
+  stageFailureSchema("plan", ["producer-failed"]),
+  stageFailureSchema("assemble", ["producer-failed"]),
+  stageFailureSchema("artifact", [
+    "material-missing",
+    "execution-failed",
+    "observation-mismatch",
+    "runtime-boundary-violated",
+  ]),
+  stageFailureSchema("audit", ["producer-failed"]),
+  stageFailureSchema("schema-publication", [
+    "producer-failed",
+    "platform-failed",
+    "custody-mismatch",
+  ]),
+  stageFailureSchema("external-consumer", [
+    "process-failed",
+    "consumer-rejected",
+    "isolation-violated",
+  ]),
+  Schema.Struct({
+    ...M037FailureCommonFields,
+    stage: Schema.Literal("comparison"),
+    reason: Schema.Literal("producer-inventory-diverged"),
+    firstDifferingPath: RepositoryRelativePathSchema,
+    firstSha256: M037Sha256Schema,
+    secondSha256: M037Sha256Schema,
+  }).annotate({ parseOptions }),
+  stageFailureSchema("comparison", ["observation-diverged"]),
+  stageFailureSchema("accumulation", [
+    "report-invalid",
+    "source-reference-invalid",
+    "unsupported-claim-upgraded",
+  ]),
+  causedStageFailureSchema(
+    "publication",
+    ["publication-failed", "rollback-failed"],
+    PublicationCauseSchema,
+  ),
+  stageFailureSchema("decode", ["report-invalid"]),
+]);
 export type M037CandidateFailure = typeof M037CandidateFailureSchema.Type;
 
 export const M037StageSchema = Schema.Literals([
@@ -465,11 +511,25 @@ const InputResolutionValueSchema = Schema.Struct({
   referencesAgree: Schema.Literal(true),
   inputs: Schema.Array(InputEntrySchema),
 }).annotate({ parseOptions });
-const TheoryApplicabilityValueSchema = Schema.Struct({
+const TheoryApplicabilityValueBaseSchema = Schema.Struct({
   result: ExactOneCapabilityExecutionResultSchema,
   entriesMatchAssembly: Schema.Literal(true),
 }).annotate({ parseOptions });
-const ArtifactIsolationValueSchema = Schema.Struct({
+type TheoryApplicabilityValueBase = typeof TheoryApplicabilityValueBaseSchema.Type;
+const TheoryApplicabilityValueSchema = TheoryApplicabilityValueBaseSchema.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (value: TheoryApplicabilityValueBase) =>
+        value.result._tag === "Applicable" &&
+        value.result.artifactId === EXPLANATION_ID &&
+        value.result.theory.id === "ExactOneCapabilityExecution" &&
+        value.result.theory.version === 1 &&
+        value.result.requirementAddress === REQUIREMENT,
+      { expected: "the frozen Clinic exact-one applicability identity" },
+    ),
+  ),
+).annotate({ parseOptions });
+const ArtifactIsolationValueBaseSchema = Schema.Struct({
   target: Schema.Literal("gleam-beam"),
   realization: Schema.Literal("BookAppointmentOnce"),
   entity: Schema.Literal("appointment-book-1"),
@@ -496,6 +556,18 @@ const ArtifactIsolationValueSchema = Schema.Struct({
   workspaceResolvableFromCwdOrPath: Schema.Literal(false),
   gleamResolvableFromPath: Schema.Literal(false),
 }).annotate({ parseOptions });
+type ArtifactIsolationValueBase = typeof ArtifactIsolationValueBaseSchema.Type;
+const ArtifactIsolationValueSchema = ArtifactIsolationValueBaseSchema.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (value: ArtifactIsolationValueBase) =>
+        value.observation.target === value.target &&
+        value.observation.realization === value.realization &&
+        value.observation.entity === value.entity,
+      { expected: "artifact observation identities equal the selected Gleam qualification" },
+    ),
+  ),
+).annotate({ parseOptions });
 const AuditedMaterialSchema = Schema.Struct({
   path: RepositoryRelativePathSchema,
   role: Schema.String,
@@ -756,6 +828,18 @@ const validateReportOrder = (report: M037ReportBase): boolean => {
       encodeCanonicalJson(report.inputs)
   )
     return false;
+  const staleMembers = report.publicationPlan.staleMembers;
+  const sortedUniqueStaleMembers = [...new Set(staleMembers)].toSorted();
+  const outputPaths = new Set(report.outputInventory.map(({ path }) => path));
+  if (
+    !sameStrings(staleMembers, sortedUniqueStaleMembers) ||
+    staleMembers.some(
+      (member) =>
+        !OWNED_DIRECTORIES.some((directory) => member.startsWith(`${directory}/`)) ||
+        outputPaths.has(member),
+    )
+  )
+    return false;
   const audit = report.embeddedRecords.audit.value;
   if (
     audit.assemblyId !== ASSEMBLY_ID ||
@@ -917,26 +1001,84 @@ interface RunResult {
   readonly observationsSha256: `sha256:${string}`;
 }
 
-type FailureStage = typeof M037FailureStageSchema.Type;
-type FailureReason = typeof M037FailureReasonSchema.Type;
 type ProducerCause = typeof M037ProducerCauseSchema.Type;
+type BasicCandidateFailure = Exclude<
+  M037CandidateFailure,
+  { readonly reason: "producer-inventory-diverged" }
+>;
+type BasicFailureStage = BasicCandidateFailure["stage"];
+type BasicFailureForStage<Stage extends BasicFailureStage> = Extract<
+  BasicCandidateFailure,
+  { readonly stage: Stage }
+>;
+type BasicFailureReason<Stage extends BasicFailureStage> = BasicFailureForStage<Stage>["reason"];
+interface CandidateFailureFields {
+  readonly path?: string;
+  readonly command?: string;
+  readonly cause?: ProducerCause;
+}
+type FailureBuilder = (message: string, fields?: CandidateFailureFields) => M037CandidateFailure;
 
-const candidateFailure = (
-  stage: FailureStage,
-  reason: FailureReason,
+const failureForStage =
+  <const Stage extends BasicFailureStage>(stage: Stage) =>
+  (
+    reason: BasicFailureReason<Stage>,
+    message: string,
+    fields: CandidateFailureFields = {},
+  ): M037CandidateFailure =>
+    ({
+      bangFullCompilerCandidateFailure: 1,
+      stage,
+      reason,
+      ...(fields.path === undefined ? {} : { path: fields.path }),
+      ...(fields.command === undefined ? {} : { command: fields.command }),
+      ...(fields.cause === undefined ? {} : { cause: fields.cause }),
+      message,
+    }) as M037CandidateFailure;
+
+const candidateFailures = {
+  selection: failureForStage("selection"),
+  preflight: failureForStage("preflight"),
+  checkout: failureForStage("checkout"),
+  setup: failureForStage("setup"),
+  explain: failureForStage("explain"),
+  classify: failureForStage("classify"),
+  plan: failureForStage("plan"),
+  assemble: failureForStage("assemble"),
+  artifact: failureForStage("artifact"),
+  audit: failureForStage("audit"),
+  schemaPublication: failureForStage("schema-publication"),
+  externalConsumer: failureForStage("external-consumer"),
+  comparison: failureForStage("comparison"),
+  accumulation: failureForStage("accumulation"),
+  publication: failureForStage("publication"),
+  decode: failureForStage("decode"),
+} as const;
+const digestFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.accumulation("report-invalid", message, fields);
+const selectionInvalidFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.selection("invalid-selection", message, fields);
+const selectionReferenceFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.selection("reference-disagreement", message, fields);
+const selectionUnsafeFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.selection("unsafe-path", message, fields);
+const decodeReportFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.decode("report-invalid", message, fields);
+const checkoutRevisionFailure: FailureBuilder = (message, fields) =>
+  candidateFailures.checkout("revision-unavailable", message, fields);
+
+const producerInventoryDivergedFailure = (
   message: string,
-  fields: {
-    readonly path?: string;
-    readonly command?: string;
-    readonly cause?: ProducerCause;
-  } = {},
+  firstDifferingPath: string,
+  firstSha256: `sha256:${string}`,
+  secondSha256: `sha256:${string}`,
 ): M037CandidateFailure => ({
   bangFullCompilerCandidateFailure: 1,
-  stage,
-  reason,
-  ...(fields.path === undefined ? {} : { path: fields.path }),
-  ...(fields.command === undefined ? {} : { command: fields.command }),
-  ...(fields.cause === undefined ? {} : { cause: fields.cause }),
+  stage: "comparison",
+  reason: "producer-inventory-diverged",
+  firstDifferingPath,
+  firstSha256,
+  secondSha256,
   message,
 });
 
@@ -998,12 +1140,11 @@ const publicationCause = (error: PublicationFailure): ProducerCause => ({
 });
 
 const processFailure = (
-  stage: FailureStage,
-  reason: FailureReason,
+  failure: FailureBuilder,
   command: string,
   path: string,
   message: string,
-): M037CandidateFailure => candidateFailure(stage, reason, message, { command, path });
+): M037CandidateFailure => failure(message, { command, path });
 
 const runProcess = (
   executable: string,
@@ -1011,8 +1152,7 @@ const runProcess = (
   options: {
     readonly cwd: string;
     readonly environment: Readonly<Record<string, string>>;
-    readonly stage: FailureStage;
-    readonly reason: FailureReason;
+    readonly failure: FailureBuilder;
     readonly command: string;
     readonly path: string;
   },
@@ -1028,8 +1168,7 @@ const runProcess = (
       }).pipe(
         Effect.mapError(() =>
           processFailure(
-            options.stage,
-            options.reason,
+            options.failure,
             options.command,
             options.path,
             `could not start ${options.command}`,
@@ -1046,8 +1185,7 @@ const runProcess = (
       ).pipe(
         Effect.mapError(() =>
           processFailure(
-            options.stage,
-            options.reason,
+            options.failure,
             options.command,
             options.path,
             `could not collect ${options.command}`,
@@ -1069,8 +1207,7 @@ const requireSuccessfulProcess = (
         ? Effect.succeed(result)
         : Effect.fail(
             processFailure(
-              options.stage,
-              options.reason,
+              options.failure,
               options.command,
               options.path,
               `${options.command} exited unsuccessfully`,
@@ -1081,12 +1218,13 @@ const requireSuccessfulProcess = (
 
 const sha256Bytes = (
   bytes: Uint8Array,
+  failure: FailureBuilder = digestFailure,
 ): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
     const digest = yield* crypto.digest("SHA-256", bytes).pipe(
       Effect.mapError((error) =>
-        candidateFailure("accumulation", "platform-failed", "SHA-256 digest failed", {
+        failure("SHA-256 digest failed", {
           cause: projectPlatformCause(error),
         }),
       ),
@@ -1094,20 +1232,19 @@ const sha256Bytes = (
     return `sha256:${Encoding.encodeHex(digest)}` as const;
   });
 
-const sha256Canonical = (value: unknown) =>
-  sha256Bytes(textEncoder.encode(encodeCanonicalJson(value)));
+const sha256Canonical = (value: unknown, failure: FailureBuilder = digestFailure) =>
+  sha256Bytes(textEncoder.encode(encodeCanonicalJson(value)), failure);
 
 const readBytes = (
   absolutePath: string,
-  stage: FailureStage,
-  reason: FailureReason,
   diagnosticPath: string,
+  failure: FailureBuilder,
 ): Effect.Effect<Uint8Array, M037CandidateFailure, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     return yield* fileSystem.readFile(absolutePath).pipe(
       Effect.mapError((error) =>
-        candidateFailure(stage, reason, `could not read ${diagnosticPath}`, {
+        failure(`could not read ${diagnosticPath}`, {
           path: diagnosticPath,
           cause: projectPlatformCause(error),
         }),
@@ -1118,16 +1255,15 @@ const readBytes = (
 const writeBytes = (
   absolutePath: string,
   bytes: Uint8Array,
-  stage: FailureStage,
-  reason: FailureReason,
   diagnosticPath: string,
+  failure: FailureBuilder,
 ): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     yield* fileSystem.makeDirectory(path.dirname(absolutePath), { recursive: true }).pipe(
       Effect.mapError((error) =>
-        candidateFailure(stage, reason, `could not create the parent for ${diagnosticPath}`, {
+        failure(`could not create the parent for ${diagnosticPath}`, {
           path: diagnosticPath,
           cause: projectPlatformCause(error),
         }),
@@ -1135,7 +1271,7 @@ const writeBytes = (
     );
     yield* fileSystem.writeFile(absolutePath, bytes).pipe(
       Effect.mapError((error) =>
-        candidateFailure(stage, reason, `could not write ${diagnosticPath}`, {
+        failure(`could not write ${diagnosticPath}`, {
           path: diagnosticPath,
           cause: projectPlatformCause(error),
         }),
@@ -1143,21 +1279,15 @@ const writeBytes = (
     );
   });
 
-const readText = (
-  absolutePath: string,
-  stage: FailureStage,
-  reason: FailureReason,
-  diagnosticPath: string,
-) =>
-  readBytes(absolutePath, stage, reason, diagnosticPath).pipe(
+const readText = (absolutePath: string, diagnosticPath: string, failure: FailureBuilder) =>
+  readBytes(absolutePath, diagnosticPath, failure).pipe(
     Effect.map((bytes) => textDecoder.decode(bytes)),
   );
 
 const resolveExecutable = (
   name: string,
   pathValue: string,
-  stage: FailureStage,
-  reason: FailureReason,
+  failure: FailureBuilder,
 ): Effect.Effect<string, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -1167,7 +1297,7 @@ const resolveExecutable = (
       const candidate = path.join(directory, name);
       const exists = yield* fileSystem.exists(candidate).pipe(
         Effect.mapError((error) =>
-          candidateFailure(stage, reason, `could not inspect ${name}`, {
+          failure(`could not inspect ${name}`, {
             path: name,
             cause: projectPlatformCause(error),
           }),
@@ -1176,7 +1306,7 @@ const resolveExecutable = (
       if (!exists) continue;
       return yield* fileSystem.realPath(candidate).pipe(
         Effect.mapError((error) =>
-          candidateFailure(stage, reason, `could not resolve ${name}`, {
+          failure(`could not resolve ${name}`, {
             path: name,
             cause: projectPlatformCause(error),
           }),
@@ -1184,9 +1314,110 @@ const resolveExecutable = (
       );
     }
     return yield* Effect.fail(
-      candidateFailure(stage, reason, `required executable ${name} is unavailable`, {
+      failure(`required executable ${name} is unavailable`, {
         path: name,
       }),
+    );
+  });
+const isPathWithin = (root: string, candidate: string): boolean =>
+  candidate === root || candidate.startsWith(root.endsWith("/") ? root : `${root}/`);
+
+const arePathsDisjoint = (left: string, right: string): boolean =>
+  !isPathWithin(left, right) && !isPathWithin(right, left);
+
+const isSymbolicLink = (
+  absolutePath: string,
+): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
+  FileSystem.FileSystem.pipe(
+    Effect.flatMap((fileSystem) => fileSystem.readLink(absolutePath)),
+    Effect.match({
+      onFailure: () => false,
+      onSuccess: () => true,
+    }),
+  );
+
+const resolveContainedExistingPath = (
+  root: string,
+  relativePath: string,
+  resolutionFailure: FailureBuilder,
+  unsafeFailure: FailureBuilder,
+  rejectLeafSymlink = false,
+): Effect.Effect<string, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const absolutePath = path.resolve(root, relativePath);
+    if (rejectLeafSymlink && (yield* isSymbolicLink(absolutePath)))
+      return yield* Effect.fail(
+        unsafeFailure(`${relativePath} must not be a symbolic link`, { path: relativePath }),
+      );
+    const realPath = yield* fileSystem.realPath(absolutePath).pipe(
+      Effect.mapError((error) =>
+        resolutionFailure(`could not resolve ${relativePath}`, {
+          path: relativePath,
+          cause: projectPlatformCause(error),
+        }),
+      ),
+    );
+    if (!isPathWithin(root, realPath))
+      return yield* Effect.fail(
+        unsafeFailure(`${relativePath} resolves outside the repository root`, {
+          path: relativePath,
+        }),
+      );
+    return realPath;
+  });
+
+const makeExternalTempDirectory = (
+  workspaceRoots: ReadonlyArray<string>,
+  ambientTempDirectory: string | undefined,
+  prefix: string,
+  failure: FailureBuilder,
+): Effect.Effect<string, M037CandidateFailure, FileSystem.FileSystem | Path.Path | Scope.Scope> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const candidates = [
+      ...(ambientTempDirectory === undefined ? [] : [ambientTempDirectory]),
+      "/tmp",
+      "/var/tmp",
+    ].filter((candidate, index, values) => values.indexOf(candidate) === index);
+    for (const candidate of candidates) {
+      const canonicalParent = yield* fileSystem.realPath(candidate).pipe(
+        Effect.match({
+          onFailure: () => undefined,
+          onSuccess: (value) => value,
+        }),
+      );
+      if (
+        canonicalParent === undefined ||
+        workspaceRoots.some((workspaceRoot) => !arePathsDisjoint(canonicalParent, workspaceRoot))
+      )
+        continue;
+      const temporaryDirectory = yield* fileSystem
+        .makeTempDirectoryScoped({ directory: canonicalParent, prefix })
+        .pipe(
+          Effect.match({
+            onFailure: () => undefined,
+            onSuccess: (value) => value,
+          }),
+        );
+      if (temporaryDirectory === undefined) continue;
+      const canonicalTemporaryDirectory = yield* fileSystem.realPath(temporaryDirectory).pipe(
+        Effect.mapError((error) =>
+          failure("could not resolve external temporary directory", {
+            cause: projectPlatformCause(error),
+          }),
+        ),
+      );
+      if (
+        workspaceRoots.every((workspaceRoot) =>
+          arePathsDisjoint(canonicalTemporaryDirectory, workspaceRoot),
+        )
+      )
+        return canonicalTemporaryDirectory;
+    }
+    return yield* Effect.fail(
+      failure("no writable external temporary directory is disjoint from the workspace"),
     );
   });
 
@@ -1207,93 +1438,107 @@ const decodeSelection = (
   FileSystem.FileSystem | Path.Path | Crypto.Crypto
 > =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-    if (!isRepositoryRelativePath(selectionPath)) {
+    if (selectionPath !== CANDIDATE_SELECTION)
       return yield* Effect.fail(
-        candidateFailure(
-          "selection",
-          "unsafe-path",
-          "candidate selection path must be repository-relative",
-          { path: selectionPath },
-        ),
+        isRepositoryRelativePath(selectionPath)
+          ? selectionInvalidFailure("candidate selection path is not the public M037 selection", {
+              path: selectionPath,
+            })
+          : selectionUnsafeFailure("candidate selection path must be repository-relative", {
+              path: selectionPath,
+            }),
       );
-    }
-    const encoded = yield* readText(
-      path.resolve(root, selectionPath),
-      "selection",
-      "invalid-selection",
+    const resolvedSelectionPath = yield* resolveContainedExistingPath(
+      root,
       selectionPath,
+      selectionInvalidFailure,
+      selectionUnsafeFailure,
+      true,
     );
+    const encoded = yield* readText(resolvedSelectionPath, selectionPath, selectionInvalidFailure);
     const selection = yield* Schema.decodeEffect(M037FullCompilerCandidateSelectionFromJson)(
       encoded,
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure("selection", "invalid-selection", "invalid M037 candidate selection", {
+        candidateFailures.selection("invalid-selection", "invalid M037 candidate selection", {
           path: selectionPath,
         }),
       ),
     );
-    const assemblyText = yield* readText(
-      path.resolve(root, ASSEMBLY_SELECTION),
-      "selection",
-      "reference-disagreement",
+    const assemblyPath = yield* resolveContainedExistingPath(
+      root,
       ASSEMBLY_SELECTION,
+      selectionReferenceFailure,
+      selectionUnsafeFailure,
+    );
+    const assemblyText = yield* readText(
+      assemblyPath,
+      ASSEMBLY_SELECTION,
+      selectionReferenceFailure,
     );
     const assembly = yield* Schema.decodeEffect(AssemblySelectionFromJson)(
       assemblyText,
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure("selection", "reference-disagreement", "invalid assembly selection", {
+        candidateFailures.selection("reference-disagreement", "invalid assembly selection", {
           path: ASSEMBLY_SELECTION,
         }),
       ),
     );
-    const planText = yield* readText(
-      path.resolve(root, PLAN_SELECTION),
-      "selection",
-      "reference-disagreement",
+    const planPath = yield* resolveContainedExistingPath(
+      root,
       PLAN_SELECTION,
+      selectionReferenceFailure,
+      selectionUnsafeFailure,
     );
+    const planText = yield* readText(planPath, PLAN_SELECTION, selectionReferenceFailure);
     const plan = yield* Schema.decodeEffect(PlanningSelectionFromJson)(planText, parseOptions).pipe(
       Effect.mapError(() =>
-        candidateFailure("selection", "reference-disagreement", "invalid plan selection", {
+        candidateFailures.selection("reference-disagreement", "invalid plan selection", {
           path: PLAN_SELECTION,
         }),
       ),
     );
-    const classificationText = yield* readText(
-      path.resolve(root, CLASSIFICATION_SELECTION),
-      "selection",
-      "reference-disagreement",
+    const classificationPath = yield* resolveContainedExistingPath(
+      root,
       CLASSIFICATION_SELECTION,
+      selectionReferenceFailure,
+      selectionUnsafeFailure,
+    );
+    const classificationText = yield* readText(
+      classificationPath,
+      CLASSIFICATION_SELECTION,
+      selectionReferenceFailure,
     );
     const classification = yield* Schema.decodeEffect(ClassificationSelectionFromJson)(
       classificationText,
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure(
-          "selection",
-          "reference-disagreement",
-          "invalid classification selection",
-          { path: CLASSIFICATION_SELECTION },
-        ),
+        candidateFailures.selection("reference-disagreement", "invalid classification selection", {
+          path: CLASSIFICATION_SELECTION,
+        }),
       ),
     );
-    const explanationText = yield* readText(
-      path.resolve(root, THEORY_SELECTION),
-      "selection",
-      "reference-disagreement",
+    const theorySelectionPath = yield* resolveContainedExistingPath(
+      root,
       THEORY_SELECTION,
+      selectionReferenceFailure,
+      selectionUnsafeFailure,
+    );
+    const explanationText = yield* readText(
+      theorySelectionPath,
+      THEORY_SELECTION,
+      selectionReferenceFailure,
     );
     const explanation = yield* Schema.decodeEffect(ExplainSelectionFromJson)(
       explanationText,
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure("selection", "reference-disagreement", "invalid theory selection", {
+        candidateFailures.selection("reference-disagreement", "invalid theory selection", {
           path: THEORY_SELECTION,
         }),
       ),
@@ -1322,8 +1567,7 @@ const decodeSelection = (
       explanation.theory.version === 1;
     if (!referencesAgree) {
       return yield* Effect.fail(
-        candidateFailure(
-          "selection",
+        candidateFailures.selection(
           "reference-disagreement",
           "candidate references do not resolve to the frozen Clinic chain",
           { path: selectionPath },
@@ -1332,12 +1576,13 @@ const decodeSelection = (
     }
     const inputs = yield* Effect.forEach(INPUT_PATHS, ({ role, path: inputPath }) =>
       Effect.gen(function* () {
-        const bytes = yield* readBytes(
-          path.resolve(root, inputPath),
-          "selection",
-          "reference-disagreement",
+        const resolvedInputPath = yield* resolveContainedExistingPath(
+          root,
           inputPath,
+          selectionReferenceFailure,
+          selectionUnsafeFailure,
         );
+        const bytes = yield* readBytes(resolvedInputPath, inputPath, selectionReferenceFailure);
         return { role, path: inputPath, sha256: yield* sha256Bytes(bytes) };
       }),
     );
@@ -1360,40 +1605,40 @@ const inspectCaller = (
       {
         cwd: root,
         environment,
-        stage: "checkout",
-        reason: "revision-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.checkout("revision-unavailable", message, fields),
         command: "git status --porcelain --untracked-files=no",
         path: ".",
       },
     );
     if (status.stdout !== "") {
       return yield* Effect.fail(
-        candidateFailure("checkout", "dirty-worktree", "tracked worktree is dirty", { path: "." }),
+        candidateFailures.checkout("dirty-worktree", "tracked worktree is dirty", { path: "." }),
       );
     }
     const head = yield* requireSuccessfulProcess(git, ["rev-parse", "HEAD"], {
       cwd: root,
       environment,
-      stage: "checkout",
-      reason: "revision-unavailable",
+      failure: (message, fields) =>
+        candidateFailures.checkout("revision-unavailable", message, fields),
       command: "git rev-parse HEAD",
       path: ".",
     });
     const revision = head.stdout.trim();
     if (!/^[0-9a-f]{40}$/u.test(revision)) {
       return yield* Effect.fail(
-        candidateFailure("checkout", "revision-unavailable", "HEAD is not one full Git revision", {
+        candidateFailures.checkout("revision-unavailable", "HEAD is not one full Git revision", {
           path: ".",
         }),
       );
     }
-    const path = yield* Path.Path;
-    const lockBytes = yield* readBytes(
-      path.resolve(root, DEPENDENCY_LOCK),
-      "checkout",
-      "revision-unavailable",
+    const lockPath = yield* resolveContainedExistingPath(
+      root,
       DEPENDENCY_LOCK,
+      checkoutRevisionFailure,
+      selectionUnsafeFailure,
     );
+    const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
     return { revision, dependencyLockSha256: yield* sha256Bytes(lockBytes) };
   });
 
@@ -1409,39 +1654,34 @@ const preflightHost = (
   Effect.gen(function* () {
     if (runtime.platform !== "linux" || runtime.architecture !== "x64") {
       return yield* Effect.fail(
-        candidateFailure("preflight", "unsupported-platform", "M037 requires x86_64-linux"),
+        candidateFailures.preflight("unsupported-platform", "M037 requires x86_64-linux"),
       );
     }
     if (runtime.bunVersion !== "1.3.13") {
       return yield* Effect.fail(
-        candidateFailure("preflight", "bun-version-unsupported", "M037 requires Bun 1.3.13"),
+        candidateFailures.preflight("bun-version-unsupported", "M037 requires Bun 1.3.13"),
       );
     }
     const path = yield* Path.Path;
     const ambientPath = runtime.environment.PATH ?? "";
-    const git = yield* resolveExecutable(
-      "git",
-      ambientPath,
-      "preflight",
-      "git-worktree-unavailable",
+    const git = yield* resolveExecutable("git", ambientPath, (message, fields) =>
+      candidateFailures.preflight("git-worktree-unavailable", message, fields),
     );
-    const bash = yield* resolveExecutable("bash", ambientPath, "preflight", "bash-unavailable");
-    const just = yield* resolveExecutable(
-      "just",
-      ambientPath,
-      "preflight",
-      "just-version-unsupported",
+    const bash = yield* resolveExecutable("bash", ambientPath, (message, fields) =>
+      candidateFailures.preflight("bash-unavailable", message, fields),
     );
-    const nix = yield* resolveExecutable("nix", ambientPath, "preflight", "nix-unavailable");
+    const just = yield* resolveExecutable("just", ambientPath, (message, fields) =>
+      candidateFailures.preflight("just-version-unsupported", message, fields),
+    );
+    const nix = yield* resolveExecutable("nix", ambientPath, (message, fields) =>
+      candidateFailures.preflight("nix-unavailable", message, fields),
+    );
     const bun = yield* FileSystem.FileSystem.pipe(
       Effect.flatMap((fileSystem) => fileSystem.realPath(runtime.executablePath)),
       Effect.mapError((error) =>
-        candidateFailure(
-          "preflight",
-          "bun-version-unsupported",
-          "could not resolve Bun executable",
-          { cause: projectPlatformCause(error) },
-        ),
+        candidateFailures.preflight("bun-version-unsupported", "could not resolve Bun executable", {
+          cause: projectPlatformCause(error),
+        }),
       ),
     );
     const pathValue = [...new Set([git, bash, just, nix].map((value) => path.dirname(value)))].join(
@@ -1453,8 +1693,7 @@ const preflightHost = (
       .makeDirectory(preflightHome, { recursive: true })
       .pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "preflight",
+          candidateFailures.preflight(
             "git-worktree-unavailable",
             "could not create preflight HOME",
             { cause: projectPlatformCause(error) },
@@ -1465,16 +1704,15 @@ const preflightHost = (
     const gitVersionResult = yield* requireSuccessfulProcess(git, ["--version"], {
       cwd: root,
       environment: childEnvironment,
-      stage: "preflight",
-      reason: "git-worktree-unavailable",
+      failure: (message, fields) =>
+        candidateFailures.preflight("git-worktree-unavailable", message, fields),
       command: "git --version",
       path: ".",
     });
     const gitVersion = exactSingleLine(gitVersionResult.stdout, /^git version .+$/u);
     if (gitVersion === undefined)
       return yield* Effect.fail(
-        candidateFailure(
-          "preflight",
+        candidateFailures.preflight(
           "git-worktree-unavailable",
           "git --version returned an unsupported value",
         ),
@@ -1488,8 +1726,8 @@ const preflightHost = (
         {
           cwd: root,
           environment: childEnvironment,
-          stage: "preflight",
-          reason: "git-worktree-unavailable",
+          failure: (message, fields) =>
+            candidateFailures.preflight("git-worktree-unavailable", message, fields),
           command: "git worktree add --detach --no-checkout <probe> HEAD",
           path: ".",
         },
@@ -1499,8 +1737,8 @@ const preflightHost = (
         requireSuccessfulProcess(git, ["worktree", "remove", "--force", probePath], {
           cwd: root,
           environment: childEnvironment,
-          stage: "preflight",
-          reason: "git-worktree-unavailable",
+          failure: (message, fields) =>
+            candidateFailures.preflight("git-worktree-unavailable", message, fields),
           command: "git worktree remove --force <probe>",
           path: ".",
         }).pipe(Effect.asVoid),
@@ -1509,16 +1747,15 @@ const preflightHost = (
     const bashVersionResult = yield* requireSuccessfulProcess(bash, ["--version"], {
       cwd: root,
       environment: childEnvironment,
-      stage: "preflight",
-      reason: "bash-unavailable",
+      failure: (message, fields) =>
+        candidateFailures.preflight("bash-unavailable", message, fields),
       command: "bash --version",
       path: ".",
     });
     const bashVersion = bashVersionResult.stdout.split("\n")[0];
     if (bashVersion === undefined || !/^GNU bash, version .+$/u.test(bashVersion))
       return yield* Effect.fail(
-        candidateFailure(
-          "preflight",
+        candidateFailures.preflight(
           "bash-unavailable",
           "bash --version returned an unsupported value",
         ),
@@ -1529,49 +1766,47 @@ const preflightHost = (
       {
         cwd: root,
         environment: childEnvironment,
-        stage: "preflight",
-        reason: "bash-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.preflight("bash-unavailable", message, fields),
         command: "bash -euo pipefail -c <probe>",
         path: ".",
       },
     );
     if (bashProbe.stdout !== "m037-bash-ok\n")
       return yield* Effect.fail(
-        candidateFailure("preflight", "bash-unavailable", "Bash strict-mode token probe failed"),
+        candidateFailures.preflight("bash-unavailable", "Bash strict-mode token probe failed"),
       );
     const justVersionResult = yield* requireSuccessfulProcess(just, ["--version"], {
       cwd: root,
       environment: childEnvironment,
-      stage: "preflight",
-      reason: "just-version-unsupported",
+      failure: (message, fields) =>
+        candidateFailures.preflight("just-version-unsupported", message, fields),
       command: "just --version",
       path: ".",
     });
     if (justVersionResult.stdout.trim() !== "just 1.58.0")
       return yield* Effect.fail(
-        candidateFailure("preflight", "just-version-unsupported", "M037 requires just 1.58.0"),
+        candidateFailures.preflight("just-version-unsupported", "M037 requires just 1.58.0"),
       );
     yield* requireSuccessfulProcess(just, ["--summary"], {
       cwd: root,
       environment: childEnvironment,
-      stage: "preflight",
-      reason: "just-version-unsupported",
+      failure: (message, fields) =>
+        candidateFailures.preflight("just-version-unsupported", message, fields),
       command: "just --summary",
       path: "Justfile",
     });
     const nixVersionResult = yield* requireSuccessfulProcess(nix, ["--version"], {
       cwd: root,
       environment: childEnvironment,
-      stage: "preflight",
-      reason: "nix-unavailable",
+      failure: (message, fields) => candidateFailures.preflight("nix-unavailable", message, fields),
       command: "nix --version",
       path: ".",
     });
     const nixVersion = exactSingleLine(nixVersionResult.stdout, /^nix \(Nix\) .+$/u);
     if (nixVersion === undefined)
       return yield* Effect.fail(
-        candidateFailure(
-          "preflight",
+        candidateFailures.preflight(
           "nix-unavailable",
           "nix --version returned an unsupported value",
         ),
@@ -1582,8 +1817,8 @@ const preflightHost = (
       {
         cwd: root,
         environment: childEnvironment,
-        stage: "preflight",
-        reason: "nix-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.preflight("nix-unavailable", message, fields),
         command: "nix config show experimental-features",
         path: ".",
       },
@@ -1591,7 +1826,7 @@ const preflightHost = (
     const featureTokens = new Set(nixFeatures.stdout.split(/[^A-Za-z0-9-]+/u).filter(Boolean));
     if (!featureTokens.has("nix-command") || !featureTokens.has("flakes"))
       return yield* Effect.fail(
-        candidateFailure("preflight", "nix-unavailable", "Nix requires nix-command and flakes"),
+        candidateFailures.preflight("nix-unavailable", "Nix requires nix-command and flakes"),
       );
     const nixSubstituters = yield* requireSuccessfulProcess(
       nix,
@@ -1599,15 +1834,15 @@ const preflightHost = (
       {
         cwd: root,
         environment: childEnvironment,
-        stage: "preflight",
-        reason: "nix-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.preflight("nix-unavailable", message, fields),
         command: "nix config show substituters",
         path: ".",
       },
     );
     if (!nixSubstituters.stdout.includes("https://cache.nixos.org/"))
       return yield* Effect.fail(
-        candidateFailure("preflight", "nix-unavailable", "Nix public cache is not configured"),
+        candidateFailures.preflight("nix-unavailable", "Nix public cache is not configured"),
       );
     const nodeBuild = yield* requireSuccessfulProcess(
       nix,
@@ -1623,8 +1858,8 @@ const preflightHost = (
       {
         cwd: root,
         environment: childEnvironment,
-        stage: "preflight",
-        reason: "nix-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.preflight("nix-unavailable", message, fields),
         command: `nix build --refresh --no-link --print-out-paths --extra-experimental-features "nix-command flakes" github:NixOS/nixpkgs/${NIXPKGS_REVISION}#nodejs_24`,
         path: ".",
       },
@@ -1632,8 +1867,7 @@ const preflightHost = (
     const nodeOutputs = nodeBuild.stdout.trim().split("\n").filter(Boolean);
     if (nodeOutputs.length !== 1 || !nodeOutputs[0]?.startsWith("/nix/store/"))
       return yield* Effect.fail(
-        candidateFailure(
-          "preflight",
+        candidateFailures.preflight(
           "nix-unavailable",
           "pinned Node build returned an invalid output path",
         ),
@@ -1643,20 +1877,18 @@ const preflightHost = (
     const nodeVersionResult = yield* requireSuccessfulProcess(nodeExecutable, ["--version"], {
       cwd: root,
       environment: { HOME: preflightHome, LANG: "C.UTF-8", PATH: nodeEnvironmentPath },
-      stage: "preflight",
-      reason: "nix-unavailable",
+      failure: (message, fields) => candidateFailures.preflight("nix-unavailable", message, fields),
       command: "<pinned-node> --version",
       path: ".",
     });
     if (nodeVersionResult.stdout.trim() !== NODE_VERSION)
       return yield* Effect.fail(
-        candidateFailure("preflight", "nix-unavailable", "pinned Node version is unsupported"),
+        candidateFailures.preflight("nix-unavailable", "pinned Node version is unsupported"),
       );
     const nodeExecutableBytes = yield* readBytes(
       nodeExecutable,
-      "preflight",
-      "nix-unavailable",
       "nix-result/bin/node",
+      (message, fields) => candidateFailures.preflight("nix-unavailable", message, fields),
     );
     return {
       tools: { git, bash, just, nix, bun, pathValue },
@@ -1691,12 +1923,12 @@ const copyEntryBytes = (
 const entryAt = (
   entries: ReadonlyArray<PublicationEntry>,
   entryPath: string,
-  stage: FailureStage,
+  failure: FailureBuilder,
 ): Effect.Effect<PublicationEntry, M037CandidateFailure> => {
   const entry = entries.find(({ path }) => path === entryPath);
   return entry === undefined
     ? Effect.fail(
-        candidateFailure(stage, "material-missing", `missing producer entry ${entryPath}`, {
+        failure(`missing producer entry ${entryPath}`, {
           path: entryPath,
         }),
       )
@@ -1715,7 +1947,7 @@ const decodeArtifactObservation = (
       ?.slice(prefix.length);
     if (encoded === undefined)
       return yield* Effect.fail(
-        candidateFailure("artifact", "execution-failed", "artifact emitted no M031 observation", {
+        candidateFailures.artifact("execution-failed", "artifact emitted no M031 observation", {
           path: ARTIFACT_PATH,
         }),
       );
@@ -1724,8 +1956,7 @@ const decodeArtifactObservation = (
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "execution-failed",
           "artifact emitted an invalid M031 observation",
           { path: ARTIFACT_PATH },
@@ -1737,8 +1968,7 @@ const decodeArtifactObservation = (
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "execution-failed",
           "artifact observation normalization failed",
           { path: ARTIFACT_PATH },
@@ -1747,8 +1977,7 @@ const decodeArtifactObservation = (
     );
     if (encodeCanonicalJson(observation) !== encodeCanonicalJson(qualification.observations))
       return yield* Effect.fail(
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "observation-mismatch",
           "artifact observation differs from Gleam qualification",
           { path: ARTIFACT_PATH },
@@ -1758,7 +1987,9 @@ const decodeArtifactObservation = (
   });
 
 const runArtifact = (
+  repositoryRoot: string,
   runRoot: string,
+  ambientTempDirectory: string | undefined,
   entries: ReadonlyArray<PublicationEntry>,
   gleamEvidence: typeof M031TargetQualificationEvidenceSchema.Type,
   preflight: HostPreflight,
@@ -1774,33 +2005,24 @@ const runArtifact = (
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const artifactEntry = yield* entryAt(entries, ARTIFACT_PATH, "artifact");
-    const artifactDirectory = yield* fileSystem
-      .makeTempDirectoryScoped({ prefix: "bang-m037-artifact-" })
-      .pipe(
-        Effect.mapError((error) =>
-          candidateFailure(
-            "artifact",
-            "runtime-boundary-violated",
-            "could not create artifact-only directory",
-            { cause: projectPlatformCause(error) },
-          ),
-        ),
-      );
+    const artifactEntry = yield* entryAt(entries, ARTIFACT_PATH, (message, fields) =>
+      candidateFailures.artifact("material-missing", message, fields),
+    );
+    const artifactDirectory = yield* makeExternalTempDirectory(
+      [repositoryRoot, runRoot],
+      ambientTempDirectory,
+      "bang-m037-artifact-",
+      (message, fields) => candidateFailures.artifact("runtime-boundary-violated", message, fields),
+    );
     const copiedArtifact = path.join(artifactDirectory, "exact_one");
-    yield* writeBytes(
-      copiedArtifact,
-      artifactEntry.bytes,
-      "artifact",
-      "runtime-boundary-violated",
-      "exact_one",
+    yield* writeBytes(copiedArtifact, artifactEntry.bytes, "exact_one", (message, fields) =>
+      candidateFailures.artifact("runtime-boundary-violated", message, fields),
     );
     const directoryEntries = yield* fileSystem
       .readDirectory(artifactDirectory)
       .pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "artifact",
+          candidateFailures.artifact(
             "runtime-boundary-violated",
             "could not inspect artifact-only directory",
             { cause: projectPlatformCause(error) },
@@ -1809,8 +2031,7 @@ const runArtifact = (
       );
     if (!sameStrings(directoryEntries.toSorted(), ["exact_one"]))
       return yield* Effect.fail(
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "runtime-boundary-violated",
           "artifact working directory contains unexpected members",
         ),
@@ -1821,8 +2042,8 @@ const runArtifact = (
       {
         cwd: runRoot,
         environment: preflight.childEnvironment,
-        stage: "artifact",
-        reason: "execution-failed",
+        failure: (message, fields) =>
+          candidateFailures.artifact("execution-failed", message, fields),
         command: "nix build --file <worktree>/nix/gleam.nix --no-link --print-out-paths",
         path: "nix/gleam.nix",
       },
@@ -1830,8 +2051,7 @@ const runArtifact = (
     const toolchainOutputs = toolchainBuild.stdout.trim().split("\n").filter(Boolean);
     if (toolchainOutputs.length !== 1 || !toolchainOutputs[0]?.startsWith("/nix/store/"))
       return yield* Effect.fail(
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "runtime-boundary-violated",
           "Gleam toolchain build returned an invalid output path",
           { path: "nix/gleam.nix" },
@@ -1841,8 +2061,7 @@ const runArtifact = (
       .realPath(path.join(toolchainOutputs[0], "bin", "escript"))
       .pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "artifact",
+          candidateFailures.artifact(
             "runtime-boundary-violated",
             "could not resolve Erlang-store escript",
             { cause: projectPlatformCause(error) },
@@ -1851,8 +2070,7 @@ const runArtifact = (
       );
     if (!/^\/nix\/store\/[0-9a-z]+-[^/]+\/bin\/escript$/u.test(escriptRealPath))
       return yield* Effect.fail(
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "runtime-boundary-violated",
           "escript is not an absolute Erlang-store executable",
         ),
@@ -1864,8 +2082,7 @@ const runArtifact = (
         .exists(erlangRoot)
         .pipe(
           Effect.mapError((error) =>
-            candidateFailure(
-              "artifact",
+            candidateFailures.artifact(
               "runtime-boundary-violated",
               "could not inspect Erlang root",
               { cause: projectPlatformCause(error) },
@@ -1874,7 +2091,7 @@ const runArtifact = (
         ))
     )
       return yield* Effect.fail(
-        candidateFailure("artifact", "runtime-boundary-violated", "Erlang root is unavailable"),
+        candidateFailures.artifact("runtime-boundary-violated", "Erlang root is unavailable"),
       );
     const erlangBin = path.dirname(escriptRealPath);
     const workspaceResolvable = yield* Effect.forEach(WORKSPACE_SENTINELS, (sentinel) =>
@@ -1885,8 +2102,7 @@ const runArtifact = (
       }),
     ).pipe(
       Effect.mapError((error) =>
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "runtime-boundary-violated",
           "could not inspect artifact resolution boundary",
           { cause: projectPlatformCause(error) },
@@ -1898,8 +2114,7 @@ const runArtifact = (
       .exists(path.join(erlangBin, "gleam"))
       .pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "artifact",
+          candidateFailures.artifact(
             "runtime-boundary-violated",
             "could not inspect Erlang-only PATH",
             { cause: projectPlatformCause(error) },
@@ -1908,8 +2123,7 @@ const runArtifact = (
       );
     if (workspaceResolvable || gleamResolvable)
       return yield* Effect.fail(
-        candidateFailure(
-          "artifact",
+        candidateFailures.artifact(
           "runtime-boundary-violated",
           "artifact resolution boundary exposed workspace or Gleam paths",
         ),
@@ -1924,23 +2138,21 @@ const runArtifact = (
     const execution = yield* requireSuccessfulProcess(escriptRealPath, ["exact_one"], {
       cwd: artifactDirectory,
       environment,
-      stage: "artifact",
-      reason: "execution-failed",
+      failure: (message, fields) => candidateFailures.artifact("execution-failed", message, fields),
       command: "<absolute-erlang-store>/bin/escript exact_one",
       path: ARTIFACT_PATH,
     });
     if (execution.stderr !== "")
       return yield* Effect.fail(
-        candidateFailure("artifact", "execution-failed", "artifact wrote standard error", {
+        candidateFailures.artifact("execution-failed", "artifact wrote standard error", {
           path: ARTIFACT_PATH,
         }),
       );
     const observation = yield* decodeArtifactObservation(execution.stdout, gleamEvidence);
     const escriptBytes = yield* readBytes(
       escriptRealPath,
-      "artifact",
-      "runtime-boundary-violated",
       "erlang-store/bin/escript",
+      (message, fields) => candidateFailures.artifact("runtime-boundary-violated", message, fields),
     );
     return {
       target: "gleam-beam",
@@ -2029,23 +2241,22 @@ const copySandboxInput = (
 ) =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
-    const bytes = yield* readBytes(
-      path.resolve(runRoot, sourcePath),
-      "external-consumer",
-      "isolation-violated",
+    const failure: FailureBuilder = (message, fields) =>
+      candidateFailures.externalConsumer("isolation-violated", message, fields);
+    const resolvedSourcePath = yield* resolveContainedExistingPath(
+      runRoot,
       sourcePath,
+      failure,
+      failure,
     );
-    yield* writeBytes(
-      path.resolve(sandboxRoot, destinationPath),
-      bytes,
-      "external-consumer",
-      "isolation-violated",
-      destinationPath,
-    );
+    const bytes = yield* readBytes(resolvedSourcePath, sourcePath, failure);
+    yield* writeBytes(path.resolve(sandboxRoot, destinationPath), bytes, destinationPath, failure);
   });
 
 const runExternalConsumer = (
+  repositoryRoot: string,
   runRoot: string,
+  ambientTempDirectory: string | undefined,
   schemaEntries: ReadonlyArray<PublicationEntry>,
   effectEvidence: typeof M031TargetQualificationEvidenceSchema.Type,
   preflight: HostPreflight,
@@ -2059,49 +2270,45 @@ const runExternalConsumer = (
   | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const sandboxRoot = yield* fileSystem
-      .makeTempDirectoryScoped({ prefix: "bang-m037-consumer-" })
-      .pipe(
-        Effect.mapError((error) =>
-          candidateFailure(
-            "external-consumer",
-            "isolation-violated",
-            "could not create consumer sandbox",
-            { cause: projectPlatformCause(error) },
-          ),
-        ),
-      );
-    const consumerBytes = yield* readBytes(
-      path.resolve(runRoot, EXTERNAL_CONSUMER),
-      "external-consumer",
-      "isolation-violated",
-      EXTERNAL_CONSUMER,
+    const isolationFailure: FailureBuilder = (message, fields) =>
+      candidateFailures.externalConsumer("isolation-violated", message, fields);
+    const sandboxRoot = yield* makeExternalTempDirectory(
+      [repositoryRoot, runRoot],
+      ambientTempDirectory,
+      "bang-m037-consumer-",
+      isolationFailure,
     );
+    const consumerPath = yield* resolveContainedExistingPath(
+      runRoot,
+      EXTERNAL_CONSUMER,
+      isolationFailure,
+      isolationFailure,
+    );
+    const consumerBytes = yield* readBytes(consumerPath, EXTERNAL_CONSUMER, isolationFailure);
     yield* writeBytes(
       path.join(sandboxRoot, "consumer.mjs"),
       consumerBytes,
-      "external-consumer",
-      "isolation-violated",
       "consumer.mjs",
+      (message, fields) =>
+        candidateFailures.externalConsumer("isolation-violated", message, fields),
     );
     const loaderBytes = textEncoder.encode(ISOLATION_LOADER_SOURCE);
     yield* writeBytes(
       path.join(sandboxRoot, "isolation-loader.mjs"),
       loaderBytes,
-      "external-consumer",
-      "isolation-violated",
       "isolation-loader.mjs",
+      (message, fields) =>
+        candidateFailures.externalConsumer("isolation-violated", message, fields),
     );
     for (const entry of schemaEntries) {
       const relative = entry.path.slice("dist/schemas/2/".length);
       yield* writeBytes(
         path.join(sandboxRoot, "publication", relative),
         entry.bytes,
-        "external-consumer",
-        "isolation-violated",
         `publication/${relative}`,
+        (message, fields) =>
+          candidateFailures.externalConsumer("isolation-violated", message, fields),
       );
     }
     yield* copySandboxInput(runRoot, sandboxRoot, THEORY_LOCK_PATH, "inputs/clinic.lock.json");
@@ -2138,8 +2345,8 @@ const runExternalConsumer = (
       {
         cwd: sandboxRoot,
         environment,
-        stage: "external-consumer",
-        reason: "process-failed",
+        failure: (message, fields) =>
+          candidateFailures.externalConsumer("process-failed", message, fields),
         command:
           "<pinned-node> --no-warnings --experimental-loader <sandbox>/isolation-loader.mjs <sandbox>/consumer.mjs",
         path: "consumer.mjs",
@@ -2157,8 +2364,7 @@ const runExternalConsumer = (
     if (decodedVerdict?.verdict === "rejected") {
       const rejected: RejectedVerdict = decodedVerdict;
       return yield* Effect.fail(
-        candidateFailure(
-          "external-consumer",
+        candidateFailures.externalConsumer(
           "consumer-rejected",
           "external consumer returned a rejected verdict",
           {
@@ -2186,8 +2392,8 @@ const runExternalConsumer = (
     if (processResult.exitCode !== ChildProcessSpawner.ExitCode(0) || decodedVerdict === undefined)
       return yield* Effect.fail(
         processFailure(
-          "external-consumer",
-          "process-failed",
+          (message, fields) =>
+            candidateFailures.externalConsumer("process-failed", message, fields),
           "<pinned-node> --no-warnings --experimental-loader <sandbox>/isolation-loader.mjs <sandbox>/consumer.mjs",
           "consumer.mjs",
           "external consumer process failed or returned an invalid verdict",
@@ -2195,8 +2401,7 @@ const runExternalConsumer = (
       );
     if (processResult.stderr !== "")
       return yield* Effect.fail(
-        candidateFailure(
-          "external-consumer",
+        candidateFailures.externalConsumer(
           "isolation-violated",
           "external consumer wrote standard error",
           { path: "consumer.mjs" },
@@ -2205,9 +2410,9 @@ const runExternalConsumer = (
     const verdict = decodedVerdict;
     const moduleLogBytes = yield* readBytes(
       moduleLogPath,
-      "external-consumer",
-      "isolation-violated",
       "module-loads.jsonl",
+      (message, fields) =>
+        candidateFailures.externalConsumer("isolation-violated", message, fields),
     );
     const observations: Array<ModuleObservation> = [];
     for (const line of textDecoder.decode(moduleLogBytes).trim().split("\n")) {
@@ -2216,8 +2421,7 @@ const runExternalConsumer = (
         Schema.fromJsonString(ModuleObservationSchema),
       )(line, parseOptions).pipe(
         Effect.mapError(() =>
-          candidateFailure(
-            "external-consumer",
+          candidateFailures.externalConsumer(
             "isolation-violated",
             "module log contains an invalid row",
             { path: "module-loads.jsonl" },
@@ -2253,8 +2457,7 @@ const runExternalConsumer = (
       !sameStrings(resolvedBuiltins, ["node:crypto", "node:fs/promises", "node:path"])
     )
       return yield* Effect.fail(
-        candidateFailure(
-          "external-consumer",
+        candidateFailures.externalConsumer(
           "isolation-violated",
           "external consumer module closure differs from the frozen boundary",
           { path: "module-loads.jsonl" },
@@ -2299,19 +2502,20 @@ const makeSchemaCustody = (
   Effect.gen(function* () {
     if (schemaEntries.length !== 6)
       return yield* Effect.fail(
-        candidateFailure(
-          "schema-publication",
+        candidateFailures.schemaPublication(
           "custody-mismatch",
           "schema publication must contain six files",
         ),
       );
-    const manifestEntry = yield* entryAt(schemaEntries, SCHEMA_MANIFEST_PATH, "schema-publication");
+    const manifestEntry = yield* entryAt(schemaEntries, SCHEMA_MANIFEST_PATH, (message, fields) =>
+      candidateFailures.schemaPublication("producer-failed", message, fields),
+    );
     const manifest = yield* Schema.decodeEffect(SchemaManifestFromJson)(
       textDecoder.decode(manifestEntry.bytes),
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure("schema-publication", "custody-mismatch", "schema manifest is invalid", {
+        candidateFailures.schemaPublication("custody-mismatch", "schema manifest is invalid", {
           path: SCHEMA_MANIFEST_PATH,
         }),
       ),
@@ -2321,11 +2525,12 @@ const makeSchemaCustody = (
       { path: "dist/schemas/2/types/consumer.js", sha256: manifest.types.sha256 },
     ];
     for (const payload of manifestPayloads) {
-      const entry = yield* entryAt(schemaEntries, payload.path, "schema-publication");
+      const entry = yield* entryAt(schemaEntries, payload.path, (message, fields) =>
+        candidateFailures.schemaPublication("producer-failed", message, fields),
+      );
       if ((yield* sha256Bytes(entry.bytes)) !== payload.sha256)
         return yield* Effect.fail(
-          candidateFailure(
-            "schema-publication",
+          candidateFailures.schemaPublication(
             "custody-mismatch",
             "schema manifest digest disagrees with payload bytes",
             { path: payload.path },
@@ -2334,7 +2539,9 @@ const makeSchemaCustody = (
     }
     const inventoryDigestedFiles = yield* Effect.forEach(PRODUCER_PATHS.slice(15), (entryPath) =>
       Effect.gen(function* () {
-        const entry = yield* entryAt(schemaEntries, entryPath, "schema-publication");
+        const entry = yield* entryAt(schemaEntries, entryPath, (message, fields) =>
+          candidateFailures.schemaPublication("producer-failed", message, fields),
+        );
         return { path: entryPath, sha256: yield* sha256Bytes(entry.bytes) };
       }),
     );
@@ -2358,15 +2565,14 @@ const verifyRunRoot = (
   FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const rootResult = yield* requireSuccessfulProcess(
       preflight.tools.git,
       ["-C", runRoot, "rev-parse", "--show-toplevel"],
       {
         cwd: runRoot,
         environment: preflight.childEnvironment,
-        stage: "checkout",
-        reason: "revision-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.checkout("revision-unavailable", message, fields),
         command: "git -C <worktree> rev-parse --show-toplevel",
         path: ".",
       },
@@ -2374,7 +2580,7 @@ const verifyRunRoot = (
     const fileSystem = yield* FileSystem.FileSystem;
     const realRoot = yield* fileSystem.realPath(runRoot).pipe(
       Effect.mapError((error) =>
-        candidateFailure("checkout", "revision-unavailable", "could not resolve worktree root", {
+        candidateFailures.checkout("revision-unavailable", "could not resolve worktree root", {
           cause: projectPlatformCause(error),
         }),
       ),
@@ -2383,8 +2589,7 @@ const verifyRunRoot = (
       .realPath(rootResult.stdout.trim())
       .pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "checkout",
+          candidateFailures.checkout(
             "revision-unavailable",
             "could not resolve reported worktree root",
             { cause: projectPlatformCause(error) },
@@ -2393,8 +2598,7 @@ const verifyRunRoot = (
       );
     if (realRoot !== observedRoot)
       return yield* Effect.fail(
-        candidateFailure(
-          "checkout",
+        candidateFailures.checkout(
           "revision-unavailable",
           "worktree root disagrees with its Git root",
         ),
@@ -2405,16 +2609,15 @@ const verifyRunRoot = (
       {
         cwd: runRoot,
         environment: preflight.childEnvironment,
-        stage: "checkout",
-        reason: "revision-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.checkout("revision-unavailable", message, fields),
         command: "git -C <worktree> rev-parse HEAD",
         path: ".",
       },
     );
     if (head.stdout.trim() !== revision)
       return yield* Effect.fail(
-        candidateFailure(
-          "checkout",
+        candidateFailures.checkout(
           "revision-unavailable",
           "worktree revision disagrees with candidate HEAD",
         ),
@@ -2425,42 +2628,42 @@ const verifyRunRoot = (
       {
         cwd: runRoot,
         environment: preflight.childEnvironment,
-        stage: "checkout",
-        reason: "revision-unavailable",
+        failure: (message, fields) =>
+          candidateFailures.checkout("revision-unavailable", message, fields),
         command: "git -C <worktree> status --porcelain --untracked-files=no",
         path: ".",
       },
     );
     if (status.stdout !== "")
       return yield* Effect.fail(
-        candidateFailure("checkout", "revision-unavailable", "detached worktree is not clean"),
+        candidateFailures.checkout("revision-unavailable", "detached worktree is not clean"),
       );
-    const lockBytes = yield* readBytes(
-      path.resolve(runRoot, DEPENDENCY_LOCK),
-      "checkout",
-      "revision-unavailable",
+    const lockPath = yield* resolveContainedExistingPath(
+      realRoot,
       DEPENDENCY_LOCK,
+      checkoutRevisionFailure,
+      selectionUnsafeFailure,
     );
+    const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
     if ((yield* sha256Bytes(lockBytes)) !== dependencyLockSha256)
       return yield* Effect.fail(
-        candidateFailure(
-          "checkout",
+        candidateFailures.checkout(
           "revision-unavailable",
           "worktree dependency lock differs from candidate HEAD",
           { path: DEPENDENCY_LOCK },
         ),
       );
     for (const expected of expectedInputs) {
-      const bytes = yield* readBytes(
-        path.resolve(runRoot, expected.path),
-        "checkout",
-        "revision-unavailable",
+      const inputPath = yield* resolveContainedExistingPath(
+        realRoot,
         expected.path,
+        checkoutRevisionFailure,
+        selectionUnsafeFailure,
       );
+      const bytes = yield* readBytes(inputPath, expected.path, checkoutRevisionFailure);
       if ((yield* sha256Bytes(bytes)) !== expected.sha256)
         return yield* Effect.fail(
-          candidateFailure(
-            "checkout",
+          candidateFailures.checkout(
             "revision-unavailable",
             "worktree input differs from candidate HEAD",
             { path: expected.path },
@@ -2483,22 +2686,21 @@ const runSetup = (
     yield* requireSuccessfulProcess(preflight.tools.just, ["install"], {
       cwd: runRoot,
       environment,
-      stage: "setup",
-      reason: "process-failed",
+      failure: (message, fields) => candidateFailures.setup("process-failed", message, fields),
       command: "just install",
       path: ".",
     });
     yield* requireSuccessfulProcess(preflight.tools.bun, ["run", "build"], {
       cwd: runRoot,
       environment,
-      stage: "setup",
-      reason: "process-failed",
+      failure: (message, fields) => candidateFailures.setup("process-failed", message, fields),
       command: "bun run build",
       path: ".",
     });
   });
 
 const compileRun = (
+  repositoryRoot: string,
   runRoot: string,
   runtime: RuntimeBoundary,
   revision: string,
@@ -2519,7 +2721,7 @@ const compileRun = (
         THEORY_SELECTION,
       ).pipe(
         Effect.mapError((error) =>
-          candidateFailure("explain", "producer-failed", error.message, {
+          candidateFailures.explain("producer-failed", error.message, {
             path: THEORY_SELECTION,
             cause: explanationCause(error),
           }),
@@ -2530,8 +2732,7 @@ const compileRun = (
         directExplanation.theoryLock === undefined
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "explain",
+          candidateFailures.explain(
             "producer-failed",
             "current exact-one theory is not applicable",
             { path: THEORY_SELECTION },
@@ -2554,7 +2755,7 @@ const compileRun = (
               ),
       }).pipe(
         Effect.mapError((error) =>
-          candidateFailure("assemble", "producer-failed", error.message, {
+          candidateFailures.assemble("producer-failed", error.message, {
             path: ASSEMBLY_SELECTION,
             cause: assemblyCause(error),
           }),
@@ -2562,12 +2763,9 @@ const compileRun = (
       );
       if (collectedEntries === undefined)
         return yield* Effect.fail(
-          candidateFailure(
-            "assemble",
-            "producer-failed",
-            "assembly publisher returned no entries",
-            { path: ASSEMBLY_SELECTION },
-          ),
+          candidateFailures.assemble("producer-failed", "assembly publisher returned no entries", {
+            path: ASSEMBLY_SELECTION,
+          }),
         );
       const assemblyEntries = collectedEntries;
       if (
@@ -2578,8 +2776,7 @@ const compileRun = (
         )
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "assemble",
+          candidateFailures.assemble(
             "producer-failed",
             "assembly producer inventory differs from the frozen 15-file closure",
             { path: ASSEMBLY_SELECTION },
@@ -2588,17 +2785,18 @@ const compileRun = (
       const artifactEntry = yield* entryAt(
         assemblyEntries,
         ".bang/artifacts/clinic-packaged-exact-one.json",
-        "explain",
+        (message, fields) => candidateFailures.explain("producer-failed", message, fields),
       );
-      const lockEntry = yield* entryAt(assemblyEntries, THEORY_LOCK_PATH, "explain");
+      const lockEntry = yield* entryAt(assemblyEntries, THEORY_LOCK_PATH, (message, fields) =>
+        candidateFailures.explain("producer-failed", message, fields),
+      );
       if (
         textDecoder.decode(artifactEntry.bytes) !== directExplanation.encodedArtifact ||
         textDecoder.decode(lockEntry.bytes) !== directExplanation.theoryLock.encodedLock
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "explain",
-            "observation-mismatch",
+          candidateFailures.explain(
+            "producer-failed",
             "direct explanation bytes differ from assembly closure",
             { path: THEORY_SELECTION },
           ),
@@ -2606,15 +2804,14 @@ const compileRun = (
       const classificationEntry = yield* entryAt(
         assemblyEntries,
         CLASSIFICATION_REPORT_PATH,
-        "classify",
+        (message, fields) => candidateFailures.classify("producer-failed", message, fields),
       );
       const classification = yield* Schema.decodeEffect(M037CollectedClassificationReportFromJson)(
         textDecoder.decode(classificationEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailure(
-            "classify",
+          candidateFailures.classify(
             "producer-failed",
             "collected classification report is invalid",
             { path: CLASSIFICATION_REPORT_PATH },
@@ -2662,20 +2859,21 @@ const compileRun = (
         !classificationIdentitiesMatch
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "classify",
+          candidateFailures.classify(
             "producer-failed",
             "collected classification does not contain the ordered qualified targets",
             { path: CLASSIFICATION_REPORT_PATH },
           ),
         );
-      const planEntry = yield* entryAt(assemblyEntries, PLAN_REPORT_PATH, "plan");
+      const planEntry = yield* entryAt(assemblyEntries, PLAN_REPORT_PATH, (message, fields) =>
+        candidateFailures.plan("producer-failed", message, fields),
+      );
       const planReport = yield* Schema.decodeEffect(PlanningReportFromJson)(
         textDecoder.decode(planEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailure("plan", "producer-failed", "collected planning report is invalid", {
+          candidateFailures.plan("producer-failed", "collected planning report is invalid", {
             path: PLAN_REPORT_PATH,
           }),
         ),
@@ -2706,17 +2904,21 @@ const compileRun = (
           classification.evidence[1]?.package.semanticDigest;
       if (!selectedPlanMatches)
         return yield* Effect.fail(
-          candidateFailure("plan", "producer-failed", "explicit objective did not select Gleam", {
+          candidateFailures.plan("producer-failed", "explicit objective did not select Gleam", {
             path: PLAN_REPORT_PATH,
           }),
         );
-      const gleamEvidenceEntry = yield* entryAt(assemblyEntries, GLEAM_EVIDENCE_PATH, "artifact");
+      const gleamEvidenceEntry = yield* entryAt(
+        assemblyEntries,
+        GLEAM_EVIDENCE_PATH,
+        (message, fields) => candidateFailures.artifact("material-missing", message, fields),
+      );
       const gleamEvidence = yield* Schema.decodeEffect(EvidenceFromJson)(
         textDecoder.decode(gleamEvidenceEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailure("artifact", "execution-failed", "Gleam evidence record is invalid", {
+          candidateFailures.artifact("execution-failed", "Gleam evidence record is invalid", {
             path: GLEAM_EVIDENCE_PATH,
           }),
         ),
@@ -2725,13 +2927,17 @@ const compileRun = (
         ({ role }) => role === "generated-gleam-boundary",
       );
       const gleamEvidenceSha256 = (yield* sha256Bytes(gleamEvidenceEntry.bytes)).slice(7);
-      const assemblyReportEntry = yield* entryAt(assemblyEntries, ASSEMBLY_REPORT_PATH, "assemble");
+      const assemblyReportEntry = yield* entryAt(
+        assemblyEntries,
+        ASSEMBLY_REPORT_PATH,
+        (message, fields) => candidateFailures.assemble("producer-failed", message, fields),
+      );
       const assemblyReport = yield* Schema.decodeEffect(AssemblyReportFromJson)(
         textDecoder.decode(assemblyReportEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailure("assemble", "producer-failed", "collected assembly report is invalid", {
+          candidateFailures.assemble("producer-failed", "collected assembly report is invalid", {
             path: ASSEMBLY_REPORT_PATH,
           }),
         ),
@@ -2751,8 +2957,7 @@ const compileRun = (
         assemblyReport.qualification.generatedBoundarySha256 !== qualifiedBoundary.sha256
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "assemble",
+          candidateFailures.assemble(
             "producer-failed",
             "assembly report does not bind the selected Gleam qualification",
             { path: ASSEMBLY_REPORT_PATH },
@@ -2760,21 +2965,23 @@ const compileRun = (
         );
       yield* publishAtomically(runRoot, assemblyEntries).pipe(
         Effect.mapError((error) =>
-          candidateFailure("assemble", "producer-failed", error.message, {
+          candidateFailures.assemble("producer-failed", error.message, {
             path: error.path,
             cause: publicationCause(error),
           }),
         ),
       );
       const artifactIsolation = yield* runArtifact(
+        repositoryRoot,
         runRoot,
+        runtime.environment.TMPDIR,
         assemblyEntries,
         gleamEvidence,
         preflight,
       );
       const audit = yield* runAudit(runRoot, ASSEMBLY_ID).pipe(
         Effect.mapError((error) =>
-          candidateFailure("audit", "producer-failed", error.message, {
+          candidateFailures.audit("producer-failed", error.message, {
             path: error.path,
             cause: auditCause(error),
           }),
@@ -2801,9 +3008,8 @@ const compileRun = (
         auditSummary.materials.some(({ status }) => status === "changed" || status === "cosmetic")
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "audit",
-            "observation-mismatch",
+          candidateFailures.audit(
+            "producer-failed",
             "clean audit found changed material or retired records",
             { path: ASSEMBLY_REPORT_PATH },
           ),
@@ -2811,11 +3017,11 @@ const compileRun = (
       const schemaPublication = yield* generateSchemaPublication.pipe(
         Effect.mapError((error) =>
           error._tag === "BangSchemaPublicationFailure"
-            ? candidateFailure("schema-publication", "producer-failed", error.message, {
+            ? candidateFailures.schemaPublication("producer-failed", error.message, {
                 path: error.path,
                 cause: schemaPublicationCause(error),
               })
-            : candidateFailure("schema-publication", "platform-failed", error.message, {
+            : candidateFailures.schemaPublication("platform-failed", error.message, {
                 cause: projectPlatformCause(error),
               }),
         ),
@@ -2824,7 +3030,7 @@ const compileRun = (
       const schemaCustody = yield* makeSchemaCustody(schemaEntries);
       yield* publishAtomically(runRoot, schemaEntries).pipe(
         Effect.mapError((error) =>
-          candidateFailure("schema-publication", "platform-failed", error.message, {
+          candidateFailures.schemaPublication("platform-failed", error.message, {
             path: error.path,
             cause: publicationCause(error),
           }),
@@ -2833,15 +3039,15 @@ const compileRun = (
       const effectEvidenceEntry = yield* entryAt(
         assemblyEntries,
         EFFECT_EVIDENCE_PATH,
-        "external-consumer",
+        (message, fields) =>
+          candidateFailures.externalConsumer("consumer-rejected", message, fields),
       );
       const effectEvidence = yield* Schema.decodeEffect(EvidenceFromJson)(
         textDecoder.decode(effectEvidenceEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailure(
-            "external-consumer",
+          candidateFailures.externalConsumer(
             "consumer-rejected",
             "Effect evidence record is invalid",
             { path: EFFECT_EVIDENCE_PATH },
@@ -2856,15 +3062,16 @@ const compileRun = (
           encodeM031TargetQualificationEvidence(gleamEvidence)
       )
         return yield* Effect.fail(
-          candidateFailure(
-            "classify",
+          candidateFailures.classify(
             "producer-failed",
             "classification evidence does not equal the standalone target records",
             { path: CLASSIFICATION_REPORT_PATH },
           ),
         );
       const externalConsumerIsolation = yield* runExternalConsumer(
+        repositoryRoot,
         runRoot,
+        runtime.environment.TMPDIR,
         schemaEntries,
         effectEvidence,
         preflight,
@@ -2877,9 +3084,8 @@ const compileRun = (
       );
       if (entries.length !== 21)
         return yield* Effect.fail(
-          candidateFailure(
-            "comparison",
-            "producer-inventory-diverged",
+          candidateFailures.comparison(
+            "observation-diverged",
             "run did not produce the exact 21-file closure",
           ),
         );
@@ -2915,8 +3121,8 @@ const acquireWorktree = (
     {
       cwd: root,
       environment: preflight.childEnvironment,
-      stage: "checkout",
-      reason: "revision-unavailable",
+      failure: (message, fields) =>
+        candidateFailures.checkout("revision-unavailable", message, fields),
       command: "git worktree add --detach <worktree> <revision>",
       path: ".",
     },
@@ -2926,8 +3132,7 @@ const releaseWorktree = (root: string, worktreePath: string, preflight: HostPref
   requireSuccessfulProcess(preflight.tools.git, ["worktree", "remove", "--force", worktreePath], {
     cwd: root,
     environment: preflight.childEnvironment,
-    stage: "checkout",
-    reason: "cleanup-failed",
+    failure: (message, fields) => candidateFailures.checkout("cleanup-failed", message, fields),
     command: "git worktree remove --force <worktree>",
     path: ".",
   }).pipe(Effect.asVoid);
@@ -2942,7 +3147,7 @@ const scanFiles = (
     const absoluteDirectory = path.resolve(root, relativeDirectory);
     const exists = yield* fileSystem.exists(absoluteDirectory).pipe(
       Effect.mapError((error) =>
-        candidateFailure("accumulation", "report-invalid", "could not inspect owned directory", {
+        candidateFailures.accumulation("report-invalid", "could not inspect owned directory", {
           path: relativeDirectory,
           cause: projectPlatformCause(error),
         }),
@@ -2950,14 +3155,27 @@ const scanFiles = (
     );
     if (!exists) return [];
     const result: Array<string> = [];
+    const visitedDirectories = new Set<string>();
     const visit = (
       relativePath: string,
     ): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
       Effect.gen(function* () {
         const absolutePath = path.resolve(root, relativePath);
+        if (yield* isSymbolicLink(absolutePath)) {
+          if (relativePath === relativeDirectory)
+            return yield* Effect.fail(
+              candidateFailures.accumulation(
+                "report-invalid",
+                "owned directory must not be a symbolic link",
+                { path: relativePath },
+              ),
+            );
+          result.push(relativePath);
+          return;
+        }
         const info = yield* fileSystem.stat(absolutePath).pipe(
           Effect.mapError((error) =>
-            candidateFailure("accumulation", "report-invalid", "could not inspect owned member", {
+            candidateFailures.accumulation("report-invalid", "could not inspect owned member", {
               path: relativePath,
               cause: projectPlatformCause(error),
             }),
@@ -2967,9 +3185,30 @@ const scanFiles = (
           result.push(relativePath);
           return;
         }
+        const canonicalDirectory = yield* fileSystem
+          .realPath(absolutePath)
+          .pipe(
+            Effect.mapError((error) =>
+              candidateFailures.accumulation(
+                "report-invalid",
+                "could not resolve owned directory",
+                { path: relativePath, cause: projectPlatformCause(error) },
+              ),
+            ),
+          );
+        if (!isPathWithin(root, canonicalDirectory))
+          return yield* Effect.fail(
+            candidateFailures.accumulation(
+              "report-invalid",
+              "owned directory resolves outside the repository root",
+              { path: relativePath },
+            ),
+          );
+        if (visitedDirectories.has(canonicalDirectory)) return;
+        visitedDirectories.add(canonicalDirectory);
         const names = yield* fileSystem.readDirectory(absolutePath).pipe(
           Effect.mapError((error) =>
-            candidateFailure("accumulation", "report-invalid", "could not read owned directory", {
+            candidateFailures.accumulation("report-invalid", "could not read owned directory", {
               path: relativePath,
               cause: projectPlatformCause(error),
             }),
@@ -3217,8 +3456,7 @@ export const validateM037UnsupportedClaims = (
   return upgraded === undefined
     ? Effect.void
     : Effect.fail(
-        candidateFailure(
-          "accumulation",
+        candidateFailures.accumulation(
           "unsupported-claim-upgraded",
           `unsupported claim ${upgraded.id} was upgraded without authority`,
         ),
@@ -3235,24 +3473,51 @@ const makeReport = (
   staleMembers: ReadonlyArray<string>,
 ): Effect.Effect<M037FullCompilerCandidateReport, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
-    if (
-      encodeCanonicalJson(first.inventory) !== encodeCanonicalJson(second.inventory) ||
-      first.inventorySha256 !== second.inventorySha256
-    )
+    const firstDifferingIndex = first.inventory.findIndex(
+      (entry, index) =>
+        second.inventory[index]?.path !== entry.path ||
+        second.inventory[index]?.sha256 !== entry.sha256,
+    );
+    if (first.inventory.length !== second.inventory.length || firstDifferingIndex < 0) {
+      if (
+        first.inventory.length !== second.inventory.length ||
+        first.inventorySha256 !== second.inventorySha256
+      )
+        return yield* Effect.fail(
+          candidateFailures.comparison(
+            "observation-diverged",
+            "clean producer inventory structure differs",
+          ),
+        );
+    } else {
+      const firstEntry = first.inventory[firstDifferingIndex];
+      const secondEntry = second.inventory[firstDifferingIndex];
+      if (
+        firstEntry === undefined ||
+        secondEntry === undefined ||
+        firstEntry.path !== secondEntry.path
+      )
+        return yield* Effect.fail(
+          candidateFailures.comparison(
+            "observation-diverged",
+            "clean producer inventory paths differ",
+          ),
+        );
       return yield* Effect.fail(
-        candidateFailure(
-          "comparison",
-          "producer-inventory-diverged",
+        producerInventoryDivergedFailure(
           "clean producer inventories differ",
+          firstEntry.path,
+          firstEntry.sha256,
+          secondEntry.sha256,
         ),
       );
+    }
     if (
       encodeCanonicalJson(first.observations) !== encodeCanonicalJson(second.observations) ||
       first.observationsSha256 !== second.observationsSha256
     )
       return yield* Effect.fail(
-        candidateFailure(
-          "comparison",
+        candidateFailures.comparison(
           "observation-diverged",
           "clean observation projections differ",
         ),
@@ -3321,8 +3586,7 @@ const makeReport = (
       const sha256 = id.startsWith("R") ? producerDigest.get(path) : embeddedDigest.get(path);
       if (sha256 === undefined)
         return yield* Effect.fail(
-          candidateFailure(
-            "accumulation",
+          candidateFailures.accumulation(
             "source-reference-invalid",
             `source reference ${id} has no digest`,
             { path },
@@ -3346,8 +3610,7 @@ const makeReport = (
       )
     )
       return yield* Effect.fail(
-        candidateFailure(
-          "accumulation",
+        candidateFailures.accumulation(
           "source-reference-invalid",
           "claim source references are incomplete",
         ),
@@ -3406,7 +3669,7 @@ const makeReport = (
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure("accumulation", "report-invalid", "accumulated M037 report is invalid", {
+        candidateFailures.accumulation("report-invalid", "accumulated M037 report is invalid", {
           path: REPORT_PATH,
         }),
       ),
@@ -3420,7 +3683,7 @@ const validateReportDigests = (
     for (const record of Object.values(report.embeddedRecords)) {
       if ((yield* sha256Canonical(record.value)) !== record.sha256)
         return yield* Effect.fail(
-          candidateFailure("decode", "report-invalid", "embedded record digest is invalid", {
+          candidateFailures.decode("report-invalid", "embedded record digest is invalid", {
             path: record.path,
           }),
         );
@@ -3438,8 +3701,7 @@ const validateReportDigests = (
           : producerByPath.get(reference.path);
         if (expected !== reference.sha256)
           return yield* Effect.fail(
-            candidateFailure(
-              "decode",
+            candidateFailures.decode(
               "report-invalid",
               "claim source digest disagrees with its authority",
               { path: reference.path },
@@ -3465,8 +3727,7 @@ const validateReportDigests = (
       comparison.secondObservationsSha256 !== observationSha256
     )
       return yield* Effect.fail(
-        candidateFailure(
-          "decode",
+        candidateFailures.decode(
           "report-invalid",
           "clean-run inventory or observation digest is invalid",
           { path: REPORT_PATH },
@@ -3479,30 +3740,36 @@ const decodeReportMode = (
   reportPath: string,
 ): Effect.Effect<string, M037CandidateFailure, FileSystem.FileSystem | Path.Path | Crypto.Crypto> =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-    if (!isRepositoryRelativePath(reportPath))
-      return yield* Effect.fail(
-        candidateFailure("decode", "report-invalid", "report path must be repository-relative", {
-          path: reportPath,
+    const fileSystem = yield* FileSystem.FileSystem;
+    const canonicalRoot = yield* fileSystem.realPath(root).pipe(
+      Effect.mapError((error) =>
+        selectionUnsafeFailure("could not resolve repository root", {
+          cause: projectPlatformCause(error),
         }),
-      );
-    const encoded = yield* readText(
-      path.resolve(root, reportPath),
-      "decode",
-      "report-invalid",
-      reportPath,
+      ),
     );
+    if (reportPath !== REPORT_PATH)
+      return yield* Effect.fail(
+        isRepositoryRelativePath(reportPath)
+          ? decodeReportFailure("report path is not the public M037 report", { path: reportPath })
+          : selectionUnsafeFailure("report path must be repository-relative", { path: reportPath }),
+      );
+    const resolvedReportPath = yield* resolveContainedExistingPath(
+      canonicalRoot,
+      reportPath,
+      decodeReportFailure,
+      selectionUnsafeFailure,
+      true,
+    );
+    const encoded = yield* readText(resolvedReportPath, reportPath, decodeReportFailure);
     const report = yield* Schema.decodeEffect(M037FullCompilerCandidateReportFromJson)(
       encoded,
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailure(
-          "decode",
-          "report-invalid",
-          "strict report decoder rejected the document",
-          { path: reportPath },
-        ),
+        candidateFailures.decode("report-invalid", "strict report decoder rejected the document", {
+          path: reportPath,
+        }),
       ),
     );
     yield* validateReportDigests(report);
@@ -3521,28 +3788,26 @@ const candidateProgram = (
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const fileSystem = yield* FileSystem.FileSystem;
-      const root = path.resolve(runtime.scriptDirectory, "..");
+      const root = yield* fileSystem.realPath(path.resolve(runtime.scriptDirectory, "..")).pipe(
+        Effect.mapError((error) =>
+          selectionUnsafeFailure("could not resolve repository root", {
+            cause: projectPlatformCause(error),
+          }),
+        ),
+      );
+      const decoded = yield* decodeSelection(root, selectionPath);
       const ambientPath = runtime.environment.PATH ?? "";
-      const initialGit = yield* resolveExecutable(
-        "git",
-        ambientPath,
-        "preflight",
-        "git-worktree-unavailable",
+      const initialGit = yield* resolveExecutable("git", ambientPath, (message, fields) =>
+        candidateFailures.preflight("git-worktree-unavailable", message, fields),
       );
       const caller = yield* inspectCaller(root, initialGit, runtime.environment);
-      const decoded = yield* decodeSelection(root, selectionPath);
-      const temporaryParent = yield* fileSystem
-        .makeTempDirectoryScoped({ prefix: "bang-m037-candidate-" })
-        .pipe(
-          Effect.mapError((error) =>
-            candidateFailure(
-              "preflight",
-              "git-worktree-unavailable",
-              "could not create candidate temporary root",
-              { cause: projectPlatformCause(error) },
-            ),
-          ),
-        );
+      const temporaryParent = yield* makeExternalTempDirectory(
+        [root],
+        runtime.environment.TMPDIR,
+        "bang-m037-candidate-",
+        (message, fields) =>
+          candidateFailures.preflight("git-worktree-unavailable", message, fields),
+      );
       const preflight = yield* preflightHost(
         root,
         runtime,
@@ -3558,6 +3823,7 @@ const candidateProgram = (
             () =>
               Effect.gen(function* () {
                 const run1 = yield* compileRun(
+                  root,
                   firstPath,
                   runtime,
                   caller.revision,
@@ -3566,6 +3832,7 @@ const candidateProgram = (
                   preflight,
                 );
                 const run2 = yield* compileRun(
+                  root,
                   secondPath,
                   runtime,
                   caller.revision,
@@ -3596,7 +3863,13 @@ const candidateProgram = (
         staleMembers,
       );
       yield* validateReportDigests(report).pipe(
-        Effect.mapError((error) => ({ ...error, stage: "accumulation" as const })),
+        Effect.mapError((error) =>
+          candidateFailures.accumulation("report-invalid", error.message, {
+            ...(error.path === undefined ? {} : { path: error.path }),
+            ...(error.command === undefined ? {} : { command: error.command }),
+            ...(error.cause === undefined ? {} : { cause: error.cause }),
+          }),
+        ),
       );
       const reportBytes = textEncoder.encode(`${encodeCanonicalJson(report)}\n`);
       const reloaded = yield* Schema.decodeEffect(M037FullCompilerCandidateReportFromJson)(
@@ -3604,8 +3877,7 @@ const candidateProgram = (
         parseOptions,
       ).pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "accumulation",
+          candidateFailures.accumulation(
             "report-invalid",
             `canonical report bytes failed strict reload: ${String(error)}`,
             { path: REPORT_PATH },
@@ -3613,21 +3885,25 @@ const candidateProgram = (
         ),
       );
       yield* validateReportDigests(reloaded).pipe(
-        Effect.mapError((error) => ({ ...error, stage: "accumulation" as const })),
+        Effect.mapError((error) =>
+          candidateFailures.accumulation("report-invalid", error.message, {
+            ...(error.path === undefined ? {} : { path: error.path }),
+            ...(error.command === undefined ? {} : { command: error.command }),
+            ...(error.cause === undefined ? {} : { cause: error.cause }),
+          }),
+        ),
       );
       const finalEntries = [...first.entries, { path: REPORT_PATH, bytes: reportBytes }];
       if (finalEntries.length !== 22)
         return yield* Effect.fail(
-          candidateFailure(
-            "accumulation",
+          candidateFailures.accumulation(
             "report-invalid",
             "final publication is not the exact 22-file batch",
           ),
         );
       yield* publishAtomically(root, finalEntries).pipe(
         Effect.mapError((error) =>
-          candidateFailure(
-            "publication",
+          candidateFailures.publication(
             error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
             error.message,
             { path: error.path, cause: publicationCause(error) },
@@ -3660,8 +3936,7 @@ const runMain = async (): Promise<void> => {
       : args.length === 1
         ? candidateProgram(runtime, args[0]!)
         : Effect.fail(
-            candidateFailure(
-              "selection",
+            candidateFailures.selection(
               "invalid-selection",
               "expected one selection path or --decode followed by one report path",
             ),
