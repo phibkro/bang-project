@@ -30,6 +30,8 @@ jobs:
         with:
           just-version: 1.58.0
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          extra-conf: experimental-features = nix-command flakes
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run evidence:m036
       - run: bun test tests/m037-full-compiler-candidate.test.ts
