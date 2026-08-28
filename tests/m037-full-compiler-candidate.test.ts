@@ -11,28 +11,36 @@ import { Crypto, Effect, FileSystem, PlatformError, Schema } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   M037CandidateFailureSchema,
-  M037_DIGEST_FAILURE_BUILDERS,
   M037FullCompilerCandidateReportFromJson,
   M037FullCompilerCandidateSelectionSchema,
   M037_ISOLATION_LOADER_SOURCE,
+  decodeM037ReportDigests,
   decodeSelection,
+  digestM037AccumulationRecord,
+  digestM037ArtifactExecutable,
+  digestM037AssemblyEvidence,
+  digestM037CheckoutLock,
+  digestM037ComparisonInventory,
+  digestM037ExternalConsumer,
+  digestM037PreflightNodeExecutable,
+  digestM037SchemaPublicationEntry,
+  digestM037SelectionInput,
   executeM037ArtifactProcess,
   inspectM037ArtifactResolution,
+  publishM037Entries,
   preflightHost,
   projectM037ExternalConsumerResult,
   projectM037FailureProcess,
-  publishM037Entries,
   runM037ClassificationProjection,
   scanFiles,
   validateM037ArtifactInvocation,
   validateM037PublicationPaths,
-  validateM037ReportDigests,
-  sha256Bytes,
   validateM037RunComparison,
   validateM037UnsupportedClaims,
   type M037ArtifactInvocation,
   type M037CandidateFailure,
   type M037DigestFailureStage,
+  type M037ModuleObservation,
   type M037FullCompilerCandidateReport,
   type RuntimeBoundary,
 } from "../scripts/m037-full-compiler-candidate.ts";
@@ -161,7 +169,7 @@ const recomputeReportLocalDigests = (report: MutableReport): void => {
 const validateLocallyCoherentReport = async (encoded: string): Promise<void> => {
   const decoded = Schema.decodeSync(M037FullCompilerCandidateReportFromJson)(encoded);
   await Effect.runPromise(
-    validateM037ReportDigests(decoded, M037_DIGEST_FAILURE_BUILDERS.decode).pipe(
+    decodeM037ReportDigests(decoded).pipe(
       // Test execution is the composition root for the Crypto service.
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(BunServices.layer),
@@ -457,7 +465,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("M037 full compiler candidate", () => {
-  test("keeps hostile /tmp placement external and rejects a non-x86_64-linux host", async () => {
+  test("N01 hostileHostIsExternal: keeps hostile /tmp placement external and rejects a non-x86_64-linux host", async () => {
     expect(await preflightFailure({ architecture: "arm64" })).toMatchObject({
       stage: "preflight",
       reason: "unsupported-platform",
@@ -473,14 +481,14 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("rejects injected Bun 1.3.12", async () => {
+  test("N02 unsupportedBunVersion: rejects injected Bun 1.3.12", async () => {
     expect(await preflightFailure({ bunVersion: "1.3.12" })).toMatchObject({
       stage: "preflight",
       reason: "bun-version-unsupported",
     });
   });
 
-  test("projects a real failed detached-worktree process", async () => {
+  test("N03 failedDetachedWorktreeProbe: projects a real failed detached-worktree process", async () => {
     const body = `if [[ "$1" == "worktree" && "\${2:-}" == "add" ]]; then\n  ${actualPaths.git} "$@"\n  printf '%s' "$5" > __M037_PROBE_LOG__\n  exit 73\nfi\nexec ${actualPaths.git} "$@"`;
     const failure = await preflightFailure({}, { name: "git", body });
     expect(failure).toMatchObject({
@@ -490,7 +498,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("projects a real failed Bash strict-mode token process", async () => {
+  test("N04 failedBashStrictModeProbe: projects a real failed Bash strict-mode token process", async () => {
     const body = `if [[ "$1" == "-euo" ]]; then exit 74; fi\nexec ${actualPaths.bash} "$@"`;
     expect(await preflightFailure({}, { name: "bash", body })).toMatchObject({
       stage: "preflight",
@@ -499,7 +507,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("rejects a real Just 1.57.0 process observation", async () => {
+  test("N05 unsupportedJustVersion: rejects a real Just 1.57.0 process observation", async () => {
     const body = `if [[ "$1" == "--version" ]]; then printf 'just 1.57.0\\n'; exit 0; fi\nexec ${actualPaths.just} "$@"`;
     expect(await preflightFailure({}, { name: "just", body })).toMatchObject({
       stage: "preflight",
@@ -507,7 +515,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("projects a real failed Nix version process", async () => {
+  test("N06 failedNixVersionProbe: projects a real failed Nix version process", async () => {
     const body = `if [[ "$1" == "--version" ]]; then exit 75; fi\nexec ${actualPaths.nix} "$@"`;
     expect(await preflightFailure({}, { name: "nix", body })).toMatchObject({
       stage: "preflight",
@@ -516,7 +524,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("rejects a combined-toolchain escript path", async () => {
+  test("N07 combinedToolchainPath: rejects a combined-toolchain escript path", async () => {
     const directory = "/tmp/m037-artifact";
     const erlangBin = "/nix/store/00000000000000000000000000000000-gleam-erlang/bin";
     const failure = await candidateFailure(
@@ -541,7 +549,7 @@ describe("M037 full compiler candidate", () => {
     expect(failure).toMatchObject({ stage: "artifact", reason: "runtime-boundary-violated" });
   });
 
-  test("rejects a changed artifact argument vector", async () => {
+  test("N08 changedArtifactInvocation: rejects a changed artifact argument vector", async () => {
     const directory = "/tmp/m037-artifact";
     const erlangRoot = "/nix/store/00000000000000000000000000000000-erlang-29.0.5/lib/erlang";
     const erlangBin = dirname(dirname(erlangRoot)) + "/bin";
@@ -563,7 +571,7 @@ describe("M037 full compiler candidate", () => {
     expect(failure).toMatchObject({ stage: "artifact", reason: "runtime-boundary-violated" });
   });
 
-  test("observes a real workspace sentinel through the artifact working directory", async () => {
+  test("N09 artifactWorkspaceSentinel: observes a real workspace sentinel through the artifact working directory", async () => {
     const root = await mkdtemp(join(tmpdir(), "bang-m037-artifact-resolution-"));
     try {
       const artifactDirectory = join(root, "artifact");
@@ -583,7 +591,7 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("strictly rejects an excess property in the real candidate file path", async () => {
+  test("N10 strictCandidateExcess: strictly rejects an excess property in the real candidate file path", async () => {
     const root = await mkdtemp(join(tmpdir(), "bang-m037-selection-"));
     try {
       const candidatePath = "examples/clinic/full-candidate.json";
@@ -607,7 +615,7 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("projects the foreign realization as M037 classify/producer-failed", async () => {
+  test("N11 foreignClassificationCause: projects the foreign realization as M037 classify/producer-failed", async () => {
     expect(
       await classificationFailure("examples/clinic/realizations/foreign-realization.json"),
     ).toMatchObject({
@@ -622,7 +630,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("projects the unsupported two-field target as M037 classify/producer-failed", async () => {
+  test("N12 unsupportedTargetClassificationCause: projects the unsupported two-field target as M037 classify/producer-failed", async () => {
     expect(
       await classificationFailure("examples/clinic/realizations/unsupported-two-state-fields.json"),
     ).toMatchObject({
@@ -637,7 +645,7 @@ describe("M037 full compiler candidate", () => {
     });
   });
 
-  test("projects a first-byte bit flip of the real copied producer escript", async () => {
+  test("N13 damagedArtifactExecution: projects a first-byte bit flip of the real copied producer escript", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bang-m037-damaged-escript-"));
     try {
       const copiedArtifactPath = join(directory, "exact_one");
@@ -671,7 +679,7 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("projects a real M035 custody rejection with exact cause fields", async () => {
+  test("N14 consumerCustodyRejection: projects a real M035 custody rejection with exact cause fields", async () => {
     const fixture = await makeConsumerSandbox();
     try {
       const boundary = fixture.evidence.materials.find(
@@ -706,7 +714,7 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("projects a real M035 strict evidence decode rejection", async () => {
+  test("N15 consumerEvidenceDecodeRejection: projects a real M035 strict evidence decode rejection", async () => {
     const fixture = await makeConsumerSandbox();
     try {
       const evidencePath = join(fixture.directory, "inputs/effect-typescript.evidence.json");
@@ -735,7 +743,7 @@ describe("M037 full compiler candidate", () => {
     }
   });
 
-  test("projects a real outside-import loader rejection as process-failed", async () => {
+  test("N16 outsideConsumerImport: projects a real outside-import loader rejection as process-failed", async () => {
     const fixture = await makeConsumerSandbox();
     const outside = await mkdtemp(join(tmpdir(), "bang-m037-outside-module-"));
     try {
@@ -773,7 +781,7 @@ export const outside = true;
     }
   });
 
-  test("rejects a real unsupported-claim upgrade", async () => {
+  test("N17 unsupportedClaimUpgrade: rejects a real unsupported-claim upgrade", async () => {
     const failure = await candidateFailure(
       validateM037UnsupportedClaims([
         ...Array.from({ length: 11 }, (_, index) => ({
@@ -796,7 +804,7 @@ export const outside = true;
     });
   });
 
-  test("mutates the real second-run src/main.gleam row in the ordered 21-row inventory", async () => {
+  test("N18 runComparisonInventoryDivergence: mutates the real second-run src/main.gleam row in the ordered 21-row inventory", async () => {
     const path = ".bang/assemblies/clinic-supervised-exact-one/src/main.gleam";
     const report = Schema.decodeSync(M037FullCompilerCandidateReportFromJson)(firstReportBytes);
     const firstInventory = report.producerInventory.map(({ path: entryPath, sha256: digest }) => ({
@@ -857,45 +865,67 @@ export const outside = true;
     });
   });
 
-  test("fails the last rename of all 22 real publication paths and restores every byte", async () => {
-    const fixture = await makePublicationFailureFixture(false);
+  test("N21 publicationAbsoluteSourcePath and N22 publicationCommitRollback: project exact failures and restore bytes", async () => {
+    const publicationAbsoluteSourcePath = await makePublicationFailureFixture("staging-root");
     try {
-      expect(fixture.paths).toHaveLength(22);
-      expect(fixture.failure).toMatchObject({
+      expect(publicationAbsoluteSourcePath.paths).toHaveLength(22);
+      expect(publicationAbsoluteSourcePath.failedPath).toBe(
+        resolve(publicationAbsoluteSourcePath.root),
+      );
+      expect(publicationAbsoluteSourcePath.failure).toMatchObject({
         stage: "publication",
         reason: "publication-failed",
-        path: fixture.failedPath,
+        path: ".",
         cause: {
           _tag: "PublicationFailure",
           stage: "publication",
-          path: fixture.failedPath,
+          path: publicationAbsoluteSourcePath.failedPath,
+          reason: "staging-failed",
+        },
+      });
+      expect(publicationAbsoluteSourcePath.after).toEqual(publicationAbsoluteSourcePath.before);
+    } finally {
+      await rm(publicationAbsoluteSourcePath.root, { recursive: true, force: true });
+    }
+
+    const publicationCommitRollback = await makePublicationFailureFixture("commit");
+    try {
+      expect(publicationCommitRollback.paths).toHaveLength(22);
+      expect(publicationCommitRollback.failure).toMatchObject({
+        stage: "publication",
+        reason: "publication-failed",
+        path: publicationCommitRollback.failedPath,
+        cause: {
+          _tag: "PublicationFailure",
+          stage: "publication",
+          path: publicationCommitRollback.failedPath,
           reason: "publication-failed",
         },
       });
-      expect(fixture.after).toEqual(fixture.before);
+      expect(publicationCommitRollback.after).toEqual(publicationCommitRollback.before);
     } finally {
-      await rm(fixture.root, { recursive: true, force: true });
+      await rm(publicationCommitRollback.root, { recursive: true, force: true });
     }
   });
 
-  test("maps a failed rollback restore without claiming unchanged bytes", async () => {
-    const fixture = await makePublicationFailureFixture(true);
+  test("N23 publicationRollbackFailure: maps a failed rollback restore without claiming unchanged bytes", async () => {
+    const publicationRollbackFailure = await makePublicationFailureFixture("rollback");
     try {
-      expect(fixture.paths).toHaveLength(22);
-      expect(fixture.failure).toMatchObject({
+      expect(publicationRollbackFailure.paths).toHaveLength(22);
+      expect(publicationRollbackFailure.failure).toMatchObject({
         stage: "publication",
         reason: "rollback-failed",
-        path: fixture.failedPath,
+        path: publicationRollbackFailure.failedPath,
         cause: {
           _tag: "PublicationFailure",
           stage: "publication",
-          path: fixture.failedPath,
+          path: publicationRollbackFailure.failedPath,
           reason: "rollback-failed",
         },
       });
-      expect(fixture.after).not.toEqual(fixture.before);
+      expect(publicationRollbackFailure.after).not.toEqual(publicationRollbackFailure.before);
     } finally {
-      await rm(fixture.root, { recursive: true, force: true });
+      await rm(publicationRollbackFailure.root, { recursive: true, force: true });
     }
   });
 
@@ -923,11 +953,7 @@ export const outside = true;
     const decodedDigestTampered = Schema.decodeSync(M037FullCompilerCandidateReportFromJson)(
       JSON.stringify(digestTampered),
     );
-    expect(
-      await candidateFailure(
-        validateM037ReportDigests(decodedDigestTampered, M037_DIGEST_FAILURE_BUILDERS.decode),
-      ),
-    ).toMatchObject({
+    expect(await candidateFailure(decodeM037ReportDigests(decodedDigestTampered))).toMatchObject({
       stage: "decode",
       reason: "report-invalid",
     });
@@ -937,6 +963,24 @@ export const outside = true;
       stdout: ".bang/evidence/M037.json: valid\n",
       stderr: "",
     });
+    const forgedDependencyLock = structuredClone(report) as unknown as MutableReport;
+    forgedDependencyLock.dependencyLock.sha256 =
+      report.dependencyLock.sha256 === `sha256:${"0".repeat(64)}`
+        ? (`sha256:${"f".repeat(64)}` as const)
+        : (`sha256:${"0".repeat(64)}` as const);
+    const encodedDependencyLock = encodeCanonicalJson(forgedDependencyLock);
+    await validateLocallyCoherentReport(encodedDependencyLock);
+    const expectedDependencyLockFailure = decodeFailure({
+      bangFullCompilerCandidateFailure: 1,
+      stage: "decode",
+      reason: "report-invalid",
+      message: "live dependency lock digest differs from report",
+      path: "bun.lock",
+    });
+    const actualDependencyLockFailure = await withReplacedReport(encodedDependencyLock, () =>
+      runCommand(decodeCommand, candidateRoot),
+    );
+    validateCliFailure(actualDependencyLockFailure, expectedDependencyLockFailure);
 
     const forgedE02 = structuredClone(report) as unknown as MutableReport;
     forgedE02.embeddedRecords.artifactIsolation.value.observation.validCall = false;
@@ -1056,7 +1100,7 @@ export const outside = true;
     }
   }, 180_000);
 
-  test("keeps stage and reason pairs strict", async () => {
+  test("N19 strictStageReasonDigestOwners and N20 strictProducerCauseUnions: enforce exact mappings", async () => {
     expect(() =>
       decodeFailure({
         bangFullCompilerCandidateFailure: 1,
@@ -1075,32 +1119,261 @@ export const outside = true;
       randomBytes: (size) => new Uint8Array(size),
       digest: () => Effect.fail(digestError),
     });
-    await Promise.all(
-      Object.entries(M037_DIGEST_FAILURE_BUILDERS).map(async ([stage, builder]) => {
-        const failure = await candidateFailure(
-          sha256Bytes(new Uint8Array([0]), builder).pipe(
-            Effect.provideService(Crypto.Crypto, failingCrypto),
-          ),
-        );
-        expect(failure).toEqual({
-          bangFullCompilerCandidateFailure: 1,
-          stage: stage as M037DigestFailureStage,
-          reason: "digest-failed",
-          cause: {
-            _tag: "PlatformError",
-            message: digestError.message,
-            reason: {
-              _tag: "Unknown",
-              module: "Crypto",
-              method: "digest",
-              description: "injected digest failure",
-            },
-          },
-          message: "SHA-256 digest failed",
-        });
-        await validateFailureProjection(failure);
-      }),
+    const report = Schema.decodeSync(M037FullCompilerCandidateReportFromJson)(firstReportBytes);
+    const firstInput = report.inputs[0];
+    const assemblyEvidence = report.producerInventory.find(
+      ({ path }) =>
+        path === ".bang/qualifications/clinic-two-qualified-exact-one/gleam-beam/evidence.json",
     );
+    const schemaEntry = report.producerInventory.find(({ path }) =>
+      path.startsWith("dist/schemas/2/"),
+    );
+    if (firstInput === undefined) throw new Error("M037 report must contain input records");
+    if (assemblyEvidence === undefined) throw new Error("M037 report must contain Gleam evidence");
+    if (schemaEntry === undefined) throw new Error("M037 report must contain schema entries");
+    const selectionBytes = new Uint8Array(await readFile(join(candidateRoot, firstInput.path)));
+    const checkoutBytes = new Uint8Array(await readFile(join(candidateRoot, "bun.lock")));
+    const preflightBytes = new Uint8Array(await readFile(pinnedNodePath));
+    const assemblyBytes = new Uint8Array(
+      await readFile(join(candidateRoot, assemblyEvidence.path)),
+    );
+    const artifactBytes = new Uint8Array(await readFile(escriptPath));
+    const schemaBytes = new Uint8Array(await readFile(join(candidateRoot, schemaEntry.path)));
+    const externalFixture = await makeConsumerSandbox();
+    try {
+      const externalResult = await runConsumer(externalFixture.directory);
+      if (externalResult.exitCode !== 0)
+        throw new Error(`real external consumer failed: ${externalResult.stderr}`);
+      const moduleLog = await readFile(
+        join(externalFixture.directory, "module-loads.jsonl"),
+        "utf8",
+      );
+      const moduleObservations = moduleLog
+        .trim()
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as M037ModuleObservation);
+      const loaderBytes = new TextEncoder().encode(M037_ISOLATION_LOADER_SOURCE);
+      const strictStageReasonDigestOwners = [
+        { stage: "selection" as const, effect: digestM037SelectionInput(selectionBytes) },
+        { stage: "checkout" as const, effect: digestM037CheckoutLock(checkoutBytes) },
+        { stage: "preflight" as const, effect: digestM037PreflightNodeExecutable(preflightBytes) },
+        { stage: "assemble" as const, effect: digestM037AssemblyEvidence(assemblyBytes) },
+        { stage: "artifact" as const, effect: digestM037ArtifactExecutable(artifactBytes) },
+        {
+          stage: "schema-publication" as const,
+          effect: digestM037SchemaPublicationEntry(schemaBytes),
+        },
+        {
+          stage: "external-consumer" as const,
+          effect: digestM037ExternalConsumer(loaderBytes, moduleObservations),
+        },
+        {
+          stage: "comparison" as const,
+          effect: digestM037ComparisonInventory(report.producerInventory),
+        },
+        {
+          stage: "accumulation" as const,
+          effect: digestM037AccumulationRecord(report.embeddedRecords.publicHostPreflight.value),
+        },
+        { stage: "decode" as const, effect: decodeM037ReportDigests(report) },
+      ] satisfies ReadonlyArray<{
+        readonly stage: M037DigestFailureStage;
+        readonly effect: Effect.Effect<unknown, M037CandidateFailure, Crypto.Crypto>;
+      }>;
+      await Promise.all(
+        strictStageReasonDigestOwners.map(async (operation) => {
+          const failure = await candidateFailure(
+            operation.effect.pipe(Effect.provideService(Crypto.Crypto, failingCrypto)),
+          );
+          expect(failure).toEqual({
+            bangFullCompilerCandidateFailure: 1,
+            stage: operation.stage,
+            reason: "digest-failed",
+            cause: {
+              _tag: "PlatformError",
+              message: digestError.message,
+              reason: {
+                _tag: "Unknown",
+                module: "Crypto",
+                method: "digest",
+                description: "injected digest failure",
+              },
+            },
+            message: "SHA-256 digest failed",
+          });
+          await validateFailureProjection(failure);
+        }),
+      );
+    } finally {
+      await rm(externalFixture.directory, { recursive: true, force: true });
+    }
+    const strictProducerCauseUnions = [
+      {
+        name: "producerCause.explain",
+        stage: "explain" as const,
+        cause: {
+          _tag: "ExplanationFailure" as const,
+          stage: "explain",
+          path: "examples/clinic/theories/packaged-exact-one.json",
+          reason: "producer-error",
+          message: "explanation producer failed",
+        },
+      },
+      {
+        name: "producerCause.classify",
+        stage: "classify" as const,
+        cause: {
+          _tag: "ClassificationFailure" as const,
+          stage: "classify",
+          path: "examples/clinic/realizations/foreign-realization.json",
+          reason: "producer-error",
+          message: "classification producer failed",
+        },
+      },
+      {
+        name: "producerCause.plan",
+        stage: "plan" as const,
+        cause: {
+          _tag: "PlanFailure" as const,
+          stage: "plan",
+          path: "examples/clinic/plans/supervised-exact-one.json",
+          reason: "producer-error",
+          message: "planning producer failed",
+        },
+      },
+      {
+        name: "producerCause.assemble",
+        stage: "assemble" as const,
+        cause: {
+          _tag: "AssemblyFailure" as const,
+          stage: "assemble",
+          path: "examples/clinic/assemblies/supervised-exact-one.json",
+          reason: "producer-error",
+          message: "assembly producer failed",
+        },
+      },
+      {
+        name: "producerCause.audit",
+        stage: "audit" as const,
+        cause: {
+          _tag: "AuditFailure" as const,
+          stage: "audit",
+          path: ".bang/assemblies/clinic-supervised-exact-one/report.json",
+          reason: "producer-error",
+          message: "audit producer failed",
+        },
+      },
+      {
+        name: "producerCause.schemaPublication",
+        stage: "schema-publication" as const,
+        cause: {
+          _tag: "BangSchemaPublicationFailure" as const,
+          stage: "schema-publication",
+          path: "dist/schemas/2/manifest.json",
+          reason: "producer-error",
+          message: "schema publication producer failed",
+        },
+      },
+    ] as const;
+    const producerFailureBase = {
+      bangFullCompilerCandidateFailure: 1 as const,
+      reason: "producer-failed" as const,
+      path: "examples/clinic/full-candidate.json",
+      message: "producer failed",
+    };
+    const assertProducerCauseRejects = (assertionName: string, value: unknown): void => {
+      try {
+        decodeFailure(value);
+      } catch {
+        return;
+      }
+      throw new Error(`${assertionName} unexpectedly decoded`);
+    };
+    for (const producerCase of strictProducerCauseUnions) {
+      const exact = {
+        ...producerFailureBase,
+        stage: producerCase.stage,
+        cause: producerCase.cause,
+      };
+      expect(decodeFailure(exact) as unknown).toEqual(exact);
+      assertProducerCauseRejects(`${producerCase.name}.missing-cause`, {
+        ...producerFailureBase,
+        stage: producerCase.stage,
+      });
+      assertProducerCauseRejects(`${producerCase.name}.wrong-tag`, {
+        ...producerFailureBase,
+        stage: producerCase.stage,
+        cause: { ...producerCase.cause, _tag: "WrongProducerFailure" },
+      });
+    }
+    const strictPublicationCauseUnions = [
+      "invalid-entry",
+      "duplicate-entry",
+      "staging-failed",
+      "custody-failed",
+      "publication-failed",
+    ] as const;
+    const publicationFailureBase = {
+      bangFullCompilerCandidateFailure: 1 as const,
+      stage: "publication" as const,
+      path: ".",
+      message: "publication failed",
+    };
+    const publicationCauseBase = {
+      _tag: "PublicationFailure" as const,
+      stage: "publication" as const,
+      path: "/absolute/publication/root",
+      message: "publisher failed",
+    };
+    const assertPublicationCauseRejects = (assertionName: string, value: unknown): void => {
+      try {
+        decodeFailure(value);
+      } catch {
+        return;
+      }
+      throw new Error(`${assertionName} unexpectedly decoded`);
+    };
+    for (const nestedReason of strictPublicationCauseUnions) {
+      const exact = {
+        ...publicationFailureBase,
+        reason: "publication-failed" as const,
+        cause: { ...publicationCauseBase, reason: nestedReason },
+      };
+      expect(decodeFailure(exact)).toEqual(exact);
+      assertPublicationCauseRejects(`publicationCause.cross-mapped.${nestedReason}`, {
+        ...publicationFailureBase,
+        reason: "rollback-failed",
+        cause: exact.cause,
+      });
+    }
+    const exactRollback = {
+      ...publicationFailureBase,
+      reason: "rollback-failed" as const,
+      cause: { ...publicationCauseBase, reason: "rollback-failed" as const },
+    };
+    expect(decodeFailure(exactRollback)).toEqual(exactRollback);
+    assertPublicationCauseRejects("publicationCause.cross-mapped.rollback-failed", {
+      ...publicationFailureBase,
+      reason: "publication-failed",
+      cause: exactRollback.cause,
+    });
+    assertPublicationCauseRejects("publicationCause.arbitrary-stage", {
+      ...publicationFailureBase,
+      reason: "publication-failed",
+      cause: { ...publicationCauseBase, stage: "schema-publication", reason: "staging-failed" },
+    });
+    for (const nestedReason of ["producer-error", "arbitrary-reason"]) {
+      assertPublicationCauseRejects(`publicationCause.arbitrary-reason.${nestedReason}`, {
+        ...publicationFailureBase,
+        reason: "publication-failed",
+        cause: { ...publicationCauseBase, reason: nestedReason },
+      });
+    }
+    assertPublicationCauseRejects("publicationCause.missing-cause", {
+      ...publicationFailureBase,
+      reason: "publication-failed",
+    });
     const selection = {
       bangFullCompilerCandidate: 1,
       id: "clinic-full-compiler-candidate",
@@ -1164,9 +1437,10 @@ const snapshotM037PublicationBytes = (
       bytes: new Uint8Array(await readFile(join(root, path))),
     })),
   );
+type M037PublicationFailureMode = "staging-root" | "commit" | "rollback";
 
 const makePublicationFailureFixture = async (
-  rollbackFails: boolean,
+  mode: M037PublicationFailureMode,
 ): Promise<{
   readonly root: string;
   readonly failure: M037CandidateFailure;
@@ -1197,8 +1471,9 @@ const makePublicationFailureFixture = async (
     }),
   );
   const before = await snapshotM037PublicationBytes(root, paths);
-  const failedPath = [...paths].toSorted().at(-1);
-  if (failedPath === undefined) throw new Error("real M037 publication inventory is empty");
+  const finalCommitPath = [...paths].toSorted().at(-1);
+  if (finalCommitPath === undefined) throw new Error("real M037 publication inventory is empty");
+  const failedPath = mode === "staging-root" ? resolve(root) : finalCommitPath;
   const realFileSystem = await Effect.runPromise(
     // Test execution is the composition root for staged platform services.
     // @effect-diagnostics-next-line strictEffectProvide:off
@@ -1208,6 +1483,13 @@ const makePublicationFailureFixture = async (
   let copyCalls = 0;
   const failingFileSystem: FileSystem.FileSystem = {
     ...realFileSystem,
+    makeTempDirectoryScoped: (options) =>
+      mode === "staging-root"
+        ? realFileSystem.makeTempDirectoryScoped({
+            directory: join(root, "missing-staging-root"),
+            prefix: options?.prefix,
+          })
+        : realFileSystem.makeTempDirectoryScoped(options),
     rename: (oldPath, newPath) => {
       renameCalls += 1;
       return renameCalls === entries.length
@@ -1216,7 +1498,7 @@ const makePublicationFailureFixture = async (
     },
     copyFile: (fromPath, toPath) => {
       copyCalls += 1;
-      return rollbackFails && copyCalls === entries.length + 1
+      return mode === "rollback" && copyCalls === entries.length + 1
         ? realFileSystem.copyFile(join(root, "missing-rollback-source"), toPath)
         : realFileSystem.copyFile(fromPath, toPath);
     },

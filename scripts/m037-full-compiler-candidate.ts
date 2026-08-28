@@ -274,13 +274,30 @@ const ClassificationCauseSchema = namedCauseSchema("ClassificationFailure", true
 const PlanCauseSchema = namedCauseSchema("PlanFailure", false);
 const AssemblyCauseSchema = namedCauseSchema("AssemblyFailure", false);
 const AuditCauseSchema = namedCauseSchema("AuditFailure", false);
-const PublicationCauseSchema = Schema.Struct({
+const PublicationCauseFields = {
   _tag: Schema.Literal("PublicationFailure"),
-  stage: Schema.String,
+  stage: Schema.Literal("publication"),
   path: Schema.String,
-  reason: Schema.String,
   message: Schema.String,
+} as const;
+const PublicationNonRollbackCauseSchema = Schema.Struct({
+  ...PublicationCauseFields,
+  reason: Schema.Literals([
+    "invalid-entry",
+    "duplicate-entry",
+    "staging-failed",
+    "custody-failed",
+    "publication-failed",
+  ]),
 }).annotate({ parseOptions });
+const PublicationRollbackCauseSchema = Schema.Struct({
+  ...PublicationCauseFields,
+  reason: Schema.Literal("rollback-failed"),
+}).annotate({ parseOptions });
+const PublicationCauseSchema = Schema.Union([
+  PublicationNonRollbackCauseSchema,
+  PublicationRollbackCauseSchema,
+]);
 const SchemaPublicationCauseSchema = Schema.Struct({
   _tag: Schema.Literal("BangSchemaPublicationFailure"),
   stage: Schema.String,
@@ -444,9 +461,10 @@ export const M037CandidateFailureSchema = Schema.Union([
   digestFailureSchema("accumulation"),
   causedStageFailureSchema(
     "publication",
-    ["publication-failed", "rollback-failed"],
-    PublicationCauseSchema,
+    ["publication-failed"],
+    PublicationNonRollbackCauseSchema,
   ),
+  causedStageFailureSchema("publication", ["rollback-failed"], PublicationRollbackCauseSchema),
   optionallyCausedStageFailureSchema("decode", ["report-invalid"], PlatformCauseSchema),
   digestFailureSchema("decode"),
 ]);
@@ -1069,6 +1087,8 @@ type AssemblyCause = typeof AssemblyCauseSchema.Type;
 type AuditCause = typeof AuditCauseSchema.Type;
 type SchemaPublicationCause = typeof SchemaPublicationCauseSchema.Type;
 type PublicationCause = typeof PublicationCauseSchema.Type;
+type PublicationNonRollbackCause = typeof PublicationNonRollbackCauseSchema.Type;
+type PublicationRollbackCause = typeof PublicationRollbackCauseSchema.Type;
 type MissionPlatformCause = typeof MissionPlatformCauseSchema.Type;
 type ConsumerCause = typeof ConsumerCauseSchema.Type;
 type OptionalFailureCause = PlatformCause | ConsumerCause;
@@ -1132,7 +1152,7 @@ const failureForStage =
     }) as M037CandidateFailure;
 const requiredCauseFailure = <Cause extends FailureCause>(
   stage: M037CandidateFailure["stage"],
-  reason: "producer-failed" | "platform-failed" | "publication-failed" | "rollback-failed",
+  reason: "producer-failed" | "platform-failed",
   message: string,
   fields: RequiredCauseFailureFields<Cause>,
 ): M037CandidateFailure =>
@@ -1185,7 +1205,7 @@ export type M037DigestFailureStage =
   | "comparison"
   | "accumulation"
   | "decode";
-export type M037DigestFailureBuilder = (
+type M037DigestFailureBuilder = (
   message: string,
   fields: RequiredCauseFailureFields<PlatformCause>,
 ) => M037CandidateFailure;
@@ -1201,7 +1221,7 @@ const digestFailureForStage =
       cause: fields.cause,
       message,
     }) as M037CandidateFailure;
-export const M037_DIGEST_FAILURE_BUILDERS = Object.freeze({
+const M037_DIGEST_FAILURE_BUILDERS = Object.freeze({
   selection: digestFailureForStage("selection"),
   preflight: digestFailureForStage("preflight"),
   checkout: digestFailureForStage("checkout"),
@@ -1278,13 +1298,15 @@ const schemaPublicationCause = (error: BangSchemaPublicationFailure): SchemaPubl
   reason: error.reason,
   message: error.message,
 });
-const publicationCause = (error: PublicationFailure): PublicationCause => ({
-  _tag: "PublicationFailure",
-  stage: error.stage,
-  path: error.path,
-  reason: error.reason,
-  message: error.message,
-});
+const decodePublicationCause = Schema.decodeUnknownSync(PublicationCauseSchema);
+const publicationCause = (error: PublicationFailure): PublicationCause =>
+  decodePublicationCause({
+    _tag: "PublicationFailure",
+    stage: error.stage,
+    path: error.path,
+    reason: error.reason,
+    message: error.message,
+  });
 const producerFailures = {
   explain: (message: string, fields: RequiredCauseFailureFields<ExplanationCause>) =>
     requiredCauseFailure("explain", "producer-failed", message, fields),
@@ -1307,11 +1329,32 @@ const missionPlatformFailures = {
   schemaPublication: (message: string, fields: RequiredCauseFailureFields<MissionPlatformCause>) =>
     requiredCauseFailure("schema-publication", "platform-failed", message, fields),
 } as const;
-const publicationFailure = (
-  reason: "publication-failed" | "rollback-failed",
-  message: string,
-  fields: RequiredCauseFailureFields<PublicationCause>,
-): M037CandidateFailure => requiredCauseFailure("publication", reason, message, fields);
+const publicationFailures = {
+  publication: (
+    message: string,
+    fields: RequiredCauseFailureFields<PublicationNonRollbackCause>,
+  ): M037CandidateFailure => ({
+    bangFullCompilerCandidateFailure: 1,
+    stage: "publication",
+    reason: "publication-failed",
+    ...(fields.path === undefined ? {} : { path: fields.path }),
+    ...(fields.command === undefined ? {} : { command: fields.command }),
+    cause: fields.cause,
+    message,
+  }),
+  rollback: (
+    message: string,
+    fields: RequiredCauseFailureFields<PublicationRollbackCause>,
+  ): M037CandidateFailure => ({
+    bangFullCompilerCandidateFailure: 1,
+    stage: "publication",
+    reason: "rollback-failed",
+    ...(fields.path === undefined ? {} : { path: fields.path }),
+    ...(fields.command === undefined ? {} : { command: fields.command }),
+    cause: fields.cause,
+    message,
+  }),
+} as const;
 
 const processFailure = (
   failure: FailureBuilder,
@@ -1390,7 +1433,7 @@ const requireSuccessfulProcess = (
     ),
   );
 
-export const sha256Bytes = (
+const sha256Bytes = (
   bytes: Uint8Array,
   failure: M037DigestFailureBuilder,
 ): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
@@ -1408,6 +1451,77 @@ export const sha256Bytes = (
 
 const sha256Canonical = (value: unknown, failure: M037DigestFailureBuilder) =>
   sha256Bytes(textEncoder.encode(encodeCanonicalJson(value)), failure);
+
+export const digestM037SelectionInput = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.selection);
+
+export const digestM037CheckoutLock = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.checkout);
+
+export const digestM037PreflightNodeExecutable = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.preflight);
+
+export const digestM037AssemblyEvidence = (
+  bytes: Uint8Array,
+): Effect.Effect<string, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.assemble).pipe(
+    Effect.map((digest) => digest.slice(7)),
+  );
+
+export const digestM037ArtifactExecutable = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.artifact);
+
+export const digestM037SchemaPublicationEntry = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS["schema-publication"]);
+
+export const digestM037ExternalConsumerLoader = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS["external-consumer"]);
+
+export const digestM037ComparisonEntry = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.comparison);
+
+export const digestM037ComparisonInventory = (
+  inventory: unknown,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Canonical(inventory, M037_DIGEST_FAILURE_BUILDERS.comparison);
+
+export const digestM037ComparisonObservations = (
+  observations: unknown,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Canonical(observations, M037_DIGEST_FAILURE_BUILDERS.comparison);
+
+export const digestM037AccumulationRecord = (
+  value: unknown,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Canonical(value, M037_DIGEST_FAILURE_BUILDERS.accumulation);
+
+export const digestM037DecodeRecord = (
+  value: unknown,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Canonical(value, M037_DIGEST_FAILURE_BUILDERS.decode);
+
+export const digestM037DecodeSourceBytes = (
+  bytes: Uint8Array,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.decode);
+
+type M037CanonicalDigest = (
+  value: unknown,
+) => Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto>;
 
 const readBytes = (
   absolutePath: string,
@@ -1771,14 +1885,14 @@ export const decodeSelection = (
         return {
           role,
           path: inputPath,
-          sha256: yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.selection),
+          sha256: yield* digestM037SelectionInput(bytes),
         };
       }),
     );
     return { selection, inputs };
   });
 
-const inspectCaller = (
+export const inspectM037Checkout = (
   root: string,
   git: string,
   environment: Readonly<Record<string, string>>,
@@ -1830,7 +1944,7 @@ const inspectCaller = (
     const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
     return {
       revision,
-      dependencyLockSha256: yield* sha256Bytes(lockBytes, M037_DIGEST_FAILURE_BUILDERS.checkout),
+      dependencyLockSha256: yield* digestM037CheckoutLock(lockBytes),
     };
   });
 
@@ -2112,10 +2226,7 @@ export const preflightHost = (
         pinnedNodeClosureResolved: true,
       },
       nodeExecutable,
-      nodeExecutableSha256: yield* sha256Bytes(
-        nodeExecutableBytes,
-        M037_DIGEST_FAILURE_BUILDERS.preflight,
-      ),
+      nodeExecutableSha256: yield* digestM037PreflightNodeExecutable(nodeExecutableBytes),
       nodeEnvironmentPath,
       childEnvironment,
     };
@@ -2450,7 +2561,7 @@ const runArtifact = (
       observation,
       qualificationMatch: true,
       escriptRealPath,
-      escriptSha256: yield* sha256Bytes(escriptBytes, M037_DIGEST_FAILURE_BUILDERS.artifact),
+      escriptSha256: yield* digestM037ArtifactExecutable(escriptBytes),
       arguments: ["exact_one"],
       cwd: "artifact-only-temp",
       environment: {
@@ -2519,7 +2630,47 @@ const ModuleObservationSchema = Schema.Struct({
   parent: Schema.optional(Schema.NullOr(Schema.String)),
   module: Schema.String,
 }).annotate({ parseOptions });
-type ModuleObservation = typeof ModuleObservationSchema.Type;
+export type M037ModuleObservation = typeof ModuleObservationSchema.Type;
+
+const normalizeM037ModuleObservations = (
+  observations: ReadonlyArray<M037ModuleObservation>,
+): ReadonlyArray<M037ModuleObservation> =>
+  [
+    ...new Map(
+      observations.map((observation) => {
+        const normalized =
+          observation.specifier !== undefined &&
+          (observation.specifier.startsWith("file:") || observation.specifier.startsWith("/"))
+            ? { ...observation, specifier: observation.module }
+            : observation;
+        return [encodeCanonicalJson(normalized), normalized] as const;
+      }),
+    ).values(),
+  ].toSorted((left, right) => encodeCanonicalJson(left).localeCompare(encodeCanonicalJson(right)));
+
+export const digestM037ExternalConsumerModuleLog = (
+  observations: ReadonlyArray<M037ModuleObservation>,
+): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
+  sha256Canonical(
+    normalizeM037ModuleObservations(observations),
+    M037_DIGEST_FAILURE_BUILDERS["external-consumer"],
+  );
+
+export const digestM037ExternalConsumer = (
+  loaderBytes: Uint8Array,
+  observations: ReadonlyArray<M037ModuleObservation>,
+): Effect.Effect<
+  {
+    readonly loaderSha256: `sha256:${string}`;
+    readonly moduleLogSha256: `sha256:${string}`;
+  },
+  M037CandidateFailure,
+  Crypto.Crypto
+> =>
+  Effect.all({
+    loaderSha256: digestM037ExternalConsumerLoader(loaderBytes),
+    moduleLogSha256: digestM037ExternalConsumerModuleLog(observations),
+  });
 
 const copySandboxInput = (
   runRoot: string,
@@ -2711,7 +2862,7 @@ const runExternalConsumer = (
       (message, fields) =>
         candidateFailures.externalConsumer("isolation-violated", message, fields),
     );
-    const observations: Array<ModuleObservation> = [];
+    const observations: Array<M037ModuleObservation> = [];
     for (const line of textDecoder.decode(moduleLogBytes).trim().split("\n")) {
       if (line.length === 0) continue;
       const observation = yield* Schema.decodeEffect(
@@ -2760,6 +2911,7 @@ const runExternalConsumer = (
           { path: "module-loads.jsonl" },
         ),
       );
+    const consumerDigests = yield* digestM037ExternalConsumer(loaderBytes, observations);
     return {
       nodeProvisioner: "nix",
       nixpkgsRevision: NIXPKGS_REVISION,
@@ -2769,27 +2921,7 @@ const runExternalConsumer = (
       nodeExecutableSha256: preflight.nodeExecutableSha256,
       arguments: ["--no-warnings", "--experimental-loader", "isolation-loader.mjs", "consumer.mjs"],
       environmentKeys: ["BANG_M037_MODULE_LOG", "BANG_M037_SANDBOX_ROOT", "HOME", "LANG", "PATH"],
-      loaderSha256: yield* sha256Bytes(
-        loaderBytes,
-        M037_DIGEST_FAILURE_BUILDERS["external-consumer"],
-      ),
-      moduleLogSha256: yield* sha256Canonical(
-        [
-          ...new Map(
-            observations.map((observation) => {
-              const normalized =
-                observation.specifier !== undefined &&
-                (observation.specifier.startsWith("file:") || observation.specifier.startsWith("/"))
-                  ? { ...observation, specifier: observation.module }
-                  : observation;
-              return [encodeCanonicalJson(normalized), normalized] as const;
-            }),
-          ).values(),
-        ].toSorted((left, right) =>
-          encodeCanonicalJson(left).localeCompare(encodeCanonicalJson(right)),
-        ),
-        M037_DIGEST_FAILURE_BUILDERS["external-consumer"],
-      ),
+      ...consumerDigests,
       loadedFiles: ["consumer.mjs", "publication/types/consumer.js"],
       resolvedFiles: ["consumer.mjs", "publication/types/consumer.js"],
       resolvedBuiltins: ["node:crypto", "node:fs/promises", "node:path"],
@@ -2797,7 +2929,7 @@ const runExternalConsumer = (
     };
   });
 
-const makeSchemaCustody = (
+export const makeSchemaCustody = (
   schemaEntries: ReadonlyArray<PublicationEntry>,
 ): Effect.Effect<typeof SchemaCustodyValueSchema.Type, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
@@ -2829,10 +2961,7 @@ const makeSchemaCustody = (
       const entry = yield* entryAt(schemaEntries, payload.path, (message, fields) =>
         candidateFailures.schemaPublication("result-mismatch", message, fields),
       );
-      if (
-        (yield* sha256Bytes(entry.bytes, M037_DIGEST_FAILURE_BUILDERS["schema-publication"])) !==
-        payload.sha256
-      )
+      if ((yield* digestM037SchemaPublicationEntry(entry.bytes)) !== payload.sha256)
         return yield* Effect.fail(
           candidateFailures.schemaPublication(
             "result-mismatch",
@@ -2848,19 +2977,13 @@ const makeSchemaCustody = (
         );
         return {
           path: entryPath,
-          sha256: yield* sha256Bytes(
-            entry.bytes,
-            M037_DIGEST_FAILURE_BUILDERS["schema-publication"],
-          ),
+          sha256: yield* digestM037SchemaPublicationEntry(entry.bytes),
         };
       }),
     );
     return {
       version: 2,
-      manifestSha256: yield* sha256Bytes(
-        manifestEntry.bytes,
-        M037_DIGEST_FAILURE_BUILDERS["schema-publication"],
-      ),
+      manifestSha256: yield* digestM037SchemaPublicationEntry(manifestEntry.bytes),
       manifestDigestedPayloads: manifestPayloads,
       inventoryDigestedFiles,
     };
@@ -2958,10 +3081,7 @@ const verifyRunRoot = (
       selectionUnsafeFailure,
     );
     const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
-    if (
-      (yield* sha256Bytes(lockBytes, M037_DIGEST_FAILURE_BUILDERS.checkout)) !==
-      dependencyLockSha256
-    )
+    if ((yield* digestM037CheckoutLock(lockBytes)) !== dependencyLockSha256)
       return yield* Effect.fail(
         candidateFailures.checkout(
           "revision-unavailable",
@@ -2977,7 +3097,7 @@ const verifyRunRoot = (
         selectionUnsafeFailure,
       );
       const bytes = yield* readBytes(inputPath, expected.path, checkoutRevisionFailure);
-      if ((yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.checkout)) !== expected.sha256)
+      if ((yield* digestM037CheckoutLock(bytes)) !== expected.sha256)
         return yield* Effect.fail(
           candidateFailures.checkout(
             "revision-unavailable",
@@ -3243,10 +3363,7 @@ const compileRun = (
       const qualifiedBoundary = gleamEvidence.materials.find(
         ({ role }) => role === "generated-gleam-boundary",
       );
-      const gleamEvidenceSha256 = (yield* sha256Bytes(
-        gleamEvidenceEntry.bytes,
-        M037_DIGEST_FAILURE_BUILDERS.assemble,
-      )).slice(7);
+      const gleamEvidenceSha256 = yield* digestM037AssemblyEvidence(gleamEvidenceEntry.bytes);
       const assemblyReportEntry = yield* entryAt(
         assemblyEntries,
         ASSEMBLY_REPORT_PATH,
@@ -3410,7 +3527,7 @@ const compileRun = (
           ),
         );
       const inventory = yield* Effect.forEach(entries, (entry) =>
-        sha256Bytes(entry.bytes, M037_DIGEST_FAILURE_BUILDERS.comparison).pipe(
+        digestM037ComparisonEntry(entry.bytes).pipe(
           Effect.map((sha256) => ({ path: entry.path, sha256 })),
         ),
       );
@@ -3424,12 +3541,9 @@ const compileRun = (
       return {
         entries,
         inventory,
-        inventorySha256: yield* sha256Canonical(inventory, M037_DIGEST_FAILURE_BUILDERS.comparison),
+        inventorySha256: yield* digestM037ComparisonInventory(inventory),
         observations,
-        observationsSha256: yield* sha256Canonical(
-          observations,
-          M037_DIGEST_FAILURE_BUILDERS.comparison,
-        ),
+        observationsSha256: yield* digestM037ComparisonObservations(observations),
       };
     }),
   );
@@ -3904,42 +4018,42 @@ const makeReport = (
       publicHostPreflight: embedded(
         "embedded/public-host-preflight.json" as const,
         preflight.value,
-        yield* sha256Canonical(preflight.value, M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(preflight.value),
       ),
       inputResolution: embedded(
         "embedded/input-resolution.json" as const,
         inputResolutionValue,
-        yield* sha256Canonical(inputResolutionValue, M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(inputResolutionValue),
       ),
       theoryApplicability: embedded(
         "embedded/theory-applicability.json" as const,
         first.observations[0],
-        yield* sha256Canonical(first.observations[0], M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(first.observations[0]),
       ),
       artifactIsolation: embedded(
         "embedded/artifact-isolation.json" as const,
         first.observations[1],
-        yield* sha256Canonical(first.observations[1], M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(first.observations[1]),
       ),
       audit: embedded(
         "embedded/audit.json" as const,
         first.observations[2],
-        yield* sha256Canonical(first.observations[2], M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(first.observations[2]),
       ),
       schemaCustody: embedded(
         "embedded/schema-custody.json" as const,
         first.observations[3],
-        yield* sha256Canonical(first.observations[3], M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(first.observations[3]),
       ),
       externalConsumerIsolation: embedded(
         "embedded/external-consumer-isolation.json" as const,
         first.observations[4],
-        yield* sha256Canonical(first.observations[4], M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(first.observations[4]),
       ),
       producerInventoryComparison: embedded(
         "embedded/producer-inventory-comparison.json" as const,
         comparisonValue,
-        yield* sha256Canonical(comparisonValue, M037_DIGEST_FAILURE_BUILDERS.accumulation),
+        yield* digestM037AccumulationRecord(comparisonValue),
       ),
     };
     const producerDigest = new Map<string, `sha256:${string}`>(
@@ -4043,13 +4157,13 @@ const makeReport = (
     );
   });
 
-export const validateM037ReportDigests = (
+const validateM037ReportDigests = (
   report: M037FullCompilerCandidateReport,
-  digestFailure: M037DigestFailureBuilder,
+  digestCanonical: M037CanonicalDigest,
 ): Effect.Effect<void, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
     for (const record of Object.values(report.embeddedRecords)) {
-      if ((yield* sha256Canonical(record.value, digestFailure)) !== record.sha256)
+      if ((yield* digestCanonical(record.value)) !== record.sha256)
         return yield* Effect.fail(
           candidateFailures.decode("report-invalid", "embedded record digest is invalid", {
             path: record.path,
@@ -4077,17 +4191,14 @@ export const validateM037ReportDigests = (
           );
       }
     }
-    const inventorySha256 = yield* sha256Canonical(report.producerInventory, digestFailure);
-    const observationSha256 = yield* sha256Canonical(
-      [
-        report.embeddedRecords.theoryApplicability.value,
-        report.embeddedRecords.artifactIsolation.value,
-        report.embeddedRecords.audit.value,
-        report.embeddedRecords.schemaCustody.value,
-        report.embeddedRecords.externalConsumerIsolation.value,
-      ],
-      digestFailure,
-    );
+    const inventorySha256 = yield* digestCanonical(report.producerInventory);
+    const observationSha256 = yield* digestCanonical([
+      report.embeddedRecords.theoryApplicability.value,
+      report.embeddedRecords.artifactIsolation.value,
+      report.embeddedRecords.audit.value,
+      report.embeddedRecords.schemaCustody.value,
+      report.embeddedRecords.externalConsumerIsolation.value,
+    ]);
     const comparison = report.embeddedRecords.producerInventoryComparison.value;
     if (
       report.cleanRun.firstInventorySha256 !== inventorySha256 ||
@@ -4106,11 +4217,36 @@ export const validateM037ReportDigests = (
       );
   });
 
+export const decodeM037ReportDigests = (
+  report: M037FullCompilerCandidateReport,
+): Effect.Effect<void, M037CandidateFailure, Crypto.Crypto> =>
+  validateM037ReportDigests(report, digestM037DecodeRecord);
+
 const validateM037ReportSources = (
   root: string,
   report: M037FullCompilerCandidateReport,
 ): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path | Crypto.Crypto> =>
   Effect.gen(function* () {
+    const dependencyLockPath = yield* resolveContainedExistingPath(
+      root,
+      DEPENDENCY_LOCK,
+      decodeReportFailure,
+      decodeReportFailure,
+      true,
+    );
+    const dependencyLockBytes = yield* readBytes(
+      dependencyLockPath,
+      DEPENDENCY_LOCK,
+      decodeReportFailure,
+    );
+    const dependencyLockSha256 = yield* digestM037DecodeSourceBytes(dependencyLockBytes);
+    if (dependencyLockSha256 !== report.dependencyLock.sha256)
+      return yield* Effect.fail(
+        decodeReportFailure("live dependency lock digest differs from report", {
+          path: DEPENDENCY_LOCK,
+        }),
+      );
+
     for (const [index, { path: inputPath }] of INPUT_PATHS.entries()) {
       const resolvedInputPath = yield* resolveContainedExistingPath(
         root,
@@ -4120,7 +4256,7 @@ const validateM037ReportSources = (
         true,
       );
       const bytes = yield* readBytes(resolvedInputPath, inputPath, decodeReportFailure);
-      const digest = yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.decode);
+      const digest = yield* digestM037DecodeSourceBytes(bytes);
       if (digest !== report.inputs[index]!.sha256)
         return yield* Effect.fail(
           decodeReportFailure("live input digest differs from report", { path: inputPath }),
@@ -4138,7 +4274,7 @@ const validateM037ReportSources = (
         true,
       );
       const bytes = yield* readBytes(resolvedProducerPath, producerPath, decodeReportFailure);
-      const digest = yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.decode);
+      const digest = yield* digestM037DecodeSourceBytes(bytes);
       if (digest !== report.producerInventory[index]!.sha256)
         return yield* Effect.fail(
           decodeReportFailure("live producer digest differs from report", {
@@ -4244,7 +4380,7 @@ const decodeReportMode = (
         }),
       ),
     );
-    yield* validateM037ReportDigests(report, M037_DIGEST_FAILURE_BUILDERS.decode);
+    yield* decodeM037ReportDigests(report);
     yield* validateM037ReportSources(canonicalRoot, report);
     return `${reportPath}: valid`;
   });
@@ -4256,16 +4392,19 @@ export const publishM037Entries = (
   Effect.gen(function* () {
     const path = yield* Path.Path;
     yield* publishAtomically(root, entries).pipe(
-      Effect.mapError((error) =>
-        publicationFailure(
-          error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
-          error.message,
-          {
-            path: projectMissionOwnedPath(root, error.path, path),
-            cause: publicationCause(error),
-          },
-        ),
-      ),
+      Effect.mapError((error) => {
+        const cause = publicationCause(error);
+        const projectedPath = projectMissionOwnedPath(root, error.path, path);
+        return cause.reason === "rollback-failed"
+          ? publicationFailures.rollback(error.message, {
+              path: projectedPath,
+              cause,
+            })
+          : publicationFailures.publication(error.message, {
+              path: projectedPath,
+              cause,
+            });
+      }),
     );
   });
 
@@ -4293,7 +4432,7 @@ const candidateProgram = (
       const initialGit = yield* resolveExecutable("git", ambientPath, (message, fields) =>
         candidateFailures.preflight("git-worktree-unavailable", message, fields),
       );
-      const caller = yield* inspectCaller(root, initialGit, runtime.environment);
+      const caller = yield* inspectM037Checkout(root, initialGit, runtime.environment);
       const temporaryParent = yield* makeExternalTempDirectory(
         [root],
         runtime.environment.TMPDIR,
@@ -4355,7 +4494,7 @@ const candidateProgram = (
         second,
         staleMembers,
       );
-      yield* validateM037ReportDigests(report, M037_DIGEST_FAILURE_BUILDERS.accumulation).pipe(
+      yield* validateM037ReportDigests(report, digestM037AccumulationRecord).pipe(
         Effect.mapError((error) =>
           error.reason === "digest-failed"
             ? error
@@ -4378,7 +4517,7 @@ const candidateProgram = (
           ),
         ),
       );
-      yield* validateM037ReportDigests(reloaded, M037_DIGEST_FAILURE_BUILDERS.accumulation).pipe(
+      yield* validateM037ReportDigests(reloaded, digestM037AccumulationRecord).pipe(
         Effect.mapError((error) =>
           error.reason === "digest-failed"
             ? error
