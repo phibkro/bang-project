@@ -65,7 +65,7 @@ This monorepo contains the BANG specification language, Core, compilers, target 
 
 M037 is the active mission. It freezes one full compiler candidate from a clean checkout through one public command.
 
-The command will use the committed Clinic inputs and current typed compiler APIs in-process. It will add no child BANG CLI command, new BANG CLI verb, or semantic construct.
+The command uses the committed Clinic inputs and current typed compiler APIs in-process. It adds no child BANG CLI command, new BANG CLI verb, or semantic construct.
 
 M037 supports this public-host contract:
 
@@ -118,15 +118,50 @@ The working directory contains only the copied artifact. Workspace sentinels and
 
 This process boundary is not a filesystem sandbox. The mission does not claim that it denies absolute host paths.
 
-The mission script will provision Node 24.7.0 from one immutable Nixpkgs revision. It will not use ambient Node.
+After the candidate command publishes the artifact, run this sequence from the repository root:
 
-It will not change `package.json` or `bun.lock`. The command is not implemented yet.
+```sh
+(
+  set -euo pipefail
+  ARTIFACT="$(realpath .bang/assemblies/clinic-supervised-exact-one/bin/exact_one)"
+  TOOLCHAIN="$(nix build --file nix/gleam.nix --no-link --print-out-paths)"
+  ESCRIPT="$(readlink -f "$TOOLCHAIN/bin/escript")"
+  ERLANG_STORE="${ESCRIPT%/bin/escript}"
+  RUN_DIR="$(mktemp -d /tmp/bang-m037-artifact.XXXXXXXXXX)"
+  trap 'rm -rf "$RUN_DIR"' EXIT
+  cp "$ARTIFACT" "$RUN_DIR/exact_one"
+  (
+    cd "$RUN_DIR"
+    env -i \
+      HOME="$RUN_DIR" \
+      LANG=C.UTF-8 \
+      PATH="$ERLANG_STORE/bin" \
+      ERL_ROOTDIR="$ERLANG_STORE/lib/erlang" \
+      ERL_CRASH_DUMP_SECONDS=0 \
+      "$ESCRIPT" exact_one
+  ) | sed -n '/^BANG_M031_RESULT|/p'
+)
+```
 
-The existing merge-blocking quality job will pin its `setup-just` input to `1.58.0`. It will run M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
+The sequence uses `nix/gleam.nix` to resolve the pinned Erlang-store `escript`. The artifact process receives only the Erlang-store bin directory in `PATH`.
+
+Standard output is exactly:
+
+```text
+BANG_M031_RESULT|{"target":"gleam-beam","realization":"BookAppointmentOnce","entity":"appointment-book-1","validCall":true,"reuse":true,"competing":true,"competingSuccesses":1,"competingRejections":1,"wrongDestination":true,"disabled":true,"defect":true,"stateTrace":{"valid":"10>6","reuse":"6>6","competing":"6>4","wrongDestination":"4>4","disabled":"4>4","defect":"4>10","stale":"10>10","replacement":"10>7"},"remainingTrace":{"valid":"1>0","reuse":"0>0","competing":"1>0","wrongDestination":"1>1","disabled":"1>1","defect":"1>0","stale":"0>0","replacement":"1>0"},"actorRestart":{"oldGrantRejected":true,"freshGrantDistinct":true,"replacementGrantAccepted":true},"supervised":true}
+```
+
+Standard error is empty. The exit trap removes the temporary directory and its copied artifact.
+
+The mission script provisions Node 24.7.0 from one immutable Nixpkgs revision. It does not use ambient Node.
+
+It does not change `package.json` or `bun.lock`.
+
+The merge-blocking quality job pins its `setup-just` input to `1.58.0`. It runs M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 
-The six-family scorecard will separate historical mission citations from current digest-bound sources and new observations.
+The six-family scorecard separates historical mission citations from current digest-bound sources and new observations.
 
 ## Experience the current capability
 
