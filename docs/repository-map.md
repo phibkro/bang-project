@@ -73,7 +73,7 @@ The external consumer uses strict decode, custody, and record agreement only. It
 
 No package or CLI verb was added. M036 does not add a generic target plugin protocol or move target-owned decrement behavior into Core.
 
-[M037](../design-specs/M037-full-compiler-candidate.md) is active. It adds one mission-local root script, one strict selection, one public consumer, and one accumulated report.
+[M037](../design-specs/M037-full-compiler-candidate.md) remains active. Local acceptance is complete, and protected delivery is pending.
 
 The command composes existing Clinic explanation, qualification, planning, assembly, audit, schema publication, and external consumption. It adds no BANG CLI verb.
 
@@ -84,6 +84,16 @@ The copied artifact uses the real Erlang-store `escript`. Its child receives an 
 The report records narrow path-resolution facts. It does not claim filesystem sandboxing.
 
 The report separates historical mission citations from current digest-bound sources and new observations. It does not copy or combine evidence grades. Its six-family scorecard does not claim author-independent Clinic design or universal unification.
+
+The accepted report records 7 inputs, 24 stages, 8 embedded records, 21 producer files per clean run, 22 outputs, and 27 claims. Eleven claims are warranted, and 16 remain unsupported.
+
+The focused suite covers N01–N23 with 300 assertions. Two independent read-only reviews found no medium-or-higher defect after the final failure-cause test.
+
+An independent public executor repeated the documented journey at `8ee4e31b06105a54635410d973595ce47042cc49`. The equal report bytes had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The generated report and focused contract remain the detailed evidence roots. The repository map does not duplicate the 22-file inventory.
+
+M037 does not establish independent authorship, universal family unification, production correctness, distributed guarantees, filesystem sandboxing, reader atomicity, deployment, security, or performance.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

@@ -42,7 +42,7 @@ flowchart LR
     M034["M034 · continuous evidence invalidation<br/>complete"]
     M035["M035 · external extension boundary<br/>complete"]
     M036["M036 · second-domain realization portability<br/>complete"]
-    M037["M037 · full compiler candidate<br/>active"]
+    M037["M037 · full compiler candidate<br/>active · local acceptance"]
 
 
     M000 --> M001 --> M002 --> M003
@@ -214,7 +214,19 @@ M026 is complete through `bang database examples/tiny-bank/database/account.json
 
 [M036](design-specs/M036-second-domain-realization-boundary-portability.md) is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`. Checked Core selects the Clinic shape and identities. Effect and Gleam own separate probes. Planning selects Gleam, assembly retains the qualified bytes, and audit requests zero requalifications. The external consumer checks strict decode and custody. Clean runs preserve all Clinic and TinyBank compatibility bytes.
 
-[M037](design-specs/M037-full-compiler-candidate.md) is active. One root Bun command will compose the committed Clinic chain, artifact execution, audit, schema publication, and external consumption. Mission-root preflights require `x86_64-linux`, Git worktrees, Bash pipefail, Just 1.58.0, Bun 1.3.13, and Nix network and cache access. The root provisions Node 24.7.0 from one immutable Nixpkgs revision. The copied artifact uses a real Erlang-store `escript`, an artifact-only working directory, and an Erlang-only replacement `PATH`. This boundary does not claim filesystem sandboxing. One accumulated report will bind current sources without copying their evidence grades. Historical mission citations are not current report evidence. The scorecard will not claim universal unification or author-independent Clinic design.
+[M037](design-specs/M037-full-compiler-candidate.md) remains active. Local acceptance is complete, and protected delivery is pending.
+
+The root Bun command composes the Clinic chain, artifact execution, audit, schema publication, and external consumption. The supported host preflights and pinned Node and Erlang closures passed locally.
+
+The report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 claims. Eleven claims are warranted, and 16 remain unsupported.
+
+Two clean 21-file producer inventories and five observation projections are equal. The external consumer is valid, and the standalone artifact matches its qualification.
+
+Implementation head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. Two independent reviews found no medium-or-higher defect after the final cause test.
+
+An independent public executor repeated the documented journey at `8ee4e31b06105a54635410d973595ce47042cc49`. Both report bytes had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The report preserves all unsupported claims. It does not establish independent authorship, universal unification, production correctness, distributed guarantees, filesystem sandboxing, reader atomicity, deployment, security, or performance.
 
 ## Exploratory ecosystem frontier
 

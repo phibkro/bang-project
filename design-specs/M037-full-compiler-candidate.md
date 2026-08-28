@@ -1417,6 +1417,36 @@ Each claim has only its source references. Evidence classes, scopes, materials, 
 
 M037 cannot establish any claim in the unsupported section.
 
+## Recorded local and independent acceptance
+
+M037 remains active. Local acceptance is complete, and protected delivery is pending. No hosted CI result or final protected revision is recorded.
+
+Implementation and review head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. The focused suite passed 23 tests with 300 assertions. Two independent read-only reviews returned `PASS` with no medium-or-higher findings after the final cross-owner cause gate.
+
+At `8ee4e31b06105a54635410d973595ce47042cc49`, an independent public executor created a fresh detached clean worktree. The executor read only `AGENTS.md`, `README.md`, and the generated report.
+
+The executor ran `just install`, one candidate command, strict decode, the verbatim standalone escript sequence, and a second candidate command. All commands exited zero. Both candidate commands, strict decode, and standalone execution wrote no standard error.
+
+Both candidate runs produced equal report bytes. Each report had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The report contains 7 inputs, 24 stages, 8 embedded records, 21 producer files per run, 22 outputs, 27 claims, and 6 scorecard families. The claims contain 11 warranted rows and 16 unsupported rows.
+
+Both clean producer inventories and all five observation projections are equal. The standalone observation identifies `BookAppointmentOnce` and `appointment-book-1`, and `qualificationMatch` is `true`.
+
+The external consumer returned `valid`. Its loader observed only the driver, published `consumer.js`, and the three required Node built-ins.
+
+Audit classified 18 materials as 10 unchanged and 8 deferred, with no retired records. Publication had no stale members and reported concurrent-reader isolation as `false`.
+
+Schema major 2 published six custody files. The manifest digest-binds four payloads, does not digest `consumer.d.ts`, and cannot digest itself.
+
+The N01–N23 focused gate covers exact failure causes, rollback, stale paths, loader isolation, source paths, and digest failures. The protected M036 parity check reobserved all 15 files without change.
+
+The generated `.bang/evidence/M037.json`, focused test, and this contract remain the evidence roots. This summary does not copy the 22-file inventory or create a second digest authority.
+
+Independent Clinic authorship remains unsupported. The report retains every unsupported claim.
+
+M037 does not establish universal family unification, production clinical correctness, distributed or durable behavior, fairness, filesystem sandboxing, or reader atomicity. It also does not establish rollback under process termination, deployment, security, or performance claims.
+
 # Falsifiers
 
 M037 fails if:

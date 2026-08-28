@@ -276,7 +276,7 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 37. M035 — publish versioned semantic schemas and prove one out-of-workspace typed verdict.
 38. M036 — carry one checked-Core-selected Clinic operation through the M031–M035 path while preserving every TinyBank output byte.
-39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated report.
+39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated report. Local acceptance is complete. Protected delivery is pending.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
@@ -284,7 +284,7 @@ M024 is complete through `bang trace`. M025 is complete through `bang project <s
 
 M036 is complete through the checked Clinic qualification, planning, assembly, audit, and external-consumer path. Protected integration passed at `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
-M037 is the sole active mission. It freezes the full compiler candidate boundary.
+M037 is the sole active mission. Local acceptance freezes the candidate boundary, and protected delivery remains pending.
 
 M031 turns heterogeneous realization classification into a fresh two-target execution journey. Effect TypeScript and supervised Gleam/BEAM consume the same checked packaged requirement, publish separate target-specific evidence, and qualify independently. Gleam actor-incarnation behavior remains target-owned; Core does not promise restart persistence or distributed exactly-once delivery.
 
@@ -328,6 +328,16 @@ The command runs two clean worktrees. It compares 21 producer files and five obs
 The accumulated report separates historical mission citations from current digest-bound sources. Its six-family scorecard does not claim universal semantic unification.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
+
+Implementation and review head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. Two independent read-only reviews found no medium-or-higher defect after the final failure-cause gate.
+
+An independent public executor followed only `AGENTS.md` and `README.md` in a fresh detached worktree at `8ee4e31b06105a54635410d973595ce47042cc49`. Both candidate runs, strict decode, and the standalone artifact sequence succeeded with empty standard error.
+
+Both independent reports had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`. Each report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 claims.
+
+The 11 warranted claims do not upgrade the 16 unsupported claims. M037 remains active until protected delivery records hosted integration evidence and a final protected revision.
+
+M037 does not establish independent Clinic authorship, universal family unification, clinical correctness, distributed durability, fairness, filesystem sandboxing, reader atomicity, deployment, security, or performance.
 
 ## Provisional full-compiler horizon
 
