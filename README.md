@@ -258,15 +258,17 @@ M037 remains active. Local acceptance is complete, and protected delivery is pen
 
 Its candidate command composes the Clinic chain through artifact execution, audit, schema publication, and external consumption. The public host has frozen tool preflights.
 
-The command writes `.bang/evidence/M037.json`. It compares two clean 21-file producer inventories and five observation projections before the recoverable 22-file publication.
+The command writes `.bang/evidence/M037.json`. It compares two clean 21-file producer inventories and five observation projections before one 22-file enumerated publication.
 
 The report records 27 claims. Eleven claims are warranted, and 16 claims remain unsupported.
 
-An independent public executor repeated the documented journey twice. Both report bytes had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+At `8ee4e31b06105a54635410d973595ce47042cc49`, an independent public executor completed the documented journey once. The executor then repeated only the candidate command. Both candidate-run reports had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
 
 The copied artifact uses a real Erlang-store `escript`, an artifact-only working directory, and an Erlang-only `PATH`. This boundary does not provide filesystem sandboxing.
 
-M037 does not claim independent Clinic authorship, universal six-family unification, production clinical correctness, distributed guarantees, reader atomicity, deployment, security, or performance.
+For handled failures, publication restores prior bytes only when rollback succeeds. A rollback failure makes no restoration claim. The batch is not one physical transaction and provides no concurrent-reader isolation or process-termination recovery.
+
+M037 does not claim independent Clinic authorship, universal six-family unification, production clinical correctness, distributed guarantees, or filesystem sandboxing. It also does not claim recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 

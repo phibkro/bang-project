@@ -87,13 +87,19 @@ The report separates historical mission citations from current digest-bound sour
 
 The accepted report records 7 inputs, 24 stages, 8 embedded records, 21 producer files per clean run, 22 outputs, and 27 claims. Eleven claims are warranted, and 16 remain unsupported.
 
-The focused suite covers N01–N23 with 300 assertions. Two independent read-only reviews found no medium-or-higher defect after the final failure-cause test.
+The focused suite covers N01–N23 with 300 assertions. A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`.
 
-An independent public executor repeated the documented journey at `8ee4e31b06105a54635410d973595ce47042cc49`. The equal report bytes had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+A comprehensive review then found one medium N20 gap. Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed it, and the focused and full gates passed.
+
+The current pre-push documentation review found only wording issues.
+
+An independent public executor completed the documented journey once at `8ee4e31b06105a54635410d973595ce47042cc49`. The executor then repeated only the candidate command.
+
+Both candidate-run reports at that revision had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
 
 The generated report and focused contract remain the detailed evidence roots. The repository map does not duplicate the 22-file inventory.
 
-M037 does not establish independent authorship, universal family unification, production correctness, distributed guarantees, filesystem sandboxing, reader atomicity, deployment, security, or performance.
+M037 does not establish independent authorship, universal family unification, production correctness, distributed guarantees, filesystem sandboxing, or concurrent-reader isolation. It also does not establish recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

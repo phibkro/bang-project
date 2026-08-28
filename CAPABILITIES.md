@@ -222,11 +222,15 @@ The report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 c
 
 Two clean 21-file producer inventories and five observation projections are equal. The external consumer is valid, and the standalone artifact matches its qualification.
 
-Implementation head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. Two independent reviews found no medium-or-higher defect after the final cause test.
+A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`. A comprehensive review then found one medium N20 cross-owner cause gap.
 
-An independent public executor repeated the documented journey at `8ee4e31b06105a54635410d973595ce47042cc49`. Both report bytes had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed that gap. The focused gate and `just verify` passed. The current pre-push documentation review found only wording issues.
 
-The report preserves all unsupported claims. It does not establish independent authorship, universal unification, production correctness, distributed guarantees, filesystem sandboxing, reader atomicity, deployment, security, or performance.
+An independent public executor completed the documented journey once at `8ee4e31b06105a54635410d973595ce47042cc49`. The executor then repeated only the candidate command.
+
+Both candidate-run reports at that revision had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The report preserves all unsupported claims. It does not establish independent authorship, universal unification, production correctness, distributed guarantees, filesystem sandboxing, or concurrent-reader isolation. It also does not establish recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 ## Exploratory ecosystem frontier
 

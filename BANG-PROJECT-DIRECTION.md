@@ -323,21 +323,25 @@ The copied artifact runs with the real Erlang-store `escript`. It receives an ar
 
 M037 records narrow path-resolution facts. It does not claim filesystem sandboxing.
 
-The command runs two clean worktrees. It compares 21 producer files and five observation records before it publishes one recoverable 22-file batch.
+The command runs two clean worktrees. It compares 21 producer files and five observation records before it publishes one 22-file enumerated batch. For handled failures, the publisher restores prior bytes only when rollback succeeds. A rollback failure makes no restoration claim. The batch is not one physical transaction and provides no concurrent-reader isolation or process-termination recovery.
 
 The accumulated report separates historical mission citations from current digest-bound sources. Its six-family scorecard does not claim universal semantic unification.
 
 M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
 
-Implementation and review head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. Two independent read-only reviews found no medium-or-higher defect after the final failure-cause gate.
+A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`. A comprehensive review then found one medium N20 cross-owner cause gap.
 
-An independent public executor followed only `AGENTS.md` and `README.md` in a fresh detached worktree at `8ee4e31b06105a54635410d973595ce47042cc49`. Both candidate runs, strict decode, and the standalone artifact sequence succeeded with empty standard error.
+Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed the gap. Its 23-test focused gate and `just verify` passed. The current pre-push documentation review found only wording issues.
 
-Both independent reports had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`. Each report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 claims.
+An independent public executor completed the documented journey once at `8ee4e31b06105a54635410d973595ce47042cc49`. The executor then repeated only the candidate command.
+
+The candidate commands, strict decode, and standalone artifact sequence succeeded with empty standard error. Both candidate-run reports at that revision had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+Each report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 claims.
 
 The 11 warranted claims do not upgrade the 16 unsupported claims. M037 remains active until protected delivery records hosted integration evidence and a final protected revision.
 
-M037 does not establish independent Clinic authorship, universal family unification, clinical correctness, distributed durability, fairness, filesystem sandboxing, reader atomicity, deployment, security, or performance.
+M037 does not establish independent Clinic authorship, universal family unification, clinical correctness, distributed durability, fairness, or filesystem sandboxing. It also does not establish concurrent-reader isolation, recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 ## Provisional full-compiler horizon
 

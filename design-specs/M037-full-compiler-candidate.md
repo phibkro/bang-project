@@ -1421,13 +1421,13 @@ M037 cannot establish any claim in the unsupported section.
 
 M037 remains active. Local acceptance is complete, and protected delivery is pending. No hosted CI result or final protected revision is recorded.
 
-Implementation and review head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` passed `just verify`. The focused suite passed 23 tests with 300 assertions. Two independent read-only reviews returned `PASS` with no medium-or-higher findings after the final cross-owner cause gate.
+A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`. A comprehensive review then found one medium N20 cross-owner cause gap. Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed that gap, passed 23 focused tests with 300 assertions, and passed `just verify`. The current pre-push documentation review found only evidence-wording corrections.
 
 At `8ee4e31b06105a54635410d973595ce47042cc49`, an independent public executor created a fresh detached clean worktree. The executor read only `AGENTS.md`, `README.md`, and the generated report.
 
 The executor ran `just install`, one candidate command, strict decode, the verbatim standalone escript sequence, and a second candidate command. All commands exited zero. Both candidate commands, strict decode, and standalone execution wrote no standard error.
 
-Both candidate runs produced equal report bytes. Each report had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+At `8ee4e31b06105a54635410d973595ce47042cc49`, both candidate-run reports had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
 
 The report contains 7 inputs, 24 stages, 8 embedded records, 21 producer files per run, 22 outputs, 27 claims, and 6 scorecard families. The claims contain 11 warranted rows and 16 unsupported rows.
 
@@ -1445,7 +1445,7 @@ The generated `.bang/evidence/M037.json`, focused test, and this contract remain
 
 Independent Clinic authorship remains unsupported. The report retains every unsupported claim.
 
-M037 does not establish universal family unification, production clinical correctness, distributed or durable behavior, fairness, filesystem sandboxing, or reader atomicity. It also does not establish rollback under process termination, deployment, security, or performance claims.
+M037 does not establish universal family unification, production clinical correctness, distributed or durable behavior, fairness, filesystem sandboxing, or concurrent-reader isolation. It also does not establish successful recovery from rollback failure, rollback under process termination, deployment, security, or performance claims.
 
 # Falsifiers
 
