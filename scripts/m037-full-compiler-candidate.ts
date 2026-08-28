@@ -21,7 +21,9 @@ import {
   compileSelectedAssembly,
 } from "../apps/bang/src/assemble.ts";
 import {
+  type ClassificationFailure,
   ClassificationSelectionFromJson,
+  compileSelectedM031ClassificationStaged,
   M031ProbeObservationFromJson,
   normalizeM031ProbeObservation,
 } from "../apps/bang/src/classify.ts";
@@ -954,7 +956,7 @@ const SchemaManifestSchema = Schema.Struct({
 }).annotate({ parseOptions });
 const SchemaManifestFromJson = Schema.fromJsonString(SchemaManifestSchema);
 
-interface RuntimeBoundary {
+export interface RuntimeBoundary {
   readonly platform: string;
   readonly architecture: string;
   readonly bunVersion: string;
@@ -1426,7 +1428,7 @@ const exactSingleLine = (value: string, pattern: RegExp): string | undefined => 
   return lines.length === 1 && pattern.test(lines[0] ?? "") ? lines[0] : undefined;
 };
 
-const decodeSelection = (
+export const decodeSelection = (
   root: string,
   selectionPath: string,
 ): Effect.Effect<
@@ -1642,7 +1644,7 @@ const inspectCaller = (
     return { revision, dependencyLockSha256: yield* sha256Bytes(lockBytes) };
   });
 
-const preflightHost = (
+export const preflightHost = (
   root: string,
   runtime: RuntimeBoundary,
   preflightParent: string,
@@ -1719,7 +1721,7 @@ const preflightHost = (
       );
 
     const probePath = path.join(preflightParent, "worktree-probe");
-    yield* Effect.acquireUseRelease(
+    const probeResult = yield* Effect.result(
       requireSuccessfulProcess(
         git,
         ["worktree", "add", "--detach", "--no-checkout", probePath, "HEAD"],
@@ -1732,17 +1734,28 @@ const preflightHost = (
           path: ".",
         },
       ),
-      () => Effect.void,
-      () =>
-        requireSuccessfulProcess(git, ["worktree", "remove", "--force", probePath], {
-          cwd: root,
-          environment: childEnvironment,
-          failure: (message, fields) =>
-            candidateFailures.preflight("git-worktree-unavailable", message, fields),
-          command: "git worktree remove --force <probe>",
-          path: ".",
-        }).pipe(Effect.asVoid),
     );
+    const probeExists = yield* fileSystem
+      .exists(probePath)
+      .pipe(
+        Effect.mapError((error) =>
+          candidateFailures.preflight(
+            "git-worktree-unavailable",
+            "could not inspect detached worktree probe",
+            { cause: projectPlatformCause(error) },
+          ),
+        ),
+      );
+    if (probeExists)
+      yield* requireSuccessfulProcess(git, ["worktree", "remove", "--force", probePath], {
+        cwd: root,
+        environment: childEnvironment,
+        failure: (message, fields) =>
+          candidateFailures.preflight("git-worktree-unavailable", message, fields),
+        command: "git worktree remove --force <probe>",
+        path: ".",
+      });
+    if (probeResult._tag === "Failure") return yield* Effect.fail(probeResult.failure);
 
     const bashVersionResult = yield* requireSuccessfulProcess(bash, ["--version"], {
       cwd: root,
@@ -1935,6 +1948,33 @@ const entryAt = (
     : Effect.succeed(entry);
 };
 
+const classificationCause = (error: ClassificationFailure) => ({
+  _tag: "ClassificationFailure" as const,
+  stage: error.stage,
+  path: error.path,
+  message: error.message,
+  ...(error.reason === undefined ? {} : { reason: error.reason }),
+  ...(error.address === undefined ? {} : { address: error.address }),
+});
+
+export const runM037ClassificationProjection = (
+  root: string,
+  selectionPath: string,
+): Effect.Effect<
+  void,
+  M037CandidateFailure,
+  FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  compileSelectedM031ClassificationStaged(root, selectionPath).pipe(
+    Effect.asVoid,
+    Effect.mapError((error) =>
+      candidateFailures.classify("producer-failed", error.message, {
+        path: selectionPath,
+        cause: classificationCause(error),
+      }),
+    ),
+  );
+
 const decodeArtifactObservation = (
   stdout: string,
   qualification: typeof M031TargetQualificationEvidenceSchema.Type,
@@ -1985,6 +2025,104 @@ const decodeArtifactObservation = (
       );
     return observation;
   });
+
+export interface M037ArtifactInvocation {
+  readonly executable: string;
+  readonly arguments: ReadonlyArray<string>;
+  readonly cwd: string;
+  readonly environment: Readonly<Record<string, string>>;
+}
+
+export const validateM037ArtifactInvocation = (
+  invocation: M037ArtifactInvocation,
+  artifactDirectory: string,
+  erlangBin: string,
+  erlangRoot: string,
+): Effect.Effect<void, M037CandidateFailure> => {
+  const expectedEnvironment = {
+    HOME: artifactDirectory,
+    LANG: "C.UTF-8",
+    PATH: erlangBin,
+    ERL_ROOTDIR: erlangRoot,
+    ERL_CRASH_DUMP_SECONDS: "0",
+  };
+  return /^\/nix\/store\/[0-9a-z]+-erlang-[^/]+\/bin\/escript$/u.test(invocation.executable) &&
+    sameStrings(invocation.arguments, ["exact_one"]) &&
+    invocation.cwd === artifactDirectory &&
+    encodeCanonicalJson(invocation.environment) === encodeCanonicalJson(expectedEnvironment)
+    ? Effect.void
+    : Effect.fail(
+        candidateFailures.artifact(
+          "runtime-boundary-violated",
+          "artifact command boundary differs from the frozen invocation",
+          { path: ARTIFACT_PATH },
+        ),
+      );
+};
+
+export const inspectM037ArtifactResolution = (
+  artifactDirectory: string,
+  erlangBin: string,
+): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const workspaceResolvable = yield* Effect.forEach(WORKSPACE_SENTINELS, (sentinel) =>
+      Effect.gen(function* () {
+        const fromCwd = yield* fileSystem.exists(path.resolve(artifactDirectory, sentinel));
+        const fromPath = yield* fileSystem.exists(path.resolve(erlangBin, sentinel));
+        return fromCwd || fromPath;
+      }),
+    ).pipe(
+      Effect.mapError((error) =>
+        candidateFailures.artifact(
+          "runtime-boundary-violated",
+          "could not inspect artifact resolution boundary",
+          { cause: projectPlatformCause(error) },
+        ),
+      ),
+      Effect.map((values) => values.some(Boolean)),
+    );
+    const gleamResolvable = yield* fileSystem
+      .exists(path.join(erlangBin, "gleam"))
+      .pipe(
+        Effect.mapError((error) =>
+          candidateFailures.artifact(
+            "runtime-boundary-violated",
+            "could not inspect Erlang-only PATH",
+            { cause: projectPlatformCause(error) },
+          ),
+        ),
+      );
+    if (workspaceResolvable || gleamResolvable)
+      return yield* Effect.fail(
+        candidateFailures.artifact(
+          "runtime-boundary-violated",
+          "artifact resolution boundary exposed workspace or Gleam paths",
+        ),
+      );
+  });
+
+export const executeM037ArtifactProcess = (
+  invocation: M037ArtifactInvocation,
+): Effect.Effect<ProcessResult, M037CandidateFailure, ChildProcessSpawner.ChildProcessSpawner> =>
+  requireSuccessfulProcess(invocation.executable, invocation.arguments, {
+    cwd: invocation.cwd,
+    environment: invocation.environment,
+    failure: (message, fields) => candidateFailures.artifact("execution-failed", message, fields),
+    command: "<absolute-erlang-store>/bin/escript exact_one",
+    path: ARTIFACT_PATH,
+  }).pipe(
+    Effect.flatMap((execution) =>
+      execution.stderr === ""
+        ? Effect.succeed(execution)
+        : Effect.fail(
+            candidateFailures.artifact("execution-failed", "artifact wrote standard error", {
+              path: ARTIFACT_PATH,
+            }),
+          ),
+    ),
+  );
 
 const runArtifact = (
   repositoryRoot: string,
@@ -2068,13 +2206,6 @@ const runArtifact = (
           ),
         ),
       );
-    if (!/^\/nix\/store\/[0-9a-z]+-[^/]+\/bin\/escript$/u.test(escriptRealPath))
-      return yield* Effect.fail(
-        candidateFailures.artifact(
-          "runtime-boundary-violated",
-          "escript is not an absolute Erlang-store executable",
-        ),
-      );
     const erlangStore = path.dirname(path.dirname(escriptRealPath));
     const erlangRoot = path.join(erlangStore, "lib", "erlang");
     if (
@@ -2094,60 +2225,21 @@ const runArtifact = (
         candidateFailures.artifact("runtime-boundary-violated", "Erlang root is unavailable"),
       );
     const erlangBin = path.dirname(escriptRealPath);
-    const workspaceResolvable = yield* Effect.forEach(WORKSPACE_SENTINELS, (sentinel) =>
-      Effect.gen(function* () {
-        const fromCwd = yield* fileSystem.exists(path.resolve(artifactDirectory, sentinel));
-        const fromPath = yield* fileSystem.exists(path.resolve(erlangBin, sentinel));
-        return fromCwd || fromPath;
-      }),
-    ).pipe(
-      Effect.mapError((error) =>
-        candidateFailures.artifact(
-          "runtime-boundary-violated",
-          "could not inspect artifact resolution boundary",
-          { cause: projectPlatformCause(error) },
-        ),
-      ),
-      Effect.map((values) => values.some(Boolean)),
-    );
-    const gleamResolvable = yield* fileSystem
-      .exists(path.join(erlangBin, "gleam"))
-      .pipe(
-        Effect.mapError((error) =>
-          candidateFailures.artifact(
-            "runtime-boundary-violated",
-            "could not inspect Erlang-only PATH",
-            { cause: projectPlatformCause(error) },
-          ),
-        ),
-      );
-    if (workspaceResolvable || gleamResolvable)
-      return yield* Effect.fail(
-        candidateFailures.artifact(
-          "runtime-boundary-violated",
-          "artifact resolution boundary exposed workspace or Gleam paths",
-        ),
-      );
-    const environment = {
-      HOME: artifactDirectory,
-      LANG: "C.UTF-8",
-      PATH: erlangBin,
-      ERL_ROOTDIR: erlangRoot,
-      ERL_CRASH_DUMP_SECONDS: "0",
-    } as const;
-    const execution = yield* requireSuccessfulProcess(escriptRealPath, ["exact_one"], {
+    const invocation = {
+      executable: escriptRealPath,
+      arguments: ["exact_one"],
       cwd: artifactDirectory,
-      environment,
-      failure: (message, fields) => candidateFailures.artifact("execution-failed", message, fields),
-      command: "<absolute-erlang-store>/bin/escript exact_one",
-      path: ARTIFACT_PATH,
-    });
-    if (execution.stderr !== "")
-      return yield* Effect.fail(
-        candidateFailures.artifact("execution-failed", "artifact wrote standard error", {
-          path: ARTIFACT_PATH,
-        }),
-      );
+      environment: {
+        HOME: artifactDirectory,
+        LANG: "C.UTF-8",
+        PATH: erlangBin,
+        ERL_ROOTDIR: erlangRoot,
+        ERL_CRASH_DUMP_SECONDS: "0",
+      },
+    } as const;
+    yield* validateM037ArtifactInvocation(invocation, artifactDirectory, erlangBin, erlangRoot);
+    yield* inspectM037ArtifactResolution(artifactDirectory, erlangBin);
+    const execution = yield* executeM037ArtifactProcess(invocation);
     const observation = yield* decodeArtifactObservation(execution.stdout, gleamEvidence);
     const escriptBytes = yield* readBytes(
       escriptRealPath,
@@ -2178,7 +2270,7 @@ const runArtifact = (
     };
   });
 
-const ISOLATION_LOADER_SOURCE = `import { appendFileSync, realpathSync } from "node:fs";
+export const M037_ISOLATION_LOADER_SOURCE = `import { appendFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -2253,6 +2345,70 @@ const copySandboxInput = (
     yield* writeBytes(path.resolve(sandboxRoot, destinationPath), bytes, destinationPath, failure);
   });
 
+export const projectM037ExternalConsumerResult = (
+  processResult: ProcessResult,
+): Effect.Effect<typeof ValidVerdictSchema.Type, M037CandidateFailure> =>
+  Schema.decodeEffect(ConsumptionVerdictFromJson)(processResult.stdout, parseOptions).pipe(
+    Effect.match({
+      onFailure: () => undefined,
+      onSuccess: (verdict) => verdict,
+    }),
+    Effect.flatMap((decodedVerdict) => {
+      if (decodedVerdict?.verdict === "rejected") {
+        const rejected: RejectedVerdict = decodedVerdict;
+        return Effect.fail(
+          candidateFailures.externalConsumer(
+            "consumer-rejected",
+            "external consumer returned a rejected verdict",
+            {
+              path: "consumer.mjs",
+              cause: {
+                _tag: "M035RejectedVerdict",
+                stage: rejected.stage,
+                reason: rejected.reason,
+                message: rejected.message,
+                ...("path" in rejected && rejected.path !== undefined
+                  ? { path: rejected.path }
+                  : {}),
+                ...("identity" in rejected && rejected.identity !== undefined
+                  ? { identity: rejected.identity }
+                  : {}),
+                ...("expected" in rejected && rejected.expected !== undefined
+                  ? { expected: rejected.expected }
+                  : {}),
+                ...("observed" in rejected && rejected.observed !== undefined
+                  ? { observed: rejected.observed }
+                  : {}),
+              },
+            },
+          ),
+        );
+      }
+      if (
+        processResult.exitCode !== ChildProcessSpawner.ExitCode(0) ||
+        decodedVerdict === undefined
+      )
+        return Effect.fail(
+          processFailure(
+            (message, fields) =>
+              candidateFailures.externalConsumer("process-failed", message, fields),
+            "<pinned-node> --no-warnings --experimental-loader <sandbox>/isolation-loader.mjs <sandbox>/consumer.mjs",
+            "consumer.mjs",
+            "external consumer process failed or returned an invalid verdict",
+          ),
+        );
+      if (processResult.stderr !== "")
+        return Effect.fail(
+          candidateFailures.externalConsumer(
+            "isolation-violated",
+            "external consumer wrote standard error",
+            { path: "consumer.mjs" },
+          ),
+        );
+      return Effect.succeed(decodedVerdict);
+    }),
+  );
+
 const runExternalConsumer = (
   repositoryRoot: string,
   runRoot: string,
@@ -2293,7 +2449,7 @@ const runExternalConsumer = (
       (message, fields) =>
         candidateFailures.externalConsumer("isolation-violated", message, fields),
     );
-    const loaderBytes = textEncoder.encode(ISOLATION_LOADER_SOURCE);
+    const loaderBytes = textEncoder.encode(M037_ISOLATION_LOADER_SOURCE);
     yield* writeBytes(
       path.join(sandboxRoot, "isolation-loader.mjs"),
       loaderBytes,
@@ -2352,62 +2508,7 @@ const runExternalConsumer = (
         path: "consumer.mjs",
       },
     );
-    const decodedVerdict = yield* Schema.decodeEffect(ConsumptionVerdictFromJson)(
-      processResult.stdout,
-      parseOptions,
-    ).pipe(
-      Effect.match({
-        onFailure: () => undefined,
-        onSuccess: (verdict) => verdict,
-      }),
-    );
-    if (decodedVerdict?.verdict === "rejected") {
-      const rejected: RejectedVerdict = decodedVerdict;
-      return yield* Effect.fail(
-        candidateFailures.externalConsumer(
-          "consumer-rejected",
-          "external consumer returned a rejected verdict",
-          {
-            path: "consumer.mjs",
-            cause: {
-              _tag: "M035RejectedVerdict",
-              stage: rejected.stage,
-              reason: rejected.reason,
-              message: rejected.message,
-              ...("path" in rejected && rejected.path !== undefined ? { path: rejected.path } : {}),
-              ...("identity" in rejected && rejected.identity !== undefined
-                ? { identity: rejected.identity }
-                : {}),
-              ...("expected" in rejected && rejected.expected !== undefined
-                ? { expected: rejected.expected }
-                : {}),
-              ...("observed" in rejected && rejected.observed !== undefined
-                ? { observed: rejected.observed }
-                : {}),
-            },
-          },
-        ),
-      );
-    }
-    if (processResult.exitCode !== ChildProcessSpawner.ExitCode(0) || decodedVerdict === undefined)
-      return yield* Effect.fail(
-        processFailure(
-          (message, fields) =>
-            candidateFailures.externalConsumer("process-failed", message, fields),
-          "<pinned-node> --no-warnings --experimental-loader <sandbox>/isolation-loader.mjs <sandbox>/consumer.mjs",
-          "consumer.mjs",
-          "external consumer process failed or returned an invalid verdict",
-        ),
-      );
-    if (processResult.stderr !== "")
-      return yield* Effect.fail(
-        candidateFailures.externalConsumer(
-          "isolation-violated",
-          "external consumer wrote standard error",
-          { path: "consumer.mjs" },
-        ),
-      );
-    const verdict = decodedVerdict;
+    const verdict = yield* projectM037ExternalConsumerResult(processResult);
     const moduleLogBytes = yield* readBytes(
       moduleLogPath,
       "module-loads.jsonl",
@@ -3137,7 +3238,7 @@ const releaseWorktree = (root: string, worktreePath: string, preflight: HostPref
     path: ".",
   }).pipe(Effect.asVoid);
 
-const scanFiles = (
+export const scanFiles = (
   root: string,
   relativeDirectory: string,
 ): Effect.Effect<ReadonlyArray<string>, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
@@ -3220,6 +3321,42 @@ const scanFiles = (
       });
     yield* visit(relativeDirectory);
     return result.toSorted();
+  });
+
+export const validateM037PublicationPaths = (
+  root: string,
+  entries: ReadonlyArray<PublicationEntry>,
+): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    for (const entry of entries) {
+      const segments = entry.path.split("/");
+      let current = root;
+      for (const segment of segments) {
+        current = path.join(current, segment);
+        const exists = yield* fileSystem
+          .exists(current)
+          .pipe(
+            Effect.mapError((error) =>
+              candidateFailures.accumulation(
+                "report-invalid",
+                "could not inspect final publication path",
+                { path: entry.path, cause: projectPlatformCause(error) },
+              ),
+            ),
+          );
+        if (!exists) break;
+        if (yield* isSymbolicLink(current))
+          return yield* Effect.fail(
+            candidateFailures.accumulation(
+              "report-invalid",
+              "final publication path contains a symbolic link",
+              { path: entry.path },
+            ),
+          );
+      }
+    }
   });
 
 const embedded = <P extends string, V>(path: P, value: V, sha256: `sha256:${string}`) => ({
@@ -3463,6 +3600,73 @@ export const validateM037UnsupportedClaims = (
       );
 };
 
+type M037ComparableRun = Pick<
+  RunResult,
+  "inventory" | "inventorySha256" | "observations" | "observationsSha256"
+>;
+
+export const validateM037RunComparison = (
+  first: M037ComparableRun,
+  second: M037ComparableRun,
+): Effect.Effect<typeof ProducerInventoryComparisonValueSchema.Type, M037CandidateFailure> => {
+  const firstDifferingIndex = first.inventory.findIndex(
+    (entry, index) =>
+      second.inventory[index]?.path !== entry.path ||
+      second.inventory[index]?.sha256 !== entry.sha256,
+  );
+  if (first.inventory.length !== second.inventory.length || firstDifferingIndex < 0) {
+    if (
+      first.inventory.length !== second.inventory.length ||
+      first.inventorySha256 !== second.inventorySha256
+    )
+      return Effect.fail(
+        candidateFailures.comparison(
+          "observation-diverged",
+          "clean producer inventory structure differs",
+        ),
+      );
+  } else {
+    const firstEntry = first.inventory[firstDifferingIndex];
+    const secondEntry = second.inventory[firstDifferingIndex];
+    if (
+      firstEntry === undefined ||
+      secondEntry === undefined ||
+      firstEntry.path !== secondEntry.path
+    )
+      return Effect.fail(
+        candidateFailures.comparison(
+          "observation-diverged",
+          "clean producer inventory paths differ",
+        ),
+      );
+    return Effect.fail(
+      producerInventoryDivergedFailure(
+        "clean producer inventories differ",
+        firstEntry.path,
+        firstEntry.sha256,
+        secondEntry.sha256,
+      ),
+    );
+  }
+  if (
+    encodeCanonicalJson(first.observations) !== encodeCanonicalJson(second.observations) ||
+    first.observationsSha256 !== second.observationsSha256
+  )
+    return Effect.fail(
+      candidateFailures.comparison("observation-diverged", "clean observation projections differ"),
+    );
+  return Effect.succeed({
+    filesPerRun: 21,
+    firstInventorySha256: first.inventorySha256,
+    secondInventorySha256: second.inventorySha256,
+    result: "equal",
+    observationRecordsPerRun: 5,
+    firstObservationsSha256: first.observationsSha256,
+    secondObservationsSha256: second.observationsSha256,
+    observationsResult: "equal",
+  });
+};
+
 const makeReport = (
   revision: string,
   dependencyLockSha256: `sha256:${string}`,
@@ -3473,66 +3677,8 @@ const makeReport = (
   staleMembers: ReadonlyArray<string>,
 ): Effect.Effect<M037FullCompilerCandidateReport, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
-    const firstDifferingIndex = first.inventory.findIndex(
-      (entry, index) =>
-        second.inventory[index]?.path !== entry.path ||
-        second.inventory[index]?.sha256 !== entry.sha256,
-    );
-    if (first.inventory.length !== second.inventory.length || firstDifferingIndex < 0) {
-      if (
-        first.inventory.length !== second.inventory.length ||
-        first.inventorySha256 !== second.inventorySha256
-      )
-        return yield* Effect.fail(
-          candidateFailures.comparison(
-            "observation-diverged",
-            "clean producer inventory structure differs",
-          ),
-        );
-    } else {
-      const firstEntry = first.inventory[firstDifferingIndex];
-      const secondEntry = second.inventory[firstDifferingIndex];
-      if (
-        firstEntry === undefined ||
-        secondEntry === undefined ||
-        firstEntry.path !== secondEntry.path
-      )
-        return yield* Effect.fail(
-          candidateFailures.comparison(
-            "observation-diverged",
-            "clean producer inventory paths differ",
-          ),
-        );
-      return yield* Effect.fail(
-        producerInventoryDivergedFailure(
-          "clean producer inventories differ",
-          firstEntry.path,
-          firstEntry.sha256,
-          secondEntry.sha256,
-        ),
-      );
-    }
-    if (
-      encodeCanonicalJson(first.observations) !== encodeCanonicalJson(second.observations) ||
-      first.observationsSha256 !== second.observationsSha256
-    )
-      return yield* Effect.fail(
-        candidateFailures.comparison(
-          "observation-diverged",
-          "clean observation projections differ",
-        ),
-      );
+    const comparisonValue = yield* validateM037RunComparison(first, second);
     const inputResolutionValue = { referencesAgree: true as const, inputs };
-    const comparisonValue = {
-      filesPerRun: 21 as const,
-      firstInventorySha256: first.inventorySha256,
-      secondInventorySha256: second.inventorySha256,
-      result: "equal" as const,
-      observationRecordsPerRun: 5 as const,
-      firstObservationsSha256: first.observationsSha256,
-      secondObservationsSha256: second.observationsSha256,
-      observationsResult: "equal" as const,
-    };
     const embeddedRecords = {
       publicHostPreflight: embedded(
         "embedded/public-host-preflight.json" as const,
@@ -3676,7 +3822,7 @@ const makeReport = (
     );
   });
 
-const validateReportDigests = (
+export const validateM037ReportDigests = (
   report: M037FullCompilerCandidateReport,
 ): Effect.Effect<void, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
@@ -3743,22 +3889,27 @@ const decodeReportMode = (
     const fileSystem = yield* FileSystem.FileSystem;
     const canonicalRoot = yield* fileSystem.realPath(root).pipe(
       Effect.mapError((error) =>
-        selectionUnsafeFailure("could not resolve repository root", {
+        decodeReportFailure("could not resolve repository root", {
           cause: projectPlatformCause(error),
         }),
       ),
     );
-    if (reportPath !== REPORT_PATH)
+    if (reportPath !== REPORT_PATH) {
+      const repositoryRelative = isRepositoryRelativePath(reportPath);
       return yield* Effect.fail(
-        isRepositoryRelativePath(reportPath)
-          ? decodeReportFailure("report path is not the public M037 report", { path: reportPath })
-          : selectionUnsafeFailure("report path must be repository-relative", { path: reportPath }),
+        decodeReportFailure(
+          repositoryRelative
+            ? "report path is not the public M037 report"
+            : "report path must be repository-relative",
+          repositoryRelative ? { path: reportPath } : undefined,
+        ),
       );
+    }
     const resolvedReportPath = yield* resolveContainedExistingPath(
       canonicalRoot,
       reportPath,
       decodeReportFailure,
-      selectionUnsafeFailure,
+      decodeReportFailure,
       true,
     );
     const encoded = yield* readText(resolvedReportPath, reportPath, decodeReportFailure);
@@ -3772,9 +3923,23 @@ const decodeReportMode = (
         }),
       ),
     );
-    yield* validateReportDigests(report);
+    yield* validateM037ReportDigests(report);
     return `${reportPath}: valid`;
   });
+
+export const publishM037Entries = (
+  root: string,
+  entries: ReadonlyArray<PublicationEntry>,
+): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
+  publishAtomically(root, entries).pipe(
+    Effect.mapError((error) =>
+      candidateFailures.publication(
+        error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
+        error.message,
+        { path: error.path, cause: publicationCause(error) },
+      ),
+    ),
+  );
 
 const candidateProgram = (
   runtime: RuntimeBoundary,
@@ -3862,7 +4027,7 @@ const candidateProgram = (
         second,
         staleMembers,
       );
-      yield* validateReportDigests(report).pipe(
+      yield* validateM037ReportDigests(report).pipe(
         Effect.mapError((error) =>
           candidateFailures.accumulation("report-invalid", error.message, {
             ...(error.path === undefined ? {} : { path: error.path }),
@@ -3884,7 +4049,7 @@ const candidateProgram = (
           ),
         ),
       );
-      yield* validateReportDigests(reloaded).pipe(
+      yield* validateM037ReportDigests(reloaded).pipe(
         Effect.mapError((error) =>
           candidateFailures.accumulation("report-invalid", error.message, {
             ...(error.path === undefined ? {} : { path: error.path }),
@@ -3901,15 +4066,8 @@ const candidateProgram = (
             "final publication is not the exact 22-file batch",
           ),
         );
-      yield* publishAtomically(root, finalEntries).pipe(
-        Effect.mapError((error) =>
-          candidateFailures.publication(
-            error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
-            error.message,
-            { path: error.path, cause: publicationCause(error) },
-          ),
-        ),
-      );
+      yield* validateM037PublicationPaths(root, finalEntries);
+      yield* publishM037Entries(root, finalEntries);
       return REPORT_PATH;
     }),
   );
@@ -3926,6 +4084,22 @@ const runtimeBoundary = (): RuntimeBoundary => ({
   ),
   scriptDirectory: import.meta.dir,
 });
+export interface M037FailureProcessProjection {
+  readonly exitCode: 1;
+  readonly stdout: "";
+  readonly stderr: string;
+}
+
+export const projectM037FailureProcess = (
+  failure: M037CandidateFailure,
+): Effect.Effect<M037FailureProcessProjection, Schema.SchemaError> =>
+  Schema.decodeEffect(M037CandidateFailureSchema)(failure, parseOptions).pipe(
+    Effect.map((decoded) => ({
+      exitCode: 1 as const,
+      stdout: "" as const,
+      stderr: `${encodeCanonicalJson(decoded)}\n`,
+    })),
+  );
 
 const runMain = async (): Promise<void> => {
   const runtime = runtimeBoundary();
@@ -3952,11 +4126,10 @@ const runMain = async (): Promise<void> => {
     ),
   );
   if (result._tag === "Failure") {
-    const failure = await Effect.runPromise(
-      Schema.decodeEffect(M037CandidateFailureSchema)(result.failure, parseOptions),
-    );
-    process.stderr.write(`${encodeCanonicalJson(failure)}\n`);
-    process.exitCode = 1;
+    const failure = await Effect.runPromise(projectM037FailureProcess(result.failure));
+    process.stdout.write(failure.stdout);
+    process.stderr.write(failure.stderr);
+    process.exitCode = failure.exitCode;
     return;
   }
   process.stdout.write(`${result.value}\n`);

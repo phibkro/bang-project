@@ -45,20 +45,3 @@ demo-m018:
 # Run the focused M018 evidence and target checks.
 test-m018:
     bun run test:m018
-
-
-# Re-run the protected M036 clean-worktree parity journey.
-evidence-m036:
-    bun run evidence:m036
-
-# Run the focused M037 candidate contract checks.
-test-m037:
-    bun test tests/m037-full-compiler-candidate.test.ts
-
-# Run the public M037 full compiler candidate.
-candidate-m037:
-    bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json
-
-# Strictly decode the published M037 candidate report.
-decode-m037:
-    bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.json
