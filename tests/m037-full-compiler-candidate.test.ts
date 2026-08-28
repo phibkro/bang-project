@@ -1290,7 +1290,7 @@ export const outside = true;
       }
       throw new Error(`${assertionName} unexpectedly decoded`);
     };
-    for (const producerCase of strictProducerCauseUnions) {
+    for (const [index, producerCase] of strictProducerCauseUnions.entries()) {
       const exact = {
         ...producerFailureBase,
         stage: producerCase.stage,
@@ -1301,10 +1301,12 @@ export const outside = true;
         ...producerFailureBase,
         stage: producerCase.stage,
       });
-      assertProducerCauseRejects(`${producerCase.name}.wrong-tag`, {
+      const crossOwnerCause =
+        strictProducerCauseUnions[(index + 1) % strictProducerCauseUnions.length]!.cause;
+      assertProducerCauseRejects(`${producerCase.name}.cross-owner-cause`, {
         ...producerFailureBase,
         stage: producerCase.stage,
-        cause: { ...producerCase.cause, _tag: "WrongProducerFailure" },
+        cause: crossOwnerCause,
       });
     }
     const strictPublicationCauseUnions = [
