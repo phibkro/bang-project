@@ -179,7 +179,7 @@ The mission root runs these preflights once, in this order:
 6. Run `bash -euo pipefail -c 'printf "m037-bash-ok\n"'` and require the exact token.
 7. Run `just --version` and require exactly `just 1.58.0`.
 8. Run `just --summary` in the mission root and require success.
-9. Run `nix --version` and require one normalized `nix (Nix)` line.
+9. Run `nix --version` and require one normalized upstream `nix (Nix)` or Determinate `nix (Determinate Nix X.Y.Z)` version line.
 10. Run `nix config show experimental-features` and require `nix-command` and `flakes`.
 11. Run `nix config show substituters` and require `https://cache.nixos.org/`.
 12. Run the refreshed pinned Node build in the Node section and require Node `v24.7.0`.

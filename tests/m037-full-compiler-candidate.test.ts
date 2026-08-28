@@ -415,6 +415,12 @@ beforeAll(async () => {
 fi
 exec ${actualPaths.git} "$@"`,
   );
+  await installWrapper(
+    wrapperBin,
+    "nix",
+    `if [[ "$1" == "--version" ]]; then printf 'nix (Determinate Nix 3.21.0) 2.34.8\\n'; exit 0; fi
+exec ${actualPaths.nix} "$@"`,
+  );
   const result = await runCommand(candidateCommand, candidateRoot, {
     ...(process.env as Record<string, string>),
     PATH: `${wrapperBin}:${process.env.PATH ?? ""}`,

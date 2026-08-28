@@ -196,10 +196,12 @@ const BashVersionSchema = Schema.String.pipe(
     }),
   ),
 );
+const NixVersionPattern =
+  /^nix \((?:Nix|Determinate Nix [0-9]+(?:\.[0-9]+){2})\) [0-9]+(?:\.[0-9]+){1,2}$/u;
 const NixVersionSchema = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter((value) => /^nix \(Nix\) .+$/u.test(value), {
-      expected: "one normalized Nix version line",
+    Schema.makeFilter((value) => NixVersionPattern.test(value), {
+      expected: "one normalized upstream or Determinate Nix version line",
     }),
   ),
 );
@@ -2120,7 +2122,7 @@ export const preflightHost = (
       command: "nix --version",
       path: ".",
     });
-    const nixVersion = exactSingleLine(nixVersionResult.stdout, /^nix \(Nix\) .+$/u);
+    const nixVersion = exactSingleLine(nixVersionResult.stdout, NixVersionPattern);
     if (nixVersion === undefined)
       return yield* Effect.fail(
         candidateFailures.preflight(
