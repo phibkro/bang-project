@@ -137,13 +137,21 @@ bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.jso
 
 The same mission-local module handles `--decode` mode and exports `M037FullCompilerCandidateReportSchema`.
 
+Decode mode derives the repository root from the running mission module and canonicalizes that root before reading the report. It accepts only the exact report path above. The report and every source path below must resolve from that canonical root without any symbolic-link path component; the decoder never follows a source symlink, even when its target remains inside the root.
+
+After strict report decoding, the decoder resolves and hashes the seven fixed input paths in resolved-input order and the 21 fixed producer paths in closure order. It compares every live byte digest to the corresponding exact report row. Report-provided paths never select a file.
+
+The decoder strictly decodes the live Gleam evidence producer. It compares the complete canonical `observations` value with E02, including every boolean, success and rejection count, state trace, remaining-use trace, and actor-restart field. Identity-only agreement is insufficient.
+
+The decoder also strictly consumes the live semantic-artifact producer for the fixed requirement and compares the complete canonical `Applicable` result with E07. The tag, artifact fields, theory fields, requirement, evidence, premises, obligations, limitations, and invalidators are all exact; `entriesMatchAssembly` remains exactly `true`.
+
 The decoder rejects every excess property. On success, standard output is exactly:
 
 ```text
 .bang/evidence/M037.json: valid
 ```
 
-The decode success path writes no standard error. A decode failure returns `decode/report-invalid` as canonical `M037CandidateFailure` JSON.
+The decode success path writes no standard error. Schema, path-policy, filesystem, report-local consistency, and live-source mismatches return `decode/report-invalid`; a SHA-256 `Crypto` failure returns `decode/digest-failed` with its exact typed `PlatformError` cause. Every failure is canonical `M037CandidateFailure` JSON.
 
 # Public host contract
 
@@ -220,6 +228,8 @@ The orchestrator fails if any resolved reference disagrees with this chain. The 
 The command records `HEAD` and the SHA-256 digest of `bun.lock`. It rejects a dirty tracked worktree before the public-host preflights.
 
 After all preflights pass, the command creates two detached clean worktrees at the recorded revision.
+
+The temporary-parent precheck rejects only a canonical parent that equals or is inside a checkout or run root. A canonical ancestor of a workspace is allowed. After the scoped child is created, the runner canonicalizes that child and requires it to be disjoint from every checkout and run root. The focused fixture places its checkout below `/tmp`, sets `TMPDIR` to a directory inside that checkout, and observes all candidate worktrees in an external sibling child below `/tmp`.
 
 Each worktree runs these setup commands as typed child processes:
 
@@ -358,6 +368,8 @@ The observation must equal the selected qualification observation. This equality
 
 This boundary restricts the argument vector, working directory, and environment. It does not provide filesystem sandboxing or deny absolute host paths.
 
+The artifact execution failure fixture copies the real producer escript and flips only its first byte before it invokes the real pinned `escript` process.
+
 # Outside-workspace consumer
 
 The runner creates a temporary consumer sandbox outside the checkout. It copies only these inputs:
@@ -415,6 +427,8 @@ BANG_M037_MODULE_LOG=<sandbox>/module-loads.jsonl
 The loader permits `node:` built-ins. Every other resolved URL must be a `file:` URL with a canonical real path inside the sandbox.
 
 The loader rejects bare packages, foreign protocols, symlink escapes, and every outside file during both resolution and load.
+
+The outside-import fixture gives the outside module an evaluation sentinel write. It requires the loader to reject before evaluation, observes that the sentinel is absent, and requires the module log to contain no outside-module row.
 
 The positive run observes these exact sorted sets:
 
@@ -482,6 +496,8 @@ dist/schemas/2/types/consumer.js
 
 The runner compares the two ordered 21-file producer inventories and the five ordered per-run observation values. Each corresponding path, byte digest, and observation value must be equal. The first run supplies the 21 entries and embedded values for final publication.
 
+The inventory-divergence fixture clones the real ordered 21-row inventory, changes only the digest of the real second-run `.bang/assemblies/clinic-supervised-exact-one/src/main.gleam` row from bit-flipped real bytes, and asserts the typed path plus both real byte digests.
+
 Only after that comparison, the runner creates this final report:
 
 ```text
@@ -508,6 +524,8 @@ The command passes all 22 entries once to the existing `publishAtomically` helpe
 The helper replaces paths through ordered individual renames. It provides no concurrent-reader isolation across the 22 paths.
 
 If a commit fails and rollback succeeds, the helper restores prior bytes for every committed enumerated path. A handled injected test must observe this result.
+
+The recoverable publication fixture stages the real current bytes for all 22 enumerated M037 paths over distinct prior byte snapshots, fails the last ordered rename, and compares the complete before and after bytes for every path. The rollback-failure fixture uses the same real 22-path batch but makes no restoration claim.
 
 If rollback fails, the command returns `publication/rollback-failed`. It does not claim that every prior enumerated byte survived.
 
@@ -844,6 +862,8 @@ The input array has seven rows in the resolved-input order. Each input digest co
 Each inventory digest covers the canonical JSON encoding of its ordered `{ path, sha256 }` rows. No report byte participates in either producer inventory digest.
 
 Each embedded-record digest covers only the canonical JSON bytes of its `value`. An embedded path is report-local and is not a persistent file.
+
+Report-local digest consistency does not establish source custody. Public decode separately hashes the seven live inputs and 21 live producers through the `Crypto` service and compares every digest to its fixed report row. It then binds E02 to the strictly decoded live Gleam evidence and E07 to the strictly consumed live semantic artifact. Recomputing embedded-record, inventory, observation, claim-reference, or scorecard-reference digests cannot make a changed E02 or E07 observation authoritative.
 The runner compares five per-run embedded values in this order: theory applicability, artifact isolation, audit, schema custody, and external-consumer isolation. Each observation digest covers the canonical JSON encoding of those ordered values. The report embeds the first-run values only after both observation digests are equal.
 
 The unchanged lock digest binds the M036 dependency graph. The external-consumer record separately binds the immutable Nixpkgs revision, package attribute, installed executable bytes, and observed Node version.
@@ -1012,16 +1032,16 @@ type M037FailureReason =
   | "cleanup-failed"
   | "process-failed"
   | "producer-failed"
+  | "result-mismatch"
+  | "digest-failed"
   | "material-missing"
   | "execution-failed"
   | "observation-mismatch"
   | "runtime-boundary-violated"
   | "platform-failed"
-  | "custody-mismatch"
   | "consumer-rejected"
   | "isolation-violated"
   | "producer-inventory-diverged"
-  | "observation-diverged"
   | "report-invalid"
   | "source-reference-invalid"
   | "unsupported-claim-upgraded"
@@ -1056,60 +1076,192 @@ type M037PlatformReason =
       readonly pathOrDescriptor?: string | number;
     };
 
-type M037ProducerCause =
-  | {
-      readonly _tag: "ExplanationFailure" | "ClassificationFailure";
-      readonly stage: string;
-      readonly path: string;
-      readonly message: string;
-      readonly reason?: string;
-      readonly address?: string;
-    }
-  | {
-      readonly _tag: "PlanFailure" | "AssemblyFailure" | "AuditFailure";
-      readonly stage: string;
-      readonly path: string;
-      readonly reason: string;
-      readonly message: string;
-      readonly address?: string;
-    }
-  | {
-      readonly _tag: "BangSchemaPublicationFailure" | "PublicationFailure";
-      readonly stage: string;
-      readonly path: string;
-      readonly reason: string;
-      readonly message: string;
-    }
-  | {
-      readonly _tag: "PlatformError";
-      readonly message: string;
-      readonly reason: M037PlatformReason;
-    }
-  | {
-      readonly _tag: "M035RejectedVerdict";
-      readonly stage: string;
-      readonly reason: string;
-      readonly message: string;
-      readonly path?: string;
-      readonly identity?: string;
-      readonly expected?: string;
-      readonly observed?: string;
-    };
+type ExplanationFailureCause = {
+  readonly _tag: "ExplanationFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly message: string;
+  readonly reason?: string;
+  readonly address?: string;
+};
+type ClassificationFailureCause = {
+  readonly _tag: "ClassificationFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly message: string;
+  readonly reason?: string;
+  readonly address?: string;
+};
+type PlanFailureCause = {
+  readonly _tag: "PlanFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly reason: string;
+  readonly message: string;
+  readonly address?: string;
+};
+type AssemblyFailureCause = {
+  readonly _tag: "AssemblyFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly reason: string;
+  readonly message: string;
+  readonly address?: string;
+};
+type AuditFailureCause = {
+  readonly _tag: "AuditFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly reason: string;
+  readonly message: string;
+  readonly address?: string;
+};
+type BangSchemaPublicationFailureCause = {
+  readonly _tag: "BangSchemaPublicationFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly reason: string;
+  readonly message: string;
+};
+type PublicationFailureCause = {
+  readonly _tag: "PublicationFailure";
+  readonly stage: string;
+  readonly path: string;
+  readonly reason: string;
+  readonly message: string;
+};
+type PlatformErrorCause = {
+  readonly _tag: "PlatformError";
+  readonly message: string;
+  readonly reason: M037PlatformReason;
+};
+type M035RejectedVerdictCause = {
+  readonly _tag: "M035RejectedVerdict";
+  readonly stage: string;
+  readonly reason: string;
+  readonly message: string;
+  readonly path?: string;
+  readonly identity?: string;
+  readonly expected?: string;
+  readonly observed?: string;
+};
 
-interface M037CandidateFailure {
+interface M037FailureBase {
   readonly bangFullCompilerCandidateFailure: 1;
-  readonly stage: M037FailureStage;
-  readonly reason: M037FailureReason;
   readonly path?: string;
   readonly command?: string;
-  readonly cause?: M037ProducerCause;
   readonly message: string;
 }
+type M037Failure<
+  Stage extends M037FailureStage,
+  Reason extends M037FailureReason,
+> = M037FailureBase & {
+  readonly stage: Stage;
+  readonly reason: Reason;
+  readonly cause?: never;
+};
+type M037FailureWithOptionalCause<
+  Stage extends M037FailureStage,
+  Reason extends M037FailureReason,
+  Cause,
+> = M037FailureBase & {
+  readonly stage: Stage;
+  readonly reason: Reason;
+  readonly cause?: Cause;
+};
+type M037FailureWithCause<
+  Stage extends M037FailureStage,
+  Reason extends M037FailureReason,
+  Cause,
+> = M037FailureBase & {
+  readonly stage: Stage;
+  readonly reason: Reason;
+  readonly cause: Cause;
+};
+
+type M037CandidateFailure =
+  | M037FailureWithOptionalCause<
+      "selection",
+      "invalid-selection" | "unsafe-path" | "reference-disagreement",
+      PlatformErrorCause
+    >
+  | M037FailureWithOptionalCause<
+      "preflight",
+      | "unsupported-platform"
+      | "bun-version-unsupported"
+      | "git-worktree-unavailable"
+      | "bash-unavailable"
+      | "just-version-unsupported"
+      | "nix-unavailable",
+      PlatformErrorCause
+    >
+  | M037FailureWithOptionalCause<
+      "checkout",
+      "dirty-worktree" | "revision-unavailable" | "cleanup-failed",
+      PlatformErrorCause
+    >
+  | M037Failure<"setup", "process-failed">
+  | M037FailureWithCause<"explain", "producer-failed", ExplanationFailureCause>
+  | M037FailureWithCause<"classify", "producer-failed", ClassificationFailureCause>
+  | M037FailureWithCause<"plan", "producer-failed", PlanFailureCause>
+  | M037FailureWithCause<"assemble", "producer-failed", AssemblyFailureCause>
+  | M037FailureWithCause<"audit", "producer-failed", AuditFailureCause>
+  | M037FailureWithCause<"schema-publication", "producer-failed", BangSchemaPublicationFailureCause>
+  | M037Failure<
+      "explain" | "classify" | "plan" | "assemble" | "audit" | "schema-publication" | "comparison",
+      "result-mismatch"
+    >
+  | M037FailureWithCause<
+      | "selection"
+      | "preflight"
+      | "checkout"
+      | "assemble"
+      | "artifact"
+      | "schema-publication"
+      | "external-consumer"
+      | "comparison"
+      | "accumulation"
+      | "decode",
+      "digest-failed",
+      PlatformErrorCause
+    >
+  | M037FailureWithCause<
+      "assemble" | "schema-publication",
+      "platform-failed",
+      PublicationFailureCause | PlatformErrorCause
+    >
+  | M037FailureWithOptionalCause<
+      "artifact",
+      | "material-missing"
+      | "execution-failed"
+      | "observation-mismatch"
+      | "runtime-boundary-violated",
+      PlatformErrorCause
+    >
+  | M037Failure<"external-consumer", "process-failed">
+  | M037FailureWithOptionalCause<"external-consumer", "consumer-rejected", M035RejectedVerdictCause>
+  | M037FailureWithOptionalCause<"external-consumer", "isolation-violated", PlatformErrorCause>
+  | (M037Failure<"comparison", "producer-inventory-diverged"> & {
+      readonly firstDifferingPath: string;
+      readonly firstSha256: `sha256:${string}`;
+      readonly secondSha256: `sha256:${string}`;
+    })
+  | M037FailureWithOptionalCause<
+      "accumulation",
+      "report-invalid" | "source-reference-invalid" | "unsupported-claim-upgraded",
+      PlatformErrorCause
+    >
+  | M037FailureWithCause<
+      "publication",
+      "publication-failed" | "rollback-failed",
+      PublicationFailureCause
+    >
+  | M037FailureWithOptionalCause<"decode", "report-invalid", PlatformErrorCause>;
 ```
 
 The cause is a strict mission-local projection of the current discriminated error. The root reads fields from the typed value and never parses text.
 
-The cause Schema uses `_tag` to enforce the stable producer fields:
+The cause Schema uses `_tag` to enforce the stable copied fields:
 
 | Cause tag                      | Required copied fields                                     | Optional copied fields                                            |
 | ------------------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -1127,71 +1279,102 @@ M037 does not create a producer reason when the source reason is absent.
 
 The outer stage and reason pairs are exact:
 
-| Stage                | Reasons                                                                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `selection`          | `invalid-selection`, `unsafe-path`, `reference-disagreement`                                                                                     |
-| `preflight`          | `unsupported-platform`, `bun-version-unsupported`, `git-worktree-unavailable`, `bash-unavailable`, `just-version-unsupported`, `nix-unavailable` |
-| `checkout`           | `dirty-worktree`, `revision-unavailable`, `cleanup-failed`                                                                                       |
-| `setup`              | `process-failed`                                                                                                                                 |
-| `explain`            | `producer-failed`                                                                                                                                |
-| `classify`           | `producer-failed`                                                                                                                                |
-| `plan`               | `producer-failed`                                                                                                                                |
-| `assemble`           | `producer-failed`                                                                                                                                |
-| `artifact`           | `material-missing`, `execution-failed`, `observation-mismatch`, `runtime-boundary-violated`                                                      |
-| `audit`              | `producer-failed`                                                                                                                                |
-| `schema-publication` | `producer-failed`, `platform-failed`, `custody-mismatch`                                                                                         |
-| `external-consumer`  | `process-failed`, `consumer-rejected`, `isolation-violated`                                                                                      |
-| `comparison`         | `producer-inventory-diverged`, `observation-diverged`                                                                                            |
-| `accumulation`       | `report-invalid`, `source-reference-invalid`, `unsupported-claim-upgraded`                                                                       |
-| `publication`        | `publication-failed`, `rollback-failed`                                                                                                          |
-| `decode`             | `report-invalid`                                                                                                                                 |
+| Stage                | Reasons                                                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selection`          | `invalid-selection`, `unsafe-path`, `reference-disagreement`, `digest-failed`                                                                                     |
+| `preflight`          | `unsupported-platform`, `bun-version-unsupported`, `git-worktree-unavailable`, `bash-unavailable`, `just-version-unsupported`, `nix-unavailable`, `digest-failed` |
+| `checkout`           | `dirty-worktree`, `revision-unavailable`, `cleanup-failed`, `digest-failed`                                                                                       |
+| `setup`              | `process-failed`                                                                                                                                                  |
+| `explain`            | `producer-failed`, `result-mismatch`                                                                                                                              |
+| `classify`           | `producer-failed`, `result-mismatch`                                                                                                                              |
+| `plan`               | `producer-failed`, `result-mismatch`                                                                                                                              |
+| `assemble`           | `producer-failed`, `result-mismatch`, `digest-failed`, `platform-failed`                                                                                          |
+| `artifact`           | `material-missing`, `execution-failed`, `observation-mismatch`, `runtime-boundary-violated`, `digest-failed`                                                      |
+| `audit`              | `producer-failed`, `result-mismatch`                                                                                                                              |
+| `schema-publication` | `producer-failed`, `result-mismatch`, `digest-failed`, `platform-failed`                                                                                          |
+| `external-consumer`  | `process-failed`, `consumer-rejected`, `isolation-violated`, `digest-failed`                                                                                      |
+| `comparison`         | `producer-inventory-diverged`, `result-mismatch`, `digest-failed`                                                                                                 |
+| `accumulation`       | `report-invalid`, `source-reference-invalid`, `unsupported-claim-upgraded`, `digest-failed`                                                                       |
+| `publication`        | `publication-failed`, `rollback-failed`                                                                                                                           |
+| `decode`             | `report-invalid`, `digest-failed`                                                                                                                                 |
+
+The exact outer-to-cause mapping is:
+
+| Outer stage/reason                                                                                                                | Cause contract                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `explain/producer-failed`                                                                                                         | required `ExplanationFailure`                                           |
+| `classify/producer-failed`                                                                                                        | required `ClassificationFailure`                                        |
+| `plan/producer-failed`                                                                                                            | required `PlanFailure`                                                  |
+| `assemble/producer-failed`                                                                                                        | required `AssemblyFailure`                                              |
+| `audit/producer-failed`                                                                                                           | required `AuditFailure`                                                 |
+| `schema-publication/producer-failed`                                                                                              | required `BangSchemaPublicationFailure`                                 |
+| every `digest-failed` pair in the exact stage table                                                                               | required `PlatformError`                                                |
+| `assemble/platform-failed`, `schema-publication/platform-failed`                                                                  | required `PublicationFailure` or `PlatformError` from mission-owned I/O |
+| `publication/publication-failed`, `publication/rollback-failed`                                                                   | required `PublicationFailure`                                           |
+| `external-consumer/consumer-rejected`                                                                                             | optional exact `M035RejectedVerdict`                                    |
+| ordinary `selection`, `preflight`, `checkout`, `artifact`, `accumulation`, and `decode` reasons                                   | optional `PlatformError`                                                |
+| `external-consumer/isolation-violated`                                                                                            | optional `PlatformError`                                                |
+| every `result-mismatch`, `setup/process-failed`, `external-consumer/process-failed`, and `comparison/producer-inventory-diverged` | no cause                                                                |
+
+No `producer-failed` value can decode without its owning producer cause. A cause for another producer tag cannot decode at that stage. Genuine producer errors keep `producer-failed`. Mission post-success checks use `result-mismatch`. Applicability, classification, plan selection, assembly binding, audit cleanliness, schema custody, and comparison checks are mission postconditions.
 
 The positive candidate can emit `explain/producer-failed` for its direct applicability call. A nested producer failure from the assembly call emits `assemble/producer-failed` with `AssemblyFailure`.
 
 The `classify` and `plan` stages are reserved for focused single-call negative projections. They are not extra positive-path probes.
 
-Producer failures use the outer reason `producer-failed` and include `cause`. The cause retains its source reason only when that reason exists.
-
-An M035 rejected verdict uses `consumer-rejected`. Its cause retains the exact verdict stage, reason, and optional diagnostic fields.
+An M035 rejected verdict uses `consumer-rejected`. Its cause retains the exact verdict stage, reason, and all present diagnostic fields.
 
 A final `PublicationFailure` cause retains one exact source reason: `invalid-entry`, `duplicate-entry`, `staging-failed`, `custody-failed`, `publication-failed`, or `rollback-failed`. M037 maps the first five to outer `publication-failed` and the last to outer `rollback-failed`.
 
-Failure JSON uses canonical encoding. Mission-owned outer paths are repository-relative or sandbox-relative. Producer messages stay unchanged and can contain host paths. The projection omits an untyped `PlatformError.reason.cause`; it makes no lossless-error claim. No failure contains a stack or untyped child output.
+Every SHA-256 or canonical digest call receives the builder for its owning stage. A Crypto failure maps to that stage with `digest-failed`. This failure includes the exact `PlatformError` cause. Mission filesystem materialization maps to `assemble/platform-failed` or `schema-publication/platform-failed`. Producer execution does not use `platform-failed`.
+
+Failure JSON uses canonical encoding. Mission-owned outer paths are repository-relative or sandbox-relative. The root path is `.`. M037 normalizes final-publication paths against the repository root. It normalizes schema-publication paths against the detached sandbox root. The nested typed `PublicationFailure.path` retains its original value, including an absolute value. Only an allowed nested typed cause can contain another original absolute path. An outer mission path cannot contain an absolute path. Producer messages stay unchanged and can contain host paths. The projection omits an untyped `PlatformError.reason.cause`. Thus, it does not claim lossless errors. Failures contain no stack or untyped child output.
 
 # Negative outcomes
 
 The focused journey must exercise these failures in temporary roots:
 
-| Case                                                          | Expected M037 result                      | Exact cause or observation                                                     |
-| ------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------ |
-| Reject a non-`x86_64-linux` injected host fact                | `preflight/unsupported-platform`          | no worktree exists                                                             |
-| Report injected Bun version `1.3.12`                          | `preflight/bun-version-unsupported`       | exact `1.3.13` requirement                                                     |
-| Fail the detached no-checkout worktree probe                  | `preflight/git-worktree-unavailable`      | Git probe command and cleanup                                                  |
-| Fail the Bash strict-mode token probe                         | `preflight/bash-unavailable`              | Bash is the configured `Justfile` shell                                        |
-| Report injected Just version `just 1.57.0`                    | `preflight/just-version-unsupported`      | exact `just 1.58.0` requirement                                                |
-| Fail Nix version, feature, cache, or refreshed build checks   | `preflight/nix-unavailable`               | exact failed Nix preflight command                                             |
-| Resolve `escript` to the combined toolchain path              | `artifact/runtime-boundary-violated`      | path is not the absolute real Erlang-store executable                          |
-| Change artifact argv, working directory, or environment       | `artifact/runtime-boundary-violated`      | exact command boundary disagreement                                            |
-| Resolve one workspace sentinel or `gleam`                     | `artifact/runtime-boundary-violated`      | narrow working-directory or `PATH` observation                                 |
-| Candidate copy adds `"unexpected": true`                      | `selection/invalid-selection`             | strict candidate decoder                                                       |
-| Classify `foreign-realization.json` in-process                | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `missing-declaration` |
-| Classify `unsupported-two-state-fields.json` in-process       | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `unsupported-target`  |
-| Flip the first copied escript byte                            | `artifact/execution-failed`               | failed `escript` process                                                       |
-| Append a newline to the copied Effect boundary                | `external-consumer/consumer-rejected`     | `custody/digest-mismatch` verdict fields                                       |
-| Add an excess Effect evidence property                        | `external-consumer/consumer-rejected`     | `decode/decode-failed` verdict fields                                          |
-| Make the consumer import a canonical file outside the sandbox | `external-consumer/process-failed`        | loader rejects before any outside module loads                                 |
-| Mark claim `C12` as warranted                                 | `accumulation/unsupported-claim-upgraded` | no source reference exists                                                     |
-| Change the second run `src/main.gleam` byte                   | `comparison/producer-inventory-diverged`  | path and both digests                                                          |
-| Fail one final commit rename, then complete rollback          | `publication/publication-failed`          | exact `PublicationFailure` and restored enumerated bytes                       |
-| Fail one final commit rename and one rollback restore         | `publication/rollback-failed`             | exact `PublicationFailure`; no restoration claim                               |
+| Case                                                          | Expected M037 result                      | Exact cause or observation                                                                                                                                                             |
+| ------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reject a non-`x86_64-linux` injected host fact                | `preflight/unsupported-platform`          | no worktree exists                                                                                                                                                                     |
+| Report injected Bun version `1.3.12`                          | `preflight/bun-version-unsupported`       | exact `1.3.13` requirement                                                                                                                                                             |
+| Fail the detached no-checkout worktree probe                  | `preflight/git-worktree-unavailable`      | Git probe command and cleanup                                                                                                                                                          |
+| Fail the Bash strict-mode token probe                         | `preflight/bash-unavailable`              | Bash is the configured `Justfile` shell                                                                                                                                                |
+| Report injected Just version `just 1.57.0`                    | `preflight/just-version-unsupported`      | exact `just 1.58.0` requirement                                                                                                                                                        |
+| Fail Nix version, feature, cache, or refreshed build checks   | `preflight/nix-unavailable`               | exact failed Nix preflight command                                                                                                                                                     |
+| Resolve `escript` to the combined toolchain path              | `artifact/runtime-boundary-violated`      | path is not the absolute real Erlang-store executable                                                                                                                                  |
+| Change artifact argv, working directory, or environment       | `artifact/runtime-boundary-violated`      | exact command boundary disagreement                                                                                                                                                    |
+| Resolve one workspace sentinel or `gleam`                     | `artifact/runtime-boundary-violated`      | narrow working-directory or `PATH` observation                                                                                                                                         |
+| Candidate copy adds `"unexpected": true`                      | `selection/invalid-selection`             | strict candidate decoder                                                                                                                                                               |
+| Classify `foreign-realization.json` in-process                | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `missing-declaration`                                                                                                         |
+| Classify `unsupported-two-state-fields.json` in-process       | `classify/producer-failed`                | `ClassificationFailure`, `target`, optional reason value `unsupported-target`                                                                                                          |
+| Flip the first copied escript byte                            | `artifact/execution-failed`               | failed `escript` process                                                                                                                                                               |
+| Append a newline to the copied Effect boundary                | `external-consumer/consumer-rejected`     | `custody/digest-mismatch` verdict fields                                                                                                                                               |
+| Add an excess Effect evidence property                        | `external-consumer/consumer-rejected`     | `decode/decode-failed` verdict fields                                                                                                                                                  |
+| Make the consumer import a canonical file outside the sandbox | `external-consumer/process-failed`        | loader rejects before any outside module loads                                                                                                                                         |
+| Mark claim `C12` as warranted                                 | `accumulation/unsupported-claim-upgraded` | no source reference exists                                                                                                                                                             |
+| Change the second run `src/main.gleam` byte                   | `comparison/producer-inventory-diverged`  | path and both digests                                                                                                                                                                  |
+| Fail injected SHA-256 at each owning-stage digest seam        | exact owning stage with `digest-failed`   | required exact `PlatformError` for `selection`, `preflight`, `checkout`, `assemble`, `artifact`, `schema-publication`, `external-consumer`, `comparison`, `accumulation`, and `decode` |
+| Decode each missing or wrong producer cause                   | strict failure decoder rejects            | only the six exact stage-specific producer tags decode                                                                                                                                 |
+| Fail mission publication with an absolute root source path    | owning platform or publication reason     | outer path is `.`, nested `PublicationFailure.path` retains the original                                                                                                               |
+| Fail one final commit rename, then complete rollback          | `publication/publication-failed`          | exact `PublicationFailure` and restored enumerated bytes                                                                                                                               |
+| Fail one final commit rename and one rollback restore         | `publication/rollback-failed`             | exact `PublicationFailure`; no restoration claim                                                                                                                                       |
+
+The strict public-decode case first asserts exact success standard output and empty standard error. It then changes one non-identity E02 observation field and one non-identity E07 obligation field in separate report copies. Each copy recomputes every report-local embedded, inventory, observation, claim-reference, and scorecard-reference digest and passes report-local digest validation; public decode still rejects it because the canonical value differs from its live checked producer source.
+
+The same case replaces the exact candidate selection and exact public report with repository-relative symbolic links whose targets are outside the root. Each CLI invocation exits `1`, writes empty standard output, writes the exact canonical typed failure bytes to standard error, and strictly decodes those same bytes. The source resolver rejects the link component before it reads the target.
 
 One additional stale-member case places an extra file in an owned directory. The command reports the sorted path, ignores it, and leaves it unchanged.
 
-The first 18 failure cases do not change any prior enumerated byte. The nineteenth case restores prior enumerated bytes after rollback succeeds.
+Cases that do not inject a final commit or rollback failure do not change a prior enumerated byte. The successful-rollback case restores every prior enumerated byte.
 
-The twentieth case runs only in a temporary root. It checks the typed limitation and does not assert byte equality.
+The rollback-failure case runs only in a temporary root. It checks the typed limitation and does not assert byte equality.
 
 Each failure writes no report path to standard output.
+
+For each process failure, the focused fixture first compares standard-error bytes with `encodeCanonicalJson(failure) + "\n"`. Then it strictly decodes the same bytes. Both M035 rejection cases assert the complete nested `M035RejectedVerdict`. This assertion includes its exact `message` and every present `path`, `identity`, `expected`, and `observed` field.
+
+The focused suite contains exactly 23 top-level test cases. New negative assertions strengthen or replace those cases. They do not add synthetic substitute cases.
 
 The focused test calls mission-local functions with temporary copies and test Layers. It adds no production environment flag or CLI option.
 

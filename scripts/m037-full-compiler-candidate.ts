@@ -6,6 +6,7 @@ import {
 } from "@bang/evidence";
 import { PlanningReportSchema, PlanningSelectionFromJson } from "@bang/planning";
 import {
+  consumeExactOneCapabilityExecution,
   ExactOneCapabilityExecutionResultSchema,
   M023ClassificationResultSchema,
 } from "@bang/theories";
@@ -66,6 +67,7 @@ const DEPENDENCY_LOCK = "bun.lock" as const;
 const ASSEMBLY_ID = "clinic-supervised-exact-one" as const;
 const QUALIFICATION_ID = "clinic-two-qualified-exact-one" as const;
 const EXPLANATION_ID = "clinic-packaged-exact-one" as const;
+const SEMANTIC_ARTIFACT_PATH = ".bang/artifacts/clinic-packaged-exact-one.json" as const;
 const EFFECT_EVIDENCE_PATH =
   ".bang/qualifications/clinic-two-qualified-exact-one/effect-typescript/evidence.json" as const;
 const GLEAM_EVIDENCE_PATH =
@@ -91,7 +93,7 @@ const INPUT_PATHS = [
 ] as const;
 
 const PRODUCER_PATHS = [
-  ".bang/artifacts/clinic-packaged-exact-one.json",
+  SEMANTIC_ARTIFACT_PATH,
   THEORY_LOCK_PATH,
   ".bang/qualifications/clinic-two-qualified-exact-one/effect-typescript/boundary.ts",
   EFFECT_EVIDENCE_PATH,
@@ -148,6 +150,12 @@ const isRepositoryRelativePath = (value: string): boolean =>
   !value.startsWith("/") &&
   !/^[A-Za-z]:/u.test(value) &&
   value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+const projectMissionOwnedPath = (root: string, original: string, path: Path.Path): string => {
+  if (!path.isAbsolute(original))
+    return original === "." || isRepositoryRelativePath(original) ? original : ".";
+  const relative = path.relative(path.resolve(root), path.resolve(original)).replaceAll("\\", "/");
+  return relative === "" ? "." : isRepositoryRelativePath(relative) ? relative : ".";
+};
 
 const RepositoryRelativePathSchema = Schema.String.pipe(
   Schema.check(
@@ -156,6 +164,10 @@ const RepositoryRelativePathSchema = Schema.String.pipe(
     }),
   ),
 );
+const M037MissionOwnedPathSchema = Schema.Union([
+  Schema.Literal("."),
+  RepositoryRelativePathSchema,
+]);
 const M037Sha256Schema = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter((value) => /^sha256:[0-9a-f]{64}$/u.test(value), {
@@ -289,7 +301,7 @@ const ConsumerCauseSchema = Schema.TaggedStruct("M035RejectedVerdict", {
   expected: Schema.optional(Schema.String),
   observed: Schema.optional(Schema.String),
 }).annotate({ parseOptions });
-const M037ProducerCauseSchema = Schema.Union([
+const M037FailureCauseSchema = Schema.Union([
   ExplanationCauseSchema,
   ClassificationCauseSchema,
   PlanCauseSchema,
@@ -300,11 +312,11 @@ const M037ProducerCauseSchema = Schema.Union([
   PlatformCauseSchema,
   ConsumerCauseSchema,
 ]);
+const MissionPlatformCauseSchema = Schema.Union([PublicationCauseSchema, PlatformCauseSchema]);
 const M037FailureCommonFields = {
   bangFullCompilerCandidateFailure: Schema.Literal(1),
-  path: Schema.optional(Schema.String),
+  path: Schema.optional(M037MissionOwnedPathSchema),
   command: Schema.optional(Schema.String),
-  cause: Schema.optional(M037ProducerCauseSchema),
   message: Schema.String,
 } as const;
 
@@ -320,6 +332,21 @@ const stageFailureSchema = <
     stage: Schema.Literal(stage),
     reason: Schema.Literals(reasons),
   }).annotate({ parseOptions });
+const optionallyCausedStageFailureSchema = <
+  const Stage extends string,
+  const Reasons extends ReadonlyArray<string>,
+  const Cause extends Schema.Top,
+>(
+  stage: Stage,
+  reasons: Reasons,
+  cause: Cause,
+) =>
+  Schema.Struct({
+    ...M037FailureCommonFields,
+    stage: Schema.Literal(stage),
+    reason: Schema.Literals(reasons),
+    cause: Schema.optional(cause),
+  }).annotate({ parseOptions });
 const causedStageFailureSchema = <
   const Stage extends string,
   const Reasons extends ReadonlyArray<string>,
@@ -330,48 +357,75 @@ const causedStageFailureSchema = <
   cause: Cause,
 ) =>
   Schema.Struct({
-    bangFullCompilerCandidateFailure: Schema.Literal(1),
+    ...M037FailureCommonFields,
     stage: Schema.Literal(stage),
     reason: Schema.Literals(reasons),
-    path: Schema.optional(Schema.String),
-    command: Schema.optional(Schema.String),
     cause,
-    message: Schema.String,
   }).annotate({ parseOptions });
+const digestFailureSchema = <const Stage extends string>(stage: Stage) =>
+  causedStageFailureSchema(stage, ["digest-failed"], PlatformCauseSchema);
 
 export const M037CandidateFailureSchema = Schema.Union([
-  stageFailureSchema("selection", ["invalid-selection", "unsafe-path", "reference-disagreement"]),
-  stageFailureSchema("preflight", [
-    "unsupported-platform",
-    "bun-version-unsupported",
-    "git-worktree-unavailable",
-    "bash-unavailable",
-    "just-version-unsupported",
-    "nix-unavailable",
-  ]),
-  stageFailureSchema("checkout", ["dirty-worktree", "revision-unavailable", "cleanup-failed"]),
+  optionallyCausedStageFailureSchema(
+    "selection",
+    ["invalid-selection", "unsafe-path", "reference-disagreement"],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("selection"),
+  optionallyCausedStageFailureSchema(
+    "preflight",
+    [
+      "unsupported-platform",
+      "bun-version-unsupported",
+      "git-worktree-unavailable",
+      "bash-unavailable",
+      "just-version-unsupported",
+      "nix-unavailable",
+    ],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("preflight"),
+  optionallyCausedStageFailureSchema(
+    "checkout",
+    ["dirty-worktree", "revision-unavailable", "cleanup-failed"],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("checkout"),
   stageFailureSchema("setup", ["process-failed"]),
-  stageFailureSchema("explain", ["producer-failed"]),
-  stageFailureSchema("classify", ["producer-failed"]),
-  stageFailureSchema("plan", ["producer-failed"]),
-  stageFailureSchema("assemble", ["producer-failed"]),
-  stageFailureSchema("artifact", [
-    "material-missing",
-    "execution-failed",
-    "observation-mismatch",
-    "runtime-boundary-violated",
-  ]),
-  stageFailureSchema("audit", ["producer-failed"]),
-  stageFailureSchema("schema-publication", [
-    "producer-failed",
-    "platform-failed",
-    "custody-mismatch",
-  ]),
-  stageFailureSchema("external-consumer", [
-    "process-failed",
-    "consumer-rejected",
-    "isolation-violated",
-  ]),
+  causedStageFailureSchema("explain", ["producer-failed"], ExplanationCauseSchema),
+  stageFailureSchema("explain", ["result-mismatch"]),
+  causedStageFailureSchema("classify", ["producer-failed"], ClassificationCauseSchema),
+  stageFailureSchema("classify", ["result-mismatch"]),
+  causedStageFailureSchema("plan", ["producer-failed"], PlanCauseSchema),
+  stageFailureSchema("plan", ["result-mismatch"]),
+  causedStageFailureSchema("assemble", ["producer-failed"], AssemblyCauseSchema),
+  stageFailureSchema("assemble", ["result-mismatch"]),
+  digestFailureSchema("assemble"),
+  causedStageFailureSchema("assemble", ["platform-failed"], MissionPlatformCauseSchema),
+  optionallyCausedStageFailureSchema(
+    "artifact",
+    ["material-missing", "execution-failed", "observation-mismatch", "runtime-boundary-violated"],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("artifact"),
+  causedStageFailureSchema("audit", ["producer-failed"], AuditCauseSchema),
+  stageFailureSchema("audit", ["result-mismatch"]),
+  causedStageFailureSchema("schema-publication", ["producer-failed"], SchemaPublicationCauseSchema),
+  stageFailureSchema("schema-publication", ["result-mismatch"]),
+  digestFailureSchema("schema-publication"),
+  causedStageFailureSchema("schema-publication", ["platform-failed"], MissionPlatformCauseSchema),
+  stageFailureSchema("external-consumer", ["process-failed"]),
+  optionallyCausedStageFailureSchema(
+    "external-consumer",
+    ["consumer-rejected"],
+    ConsumerCauseSchema,
+  ),
+  optionallyCausedStageFailureSchema(
+    "external-consumer",
+    ["isolation-violated"],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("external-consumer"),
   Schema.Struct({
     ...M037FailureCommonFields,
     stage: Schema.Literal("comparison"),
@@ -380,18 +434,21 @@ export const M037CandidateFailureSchema = Schema.Union([
     firstSha256: M037Sha256Schema,
     secondSha256: M037Sha256Schema,
   }).annotate({ parseOptions }),
-  stageFailureSchema("comparison", ["observation-diverged"]),
-  stageFailureSchema("accumulation", [
-    "report-invalid",
-    "source-reference-invalid",
-    "unsupported-claim-upgraded",
-  ]),
+  stageFailureSchema("comparison", ["result-mismatch"]),
+  digestFailureSchema("comparison"),
+  optionallyCausedStageFailureSchema(
+    "accumulation",
+    ["report-invalid", "source-reference-invalid", "unsupported-claim-upgraded"],
+    PlatformCauseSchema,
+  ),
+  digestFailureSchema("accumulation"),
   causedStageFailureSchema(
     "publication",
     ["publication-failed", "rollback-failed"],
     PublicationCauseSchema,
   ),
-  stageFailureSchema("decode", ["report-invalid"]),
+  optionallyCausedStageFailureSchema("decode", ["report-invalid"], PlatformCauseSchema),
+  digestFailureSchema("decode"),
 ]);
 export type M037CandidateFailure = typeof M037CandidateFailureSchema.Type;
 
@@ -1003,28 +1060,64 @@ interface RunResult {
   readonly observationsSha256: `sha256:${string}`;
 }
 
-type ProducerCause = typeof M037ProducerCauseSchema.Type;
-type BasicCandidateFailure = Exclude<
-  M037CandidateFailure,
-  { readonly reason: "producer-inventory-diverged" }
->;
-type BasicFailureStage = BasicCandidateFailure["stage"];
-type BasicFailureForStage<Stage extends BasicFailureStage> = Extract<
-  BasicCandidateFailure,
-  { readonly stage: Stage }
->;
-type BasicFailureReason<Stage extends BasicFailureStage> = BasicFailureForStage<Stage>["reason"];
+type FailureCause = typeof M037FailureCauseSchema.Type;
+type PlatformCause = typeof PlatformCauseSchema.Type;
+type ExplanationCause = typeof ExplanationCauseSchema.Type;
+type ClassificationCause = typeof ClassificationCauseSchema.Type;
+type PlanCause = typeof PlanCauseSchema.Type;
+type AssemblyCause = typeof AssemblyCauseSchema.Type;
+type AuditCause = typeof AuditCauseSchema.Type;
+type SchemaPublicationCause = typeof SchemaPublicationCauseSchema.Type;
+type PublicationCause = typeof PublicationCauseSchema.Type;
+type MissionPlatformCause = typeof MissionPlatformCauseSchema.Type;
+type ConsumerCause = typeof ConsumerCauseSchema.Type;
+type OptionalFailureCause = PlatformCause | ConsumerCause;
+type OrdinaryFailureReasonByStage = {
+  readonly selection: "invalid-selection" | "unsafe-path" | "reference-disagreement";
+  readonly preflight:
+    | "unsupported-platform"
+    | "bun-version-unsupported"
+    | "git-worktree-unavailable"
+    | "bash-unavailable"
+    | "just-version-unsupported"
+    | "nix-unavailable";
+  readonly checkout: "dirty-worktree" | "revision-unavailable" | "cleanup-failed";
+  readonly setup: "process-failed";
+  readonly explain: "result-mismatch";
+  readonly classify: "result-mismatch";
+  readonly plan: "result-mismatch";
+  readonly assemble: "result-mismatch";
+  readonly artifact:
+    | "material-missing"
+    | "execution-failed"
+    | "observation-mismatch"
+    | "runtime-boundary-violated";
+  readonly audit: "result-mismatch";
+  readonly "schema-publication": "result-mismatch";
+  readonly "external-consumer": "process-failed" | "consumer-rejected" | "isolation-violated";
+  readonly comparison: "result-mismatch";
+  readonly accumulation:
+    | "report-invalid"
+    | "source-reference-invalid"
+    | "unsupported-claim-upgraded";
+  readonly decode: "report-invalid";
+};
 interface CandidateFailureFields {
   readonly path?: string;
   readonly command?: string;
-  readonly cause?: ProducerCause;
+  readonly cause?: OptionalFailureCause;
+}
+interface RequiredCauseFailureFields<Cause extends FailureCause> {
+  readonly path?: string;
+  readonly command?: string;
+  readonly cause: Cause;
 }
 type FailureBuilder = (message: string, fields?: CandidateFailureFields) => M037CandidateFailure;
 
 const failureForStage =
-  <const Stage extends BasicFailureStage>(stage: Stage) =>
+  <const Stage extends keyof OrdinaryFailureReasonByStage>(stage: Stage) =>
   (
-    reason: BasicFailureReason<Stage>,
+    reason: OrdinaryFailureReasonByStage[Stage],
     message: string,
     fields: CandidateFailureFields = {},
   ): M037CandidateFailure =>
@@ -1037,6 +1130,21 @@ const failureForStage =
       ...(fields.cause === undefined ? {} : { cause: fields.cause }),
       message,
     }) as M037CandidateFailure;
+const requiredCauseFailure = <Cause extends FailureCause>(
+  stage: M037CandidateFailure["stage"],
+  reason: "producer-failed" | "platform-failed" | "publication-failed" | "rollback-failed",
+  message: string,
+  fields: RequiredCauseFailureFields<Cause>,
+): M037CandidateFailure =>
+  ({
+    bangFullCompilerCandidateFailure: 1,
+    stage,
+    reason,
+    ...(fields.path === undefined ? {} : { path: fields.path }),
+    ...(fields.command === undefined ? {} : { command: fields.command }),
+    cause: fields.cause,
+    message,
+  }) as M037CandidateFailure;
 
 const candidateFailures = {
   selection: failureForStage("selection"),
@@ -1053,11 +1161,8 @@ const candidateFailures = {
   externalConsumer: failureForStage("external-consumer"),
   comparison: failureForStage("comparison"),
   accumulation: failureForStage("accumulation"),
-  publication: failureForStage("publication"),
   decode: failureForStage("decode"),
 } as const;
-const digestFailure: FailureBuilder = (message, fields) =>
-  candidateFailures.accumulation("report-invalid", message, fields);
 const selectionInvalidFailure: FailureBuilder = (message, fields) =>
   candidateFailures.selection("invalid-selection", message, fields);
 const selectionReferenceFailure: FailureBuilder = (message, fields) =>
@@ -1068,6 +1173,46 @@ const decodeReportFailure: FailureBuilder = (message, fields) =>
   candidateFailures.decode("report-invalid", message, fields);
 const checkoutRevisionFailure: FailureBuilder = (message, fields) =>
   candidateFailures.checkout("revision-unavailable", message, fields);
+
+export type M037DigestFailureStage =
+  | "selection"
+  | "preflight"
+  | "checkout"
+  | "assemble"
+  | "artifact"
+  | "schema-publication"
+  | "external-consumer"
+  | "comparison"
+  | "accumulation"
+  | "decode";
+export type M037DigestFailureBuilder = (
+  message: string,
+  fields: RequiredCauseFailureFields<PlatformCause>,
+) => M037CandidateFailure;
+const digestFailureForStage =
+  (stage: M037DigestFailureStage): M037DigestFailureBuilder =>
+  (message, fields) =>
+    ({
+      bangFullCompilerCandidateFailure: 1,
+      stage,
+      reason: "digest-failed",
+      ...(fields.path === undefined ? {} : { path: fields.path }),
+      ...(fields.command === undefined ? {} : { command: fields.command }),
+      cause: fields.cause,
+      message,
+    }) as M037CandidateFailure;
+export const M037_DIGEST_FAILURE_BUILDERS = Object.freeze({
+  selection: digestFailureForStage("selection"),
+  preflight: digestFailureForStage("preflight"),
+  checkout: digestFailureForStage("checkout"),
+  assemble: digestFailureForStage("assemble"),
+  artifact: digestFailureForStage("artifact"),
+  "schema-publication": digestFailureForStage("schema-publication"),
+  "external-consumer": digestFailureForStage("external-consumer"),
+  comparison: digestFailureForStage("comparison"),
+  accumulation: digestFailureForStage("accumulation"),
+  decode: digestFailureForStage("decode"),
+} satisfies Readonly<Record<M037DigestFailureStage, M037DigestFailureBuilder>>);
 
 const producerInventoryDivergedFailure = (
   message: string,
@@ -1084,7 +1229,7 @@ const producerInventoryDivergedFailure = (
   message,
 });
 
-const projectPlatformCause = (error: PlatformError): ProducerCause => {
+const projectPlatformCause = (error: PlatformError): PlatformCause => {
   const reason = error.reason;
   return {
     _tag: "PlatformError",
@@ -1102,7 +1247,7 @@ const projectPlatformCause = (error: PlatformError): ProducerCause => {
   };
 };
 
-const explanationCause = (error: ExplanationFailure): ProducerCause => ({
+const explanationCause = (error: ExplanationFailure): ExplanationCause => ({
   _tag: "ExplanationFailure",
   stage: error.stage,
   path: error.path,
@@ -1110,7 +1255,7 @@ const explanationCause = (error: ExplanationFailure): ProducerCause => ({
   ...(error.reason === undefined ? {} : { reason: error.reason }),
   ...(error.address === undefined ? {} : { address: error.address }),
 });
-const assemblyCause = (error: AssemblyFailure): ProducerCause => ({
+const assemblyCause = (error: AssemblyFailure): AssemblyCause => ({
   _tag: "AssemblyFailure",
   stage: error.stage,
   path: error.path,
@@ -1118,7 +1263,7 @@ const assemblyCause = (error: AssemblyFailure): ProducerCause => ({
   message: error.message,
   ...(error.address === undefined ? {} : { address: error.address }),
 });
-const auditCause = (error: AuditFailure): ProducerCause => ({
+const auditCause = (error: AuditFailure): AuditCause => ({
   _tag: "AuditFailure",
   stage: error.stage,
   path: error.path,
@@ -1126,20 +1271,47 @@ const auditCause = (error: AuditFailure): ProducerCause => ({
   message: error.message,
   ...(error.address === undefined ? {} : { address: error.address }),
 });
-const schemaPublicationCause = (error: BangSchemaPublicationFailure): ProducerCause => ({
+const schemaPublicationCause = (error: BangSchemaPublicationFailure): SchemaPublicationCause => ({
   _tag: "BangSchemaPublicationFailure",
   stage: error.stage,
   path: error.path,
   reason: error.reason,
   message: error.message,
 });
-const publicationCause = (error: PublicationFailure): ProducerCause => ({
+const publicationCause = (error: PublicationFailure): PublicationCause => ({
   _tag: "PublicationFailure",
   stage: error.stage,
   path: error.path,
   reason: error.reason,
   message: error.message,
 });
+const producerFailures = {
+  explain: (message: string, fields: RequiredCauseFailureFields<ExplanationCause>) =>
+    requiredCauseFailure("explain", "producer-failed", message, fields),
+  classify: (message: string, fields: RequiredCauseFailureFields<ClassificationCause>) =>
+    requiredCauseFailure("classify", "producer-failed", message, fields),
+  plan: (message: string, fields: RequiredCauseFailureFields<PlanCause>) =>
+    requiredCauseFailure("plan", "producer-failed", message, fields),
+  assemble: (message: string, fields: RequiredCauseFailureFields<AssemblyCause>) =>
+    requiredCauseFailure("assemble", "producer-failed", message, fields),
+  audit: (message: string, fields: RequiredCauseFailureFields<AuditCause>) =>
+    requiredCauseFailure("audit", "producer-failed", message, fields),
+  schemaPublication: (
+    message: string,
+    fields: RequiredCauseFailureFields<SchemaPublicationCause>,
+  ) => requiredCauseFailure("schema-publication", "producer-failed", message, fields),
+} as const;
+const missionPlatformFailures = {
+  assemble: (message: string, fields: RequiredCauseFailureFields<MissionPlatformCause>) =>
+    requiredCauseFailure("assemble", "platform-failed", message, fields),
+  schemaPublication: (message: string, fields: RequiredCauseFailureFields<MissionPlatformCause>) =>
+    requiredCauseFailure("schema-publication", "platform-failed", message, fields),
+} as const;
+const publicationFailure = (
+  reason: "publication-failed" | "rollback-failed",
+  message: string,
+  fields: RequiredCauseFailureFields<PublicationCause>,
+): M037CandidateFailure => requiredCauseFailure("publication", reason, message, fields);
 
 const processFailure = (
   failure: FailureBuilder,
@@ -1218,9 +1390,9 @@ const requireSuccessfulProcess = (
     ),
   );
 
-const sha256Bytes = (
+export const sha256Bytes = (
   bytes: Uint8Array,
-  failure: FailureBuilder = digestFailure,
+  failure: M037DigestFailureBuilder,
 ): Effect.Effect<`sha256:${string}`, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
@@ -1234,7 +1406,7 @@ const sha256Bytes = (
     return `sha256:${Encoding.encodeHex(digest)}` as const;
   });
 
-const sha256Canonical = (value: unknown, failure: FailureBuilder = digestFailure) =>
+const sha256Canonical = (value: unknown, failure: M037DigestFailureBuilder) =>
   sha256Bytes(textEncoder.encode(encodeCanonicalJson(value)), failure);
 
 const readBytes = (
@@ -1343,16 +1515,24 @@ const resolveContainedExistingPath = (
   relativePath: string,
   resolutionFailure: FailureBuilder,
   unsafeFailure: FailureBuilder,
-  rejectLeafSymlink = false,
+  rejectSymbolicLinkComponents = false,
 ): Effect.Effect<string, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const absolutePath = path.resolve(root, relativePath);
-    if (rejectLeafSymlink && (yield* isSymbolicLink(absolutePath)))
-      return yield* Effect.fail(
-        unsafeFailure(`${relativePath} must not be a symbolic link`, { path: relativePath }),
-      );
+    if (rejectSymbolicLinkComponents) {
+      let componentPath = root;
+      for (const segment of relativePath.split("/")) {
+        componentPath = path.join(componentPath, segment);
+        if (yield* isSymbolicLink(componentPath))
+          return yield* Effect.fail(
+            unsafeFailure(`${relativePath} contains a symbolic-link path component`, {
+              path: relativePath,
+            }),
+          );
+      }
+    }
     const realPath = yield* fileSystem.realPath(absolutePath).pipe(
       Effect.mapError((error) =>
         resolutionFailure(`could not resolve ${relativePath}`, {
@@ -1392,7 +1572,7 @@ const makeExternalTempDirectory = (
       );
       if (
         canonicalParent === undefined ||
-        workspaceRoots.some((workspaceRoot) => !arePathsDisjoint(canonicalParent, workspaceRoot))
+        workspaceRoots.some((workspaceRoot) => isPathWithin(workspaceRoot, canonicalParent))
       )
         continue;
       const temporaryDirectory = yield* fileSystem
@@ -1446,9 +1626,7 @@ export const decodeSelection = (
           ? selectionInvalidFailure("candidate selection path is not the public M037 selection", {
               path: selectionPath,
             })
-          : selectionUnsafeFailure("candidate selection path must be repository-relative", {
-              path: selectionPath,
-            }),
+          : selectionUnsafeFailure("candidate selection path must be repository-relative"),
       );
     const resolvedSelectionPath = yield* resolveContainedExistingPath(
       root,
@@ -1473,6 +1651,7 @@ export const decodeSelection = (
       ASSEMBLY_SELECTION,
       selectionReferenceFailure,
       selectionUnsafeFailure,
+      true,
     );
     const assemblyText = yield* readText(
       assemblyPath,
@@ -1494,6 +1673,7 @@ export const decodeSelection = (
       PLAN_SELECTION,
       selectionReferenceFailure,
       selectionUnsafeFailure,
+      true,
     );
     const planText = yield* readText(planPath, PLAN_SELECTION, selectionReferenceFailure);
     const plan = yield* Schema.decodeEffect(PlanningSelectionFromJson)(planText, parseOptions).pipe(
@@ -1508,6 +1688,7 @@ export const decodeSelection = (
       CLASSIFICATION_SELECTION,
       selectionReferenceFailure,
       selectionUnsafeFailure,
+      true,
     );
     const classificationText = yield* readText(
       classificationPath,
@@ -1529,6 +1710,7 @@ export const decodeSelection = (
       THEORY_SELECTION,
       selectionReferenceFailure,
       selectionUnsafeFailure,
+      true,
     );
     const explanationText = yield* readText(
       theorySelectionPath,
@@ -1583,9 +1765,14 @@ export const decodeSelection = (
           inputPath,
           selectionReferenceFailure,
           selectionUnsafeFailure,
+          true,
         );
         const bytes = yield* readBytes(resolvedInputPath, inputPath, selectionReferenceFailure);
-        return { role, path: inputPath, sha256: yield* sha256Bytes(bytes) };
+        return {
+          role,
+          path: inputPath,
+          sha256: yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.selection),
+        };
       }),
     );
     return { selection, inputs };
@@ -1641,7 +1828,10 @@ const inspectCaller = (
       selectionUnsafeFailure,
     );
     const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
-    return { revision, dependencyLockSha256: yield* sha256Bytes(lockBytes) };
+    return {
+      revision,
+      dependencyLockSha256: yield* sha256Bytes(lockBytes, M037_DIGEST_FAILURE_BUILDERS.checkout),
+    };
   });
 
 export const preflightHost = (
@@ -1922,7 +2112,10 @@ export const preflightHost = (
         pinnedNodeClosureResolved: true,
       },
       nodeExecutable,
-      nodeExecutableSha256: yield* sha256Bytes(nodeExecutableBytes),
+      nodeExecutableSha256: yield* sha256Bytes(
+        nodeExecutableBytes,
+        M037_DIGEST_FAILURE_BUILDERS.preflight,
+      ),
       nodeEnvironmentPath,
       childEnvironment,
     };
@@ -1948,8 +2141,8 @@ const entryAt = (
     : Effect.succeed(entry);
 };
 
-const classificationCause = (error: ClassificationFailure) => ({
-  _tag: "ClassificationFailure" as const,
+const classificationCause = (error: ClassificationFailure): ClassificationCause => ({
+  _tag: "ClassificationFailure",
   stage: error.stage,
   path: error.path,
   message: error.message,
@@ -1965,15 +2158,18 @@ export const runM037ClassificationProjection = (
   M037CandidateFailure,
   FileSystem.FileSystem | Path.Path | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner
 > =>
-  compileSelectedM031ClassificationStaged(root, selectionPath).pipe(
-    Effect.asVoid,
-    Effect.mapError((error) =>
-      candidateFailures.classify("producer-failed", error.message, {
-        path: selectionPath,
-        cause: classificationCause(error),
-      }),
-    ),
-  );
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    yield* compileSelectedM031ClassificationStaged(root, selectionPath).pipe(
+      Effect.asVoid,
+      Effect.mapError((error) =>
+        producerFailures.classify(error.message, {
+          path: projectMissionOwnedPath(root, selectionPath, path),
+          cause: classificationCause(error),
+        }),
+      ),
+    );
+  });
 
 const decodeArtifactObservation = (
   stdout: string,
@@ -2254,7 +2450,7 @@ const runArtifact = (
       observation,
       qualificationMatch: true,
       escriptRealPath,
-      escriptSha256: yield* sha256Bytes(escriptBytes),
+      escriptSha256: yield* sha256Bytes(escriptBytes, M037_DIGEST_FAILURE_BUILDERS.artifact),
       arguments: ["exact_one"],
       cwd: "artifact-only-temp",
       environment: {
@@ -2573,7 +2769,10 @@ const runExternalConsumer = (
       nodeExecutableSha256: preflight.nodeExecutableSha256,
       arguments: ["--no-warnings", "--experimental-loader", "isolation-loader.mjs", "consumer.mjs"],
       environmentKeys: ["BANG_M037_MODULE_LOG", "BANG_M037_SANDBOX_ROOT", "HOME", "LANG", "PATH"],
-      loaderSha256: yield* sha256Bytes(loaderBytes),
+      loaderSha256: yield* sha256Bytes(
+        loaderBytes,
+        M037_DIGEST_FAILURE_BUILDERS["external-consumer"],
+      ),
       moduleLogSha256: yield* sha256Canonical(
         [
           ...new Map(
@@ -2589,6 +2788,7 @@ const runExternalConsumer = (
         ].toSorted((left, right) =>
           encodeCanonicalJson(left).localeCompare(encodeCanonicalJson(right)),
         ),
+        M037_DIGEST_FAILURE_BUILDERS["external-consumer"],
       ),
       loadedFiles: ["consumer.mjs", "publication/types/consumer.js"],
       resolvedFiles: ["consumer.mjs", "publication/types/consumer.js"],
@@ -2604,19 +2804,19 @@ const makeSchemaCustody = (
     if (schemaEntries.length !== 6)
       return yield* Effect.fail(
         candidateFailures.schemaPublication(
-          "custody-mismatch",
+          "result-mismatch",
           "schema publication must contain six files",
         ),
       );
     const manifestEntry = yield* entryAt(schemaEntries, SCHEMA_MANIFEST_PATH, (message, fields) =>
-      candidateFailures.schemaPublication("producer-failed", message, fields),
+      candidateFailures.schemaPublication("result-mismatch", message, fields),
     );
     const manifest = yield* Schema.decodeEffect(SchemaManifestFromJson)(
       textDecoder.decode(manifestEntry.bytes),
       parseOptions,
     ).pipe(
       Effect.mapError(() =>
-        candidateFailures.schemaPublication("custody-mismatch", "schema manifest is invalid", {
+        candidateFailures.schemaPublication("result-mismatch", "schema manifest is invalid", {
           path: SCHEMA_MANIFEST_PATH,
         }),
       ),
@@ -2627,12 +2827,15 @@ const makeSchemaCustody = (
     ];
     for (const payload of manifestPayloads) {
       const entry = yield* entryAt(schemaEntries, payload.path, (message, fields) =>
-        candidateFailures.schemaPublication("producer-failed", message, fields),
+        candidateFailures.schemaPublication("result-mismatch", message, fields),
       );
-      if ((yield* sha256Bytes(entry.bytes)) !== payload.sha256)
+      if (
+        (yield* sha256Bytes(entry.bytes, M037_DIGEST_FAILURE_BUILDERS["schema-publication"])) !==
+        payload.sha256
+      )
         return yield* Effect.fail(
           candidateFailures.schemaPublication(
-            "custody-mismatch",
+            "result-mismatch",
             "schema manifest digest disagrees with payload bytes",
             { path: payload.path },
           ),
@@ -2641,14 +2844,23 @@ const makeSchemaCustody = (
     const inventoryDigestedFiles = yield* Effect.forEach(PRODUCER_PATHS.slice(15), (entryPath) =>
       Effect.gen(function* () {
         const entry = yield* entryAt(schemaEntries, entryPath, (message, fields) =>
-          candidateFailures.schemaPublication("producer-failed", message, fields),
+          candidateFailures.schemaPublication("result-mismatch", message, fields),
         );
-        return { path: entryPath, sha256: yield* sha256Bytes(entry.bytes) };
+        return {
+          path: entryPath,
+          sha256: yield* sha256Bytes(
+            entry.bytes,
+            M037_DIGEST_FAILURE_BUILDERS["schema-publication"],
+          ),
+        };
       }),
     );
     return {
       version: 2,
-      manifestSha256: yield* sha256Bytes(manifestEntry.bytes),
+      manifestSha256: yield* sha256Bytes(
+        manifestEntry.bytes,
+        M037_DIGEST_FAILURE_BUILDERS["schema-publication"],
+      ),
       manifestDigestedPayloads: manifestPayloads,
       inventoryDigestedFiles,
     };
@@ -2746,7 +2958,10 @@ const verifyRunRoot = (
       selectionUnsafeFailure,
     );
     const lockBytes = yield* readBytes(lockPath, DEPENDENCY_LOCK, checkoutRevisionFailure);
-    if ((yield* sha256Bytes(lockBytes)) !== dependencyLockSha256)
+    if (
+      (yield* sha256Bytes(lockBytes, M037_DIGEST_FAILURE_BUILDERS.checkout)) !==
+      dependencyLockSha256
+    )
       return yield* Effect.fail(
         candidateFailures.checkout(
           "revision-unavailable",
@@ -2762,7 +2977,7 @@ const verifyRunRoot = (
         selectionUnsafeFailure,
       );
       const bytes = yield* readBytes(inputPath, expected.path, checkoutRevisionFailure);
-      if ((yield* sha256Bytes(bytes)) !== expected.sha256)
+      if ((yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.checkout)) !== expected.sha256)
         return yield* Effect.fail(
           candidateFailures.checkout(
             "revision-unavailable",
@@ -2815,6 +3030,7 @@ const compileRun = (
 > =>
   Effect.scoped(
     Effect.gen(function* () {
+      const path = yield* Path.Path;
       yield* verifyRunRoot(runRoot, revision, dependencyLockSha256, inputs, preflight);
       yield* runSetup(runRoot, runtime, preflight);
       const directExplanation = yield* compileSelectedExplanationStaged(
@@ -2822,7 +3038,7 @@ const compileRun = (
         THEORY_SELECTION,
       ).pipe(
         Effect.mapError((error) =>
-          candidateFailures.explain("producer-failed", error.message, {
+          producerFailures.explain(error.message, {
             path: THEORY_SELECTION,
             cause: explanationCause(error),
           }),
@@ -2834,7 +3050,7 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.explain(
-            "producer-failed",
+            "result-mismatch",
             "current exact-one theory is not applicable",
             { path: THEORY_SELECTION },
           ),
@@ -2856,7 +3072,7 @@ const compileRun = (
               ),
       }).pipe(
         Effect.mapError((error) =>
-          candidateFailures.assemble("producer-failed", error.message, {
+          producerFailures.assemble(error.message, {
             path: ASSEMBLY_SELECTION,
             cause: assemblyCause(error),
           }),
@@ -2864,7 +3080,7 @@ const compileRun = (
       );
       if (collectedEntries === undefined)
         return yield* Effect.fail(
-          candidateFailures.assemble("producer-failed", "assembly publisher returned no entries", {
+          candidateFailures.assemble("result-mismatch", "assembly publisher returned no entries", {
             path: ASSEMBLY_SELECTION,
           }),
         );
@@ -2872,13 +3088,13 @@ const compileRun = (
       if (
         assemblyEntries.length !== 15 ||
         !sameStrings(
-          assemblyEntries.map(({ path }) => path).toSorted(),
+          assemblyEntries.map(({ path: entryPath }) => entryPath).toSorted(),
           PRODUCER_PATHS.slice(0, 15).toSorted(),
         )
       )
         return yield* Effect.fail(
           candidateFailures.assemble(
-            "producer-failed",
+            "result-mismatch",
             "assembly producer inventory differs from the frozen 15-file closure",
             { path: ASSEMBLY_SELECTION },
           ),
@@ -2886,10 +3102,10 @@ const compileRun = (
       const artifactEntry = yield* entryAt(
         assemblyEntries,
         ".bang/artifacts/clinic-packaged-exact-one.json",
-        (message, fields) => candidateFailures.explain("producer-failed", message, fields),
+        (message, fields) => candidateFailures.explain("result-mismatch", message, fields),
       );
       const lockEntry = yield* entryAt(assemblyEntries, THEORY_LOCK_PATH, (message, fields) =>
-        candidateFailures.explain("producer-failed", message, fields),
+        candidateFailures.explain("result-mismatch", message, fields),
       );
       if (
         textDecoder.decode(artifactEntry.bytes) !== directExplanation.encodedArtifact ||
@@ -2897,7 +3113,7 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.explain(
-            "producer-failed",
+            "result-mismatch",
             "direct explanation bytes differ from assembly closure",
             { path: THEORY_SELECTION },
           ),
@@ -2905,7 +3121,7 @@ const compileRun = (
       const classificationEntry = yield* entryAt(
         assemblyEntries,
         CLASSIFICATION_REPORT_PATH,
-        (message, fields) => candidateFailures.classify("producer-failed", message, fields),
+        (message, fields) => candidateFailures.classify("result-mismatch", message, fields),
       );
       const classification = yield* Schema.decodeEffect(M037CollectedClassificationReportFromJson)(
         textDecoder.decode(classificationEntry.bytes),
@@ -2913,7 +3129,7 @@ const compileRun = (
       ).pipe(
         Effect.mapError(() =>
           candidateFailures.classify(
-            "producer-failed",
+            "result-mismatch",
             "collected classification report is invalid",
             { path: CLASSIFICATION_REPORT_PATH },
           ),
@@ -2961,20 +3177,20 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.classify(
-            "producer-failed",
+            "result-mismatch",
             "collected classification does not contain the ordered qualified targets",
             { path: CLASSIFICATION_REPORT_PATH },
           ),
         );
       const planEntry = yield* entryAt(assemblyEntries, PLAN_REPORT_PATH, (message, fields) =>
-        candidateFailures.plan("producer-failed", message, fields),
+        candidateFailures.plan("result-mismatch", message, fields),
       );
       const planReport = yield* Schema.decodeEffect(PlanningReportFromJson)(
         textDecoder.decode(planEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailures.plan("producer-failed", "collected planning report is invalid", {
+          candidateFailures.plan("result-mismatch", "collected planning report is invalid", {
             path: PLAN_REPORT_PATH,
           }),
         ),
@@ -3005,7 +3221,7 @@ const compileRun = (
           classification.evidence[1]?.package.semanticDigest;
       if (!selectedPlanMatches)
         return yield* Effect.fail(
-          candidateFailures.plan("producer-failed", "explicit objective did not select Gleam", {
+          candidateFailures.plan("result-mismatch", "explicit objective did not select Gleam", {
             path: PLAN_REPORT_PATH,
           }),
         );
@@ -3027,18 +3243,21 @@ const compileRun = (
       const qualifiedBoundary = gleamEvidence.materials.find(
         ({ role }) => role === "generated-gleam-boundary",
       );
-      const gleamEvidenceSha256 = (yield* sha256Bytes(gleamEvidenceEntry.bytes)).slice(7);
+      const gleamEvidenceSha256 = (yield* sha256Bytes(
+        gleamEvidenceEntry.bytes,
+        M037_DIGEST_FAILURE_BUILDERS.assemble,
+      )).slice(7);
       const assemblyReportEntry = yield* entryAt(
         assemblyEntries,
         ASSEMBLY_REPORT_PATH,
-        (message, fields) => candidateFailures.assemble("producer-failed", message, fields),
+        (message, fields) => candidateFailures.assemble("result-mismatch", message, fields),
       );
       const assemblyReport = yield* Schema.decodeEffect(AssemblyReportFromJson)(
         textDecoder.decode(assemblyReportEntry.bytes),
         parseOptions,
       ).pipe(
         Effect.mapError(() =>
-          candidateFailures.assemble("producer-failed", "collected assembly report is invalid", {
+          candidateFailures.assemble("result-mismatch", "collected assembly report is invalid", {
             path: ASSEMBLY_REPORT_PATH,
           }),
         ),
@@ -3059,15 +3278,15 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.assemble(
-            "producer-failed",
+            "result-mismatch",
             "assembly report does not bind the selected Gleam qualification",
             { path: ASSEMBLY_REPORT_PATH },
           ),
         );
       yield* publishAtomically(runRoot, assemblyEntries).pipe(
         Effect.mapError((error) =>
-          candidateFailures.assemble("producer-failed", error.message, {
-            path: error.path,
+          missionPlatformFailures.assemble(error.message, {
+            path: projectMissionOwnedPath(runRoot, error.path, path),
             cause: publicationCause(error),
           }),
         ),
@@ -3082,8 +3301,8 @@ const compileRun = (
       );
       const audit = yield* runAudit(runRoot, ASSEMBLY_ID).pipe(
         Effect.mapError((error) =>
-          candidateFailures.audit("producer-failed", error.message, {
-            path: error.path,
+          producerFailures.audit(error.message, {
+            path: projectMissionOwnedPath(runRoot, error.path, path),
             cause: auditCause(error),
           }),
         ),
@@ -3110,7 +3329,7 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.audit(
-            "producer-failed",
+            "result-mismatch",
             "clean audit found changed material or retired records",
             { path: ASSEMBLY_REPORT_PATH },
           ),
@@ -3118,11 +3337,11 @@ const compileRun = (
       const schemaPublication = yield* generateSchemaPublication.pipe(
         Effect.mapError((error) =>
           error._tag === "BangSchemaPublicationFailure"
-            ? candidateFailures.schemaPublication("producer-failed", error.message, {
-                path: error.path,
+            ? producerFailures.schemaPublication(error.message, {
+                path: projectMissionOwnedPath(runRoot, error.path, path),
                 cause: schemaPublicationCause(error),
               })
-            : candidateFailures.schemaPublication("platform-failed", error.message, {
+            : M037_DIGEST_FAILURE_BUILDERS["schema-publication"](error.message, {
                 cause: projectPlatformCause(error),
               }),
         ),
@@ -3131,8 +3350,8 @@ const compileRun = (
       const schemaCustody = yield* makeSchemaCustody(schemaEntries);
       yield* publishAtomically(runRoot, schemaEntries).pipe(
         Effect.mapError((error) =>
-          candidateFailures.schemaPublication("platform-failed", error.message, {
-            path: error.path,
+          missionPlatformFailures.schemaPublication(error.message, {
+            path: projectMissionOwnedPath(runRoot, error.path, path),
             cause: publicationCause(error),
           }),
         ),
@@ -3164,7 +3383,7 @@ const compileRun = (
       )
         return yield* Effect.fail(
           candidateFailures.classify(
-            "producer-failed",
+            "result-mismatch",
             "classification evidence does not equal the standalone target records",
             { path: CLASSIFICATION_REPORT_PATH },
           ),
@@ -3186,12 +3405,14 @@ const compileRun = (
       if (entries.length !== 21)
         return yield* Effect.fail(
           candidateFailures.comparison(
-            "observation-diverged",
+            "result-mismatch",
             "run did not produce the exact 21-file closure",
           ),
         );
       const inventory = yield* Effect.forEach(entries, (entry) =>
-        sha256Bytes(entry.bytes).pipe(Effect.map((sha256) => ({ path: entry.path, sha256 }))),
+        sha256Bytes(entry.bytes, M037_DIGEST_FAILURE_BUILDERS.comparison).pipe(
+          Effect.map((sha256) => ({ path: entry.path, sha256 })),
+        ),
       );
       const observations = [
         { result: directExplanation.result, entriesMatchAssembly: true },
@@ -3203,9 +3424,12 @@ const compileRun = (
       return {
         entries,
         inventory,
-        inventorySha256: yield* sha256Canonical(inventory),
+        inventorySha256: yield* sha256Canonical(inventory, M037_DIGEST_FAILURE_BUILDERS.comparison),
         observations,
-        observationsSha256: yield* sha256Canonical(observations),
+        observationsSha256: yield* sha256Canonical(
+          observations,
+          M037_DIGEST_FAILURE_BUILDERS.comparison,
+        ),
       };
     }),
   );
@@ -3621,7 +3845,7 @@ export const validateM037RunComparison = (
     )
       return Effect.fail(
         candidateFailures.comparison(
-          "observation-diverged",
+          "result-mismatch",
           "clean producer inventory structure differs",
         ),
       );
@@ -3634,10 +3858,7 @@ export const validateM037RunComparison = (
       firstEntry.path !== secondEntry.path
     )
       return Effect.fail(
-        candidateFailures.comparison(
-          "observation-diverged",
-          "clean producer inventory paths differ",
-        ),
+        candidateFailures.comparison("result-mismatch", "clean producer inventory paths differ"),
       );
     return Effect.fail(
       producerInventoryDivergedFailure(
@@ -3653,7 +3874,7 @@ export const validateM037RunComparison = (
     first.observationsSha256 !== second.observationsSha256
   )
     return Effect.fail(
-      candidateFailures.comparison("observation-diverged", "clean observation projections differ"),
+      candidateFailures.comparison("result-mismatch", "clean observation projections differ"),
     );
   return Effect.succeed({
     filesPerRun: 21,
@@ -3683,42 +3904,42 @@ const makeReport = (
       publicHostPreflight: embedded(
         "embedded/public-host-preflight.json" as const,
         preflight.value,
-        yield* sha256Canonical(preflight.value),
+        yield* sha256Canonical(preflight.value, M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       inputResolution: embedded(
         "embedded/input-resolution.json" as const,
         inputResolutionValue,
-        yield* sha256Canonical(inputResolutionValue),
+        yield* sha256Canonical(inputResolutionValue, M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       theoryApplicability: embedded(
         "embedded/theory-applicability.json" as const,
         first.observations[0],
-        yield* sha256Canonical(first.observations[0]),
+        yield* sha256Canonical(first.observations[0], M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       artifactIsolation: embedded(
         "embedded/artifact-isolation.json" as const,
         first.observations[1],
-        yield* sha256Canonical(first.observations[1]),
+        yield* sha256Canonical(first.observations[1], M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       audit: embedded(
         "embedded/audit.json" as const,
         first.observations[2],
-        yield* sha256Canonical(first.observations[2]),
+        yield* sha256Canonical(first.observations[2], M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       schemaCustody: embedded(
         "embedded/schema-custody.json" as const,
         first.observations[3],
-        yield* sha256Canonical(first.observations[3]),
+        yield* sha256Canonical(first.observations[3], M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       externalConsumerIsolation: embedded(
         "embedded/external-consumer-isolation.json" as const,
         first.observations[4],
-        yield* sha256Canonical(first.observations[4]),
+        yield* sha256Canonical(first.observations[4], M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
       producerInventoryComparison: embedded(
         "embedded/producer-inventory-comparison.json" as const,
         comparisonValue,
-        yield* sha256Canonical(comparisonValue),
+        yield* sha256Canonical(comparisonValue, M037_DIGEST_FAILURE_BUILDERS.accumulation),
       ),
     };
     const producerDigest = new Map<string, `sha256:${string}`>(
@@ -3824,10 +4045,11 @@ const makeReport = (
 
 export const validateM037ReportDigests = (
   report: M037FullCompilerCandidateReport,
+  digestFailure: M037DigestFailureBuilder,
 ): Effect.Effect<void, M037CandidateFailure, Crypto.Crypto> =>
   Effect.gen(function* () {
     for (const record of Object.values(report.embeddedRecords)) {
-      if ((yield* sha256Canonical(record.value)) !== record.sha256)
+      if ((yield* sha256Canonical(record.value, digestFailure)) !== record.sha256)
         return yield* Effect.fail(
           candidateFailures.decode("report-invalid", "embedded record digest is invalid", {
             path: record.path,
@@ -3855,14 +4077,17 @@ export const validateM037ReportDigests = (
           );
       }
     }
-    const inventorySha256 = yield* sha256Canonical(report.producerInventory);
-    const observationSha256 = yield* sha256Canonical([
-      report.embeddedRecords.theoryApplicability.value,
-      report.embeddedRecords.artifactIsolation.value,
-      report.embeddedRecords.audit.value,
-      report.embeddedRecords.schemaCustody.value,
-      report.embeddedRecords.externalConsumerIsolation.value,
-    ]);
+    const inventorySha256 = yield* sha256Canonical(report.producerInventory, digestFailure);
+    const observationSha256 = yield* sha256Canonical(
+      [
+        report.embeddedRecords.theoryApplicability.value,
+        report.embeddedRecords.artifactIsolation.value,
+        report.embeddedRecords.audit.value,
+        report.embeddedRecords.schemaCustody.value,
+        report.embeddedRecords.externalConsumerIsolation.value,
+      ],
+      digestFailure,
+    );
     const comparison = report.embeddedRecords.producerInventoryComparison.value;
     if (
       report.cleanRun.firstInventorySha256 !== inventorySha256 ||
@@ -3878,6 +4103,102 @@ export const validateM037ReportDigests = (
           "clean-run inventory or observation digest is invalid",
           { path: REPORT_PATH },
         ),
+      );
+  });
+
+const validateM037ReportSources = (
+  root: string,
+  report: M037FullCompilerCandidateReport,
+): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path | Crypto.Crypto> =>
+  Effect.gen(function* () {
+    for (const [index, { path: inputPath }] of INPUT_PATHS.entries()) {
+      const resolvedInputPath = yield* resolveContainedExistingPath(
+        root,
+        inputPath,
+        decodeReportFailure,
+        decodeReportFailure,
+        true,
+      );
+      const bytes = yield* readBytes(resolvedInputPath, inputPath, decodeReportFailure);
+      const digest = yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.decode);
+      if (digest !== report.inputs[index]!.sha256)
+        return yield* Effect.fail(
+          decodeReportFailure("live input digest differs from report", { path: inputPath }),
+        );
+    }
+
+    let gleamEvidenceBytes: Uint8Array | undefined;
+    let semanticArtifactBytes: Uint8Array | undefined;
+    for (const [index, producerPath] of PRODUCER_PATHS.entries()) {
+      const resolvedProducerPath = yield* resolveContainedExistingPath(
+        root,
+        producerPath,
+        decodeReportFailure,
+        decodeReportFailure,
+        true,
+      );
+      const bytes = yield* readBytes(resolvedProducerPath, producerPath, decodeReportFailure);
+      const digest = yield* sha256Bytes(bytes, M037_DIGEST_FAILURE_BUILDERS.decode);
+      if (digest !== report.producerInventory[index]!.sha256)
+        return yield* Effect.fail(
+          decodeReportFailure("live producer digest differs from report", {
+            path: producerPath,
+          }),
+        );
+      if (producerPath === GLEAM_EVIDENCE_PATH) gleamEvidenceBytes = bytes;
+      if (producerPath === SEMANTIC_ARTIFACT_PATH) semanticArtifactBytes = bytes;
+    }
+
+    if (gleamEvidenceBytes === undefined)
+      return yield* Effect.fail(
+        decodeReportFailure("live Gleam evidence producer is absent", {
+          path: GLEAM_EVIDENCE_PATH,
+        }),
+      );
+    const gleamEvidence = yield* Schema.decodeEffect(EvidenceFromJson)(
+      textDecoder.decode(gleamEvidenceBytes),
+      parseOptions,
+    ).pipe(
+      Effect.mapError(() =>
+        decodeReportFailure("live Gleam evidence producer is invalid", {
+          path: GLEAM_EVIDENCE_PATH,
+        }),
+      ),
+    );
+    if (
+      encodeCanonicalJson(gleamEvidence.observations) !==
+      encodeCanonicalJson(report.embeddedRecords.artifactIsolation.value.observation)
+    )
+      return yield* Effect.fail(
+        decodeReportFailure("embedded artifact observation differs from live Gleam evidence", {
+          path: "embedded/artifact-isolation.json",
+        }),
+      );
+
+    if (semanticArtifactBytes === undefined)
+      return yield* Effect.fail(
+        decodeReportFailure("live semantic artifact producer is absent", {
+          path: SEMANTIC_ARTIFACT_PATH,
+        }),
+      );
+    const applicability = yield* consumeExactOneCapabilityExecution(
+      textDecoder.decode(semanticArtifactBytes),
+      REQUIREMENT,
+    ).pipe(
+      Effect.mapError(() =>
+        decodeReportFailure("live semantic artifact producer is invalid", {
+          path: SEMANTIC_ARTIFACT_PATH,
+        }),
+      ),
+    );
+    if (
+      encodeCanonicalJson(applicability) !==
+      encodeCanonicalJson(report.embeddedRecords.theoryApplicability.value.result)
+    )
+      return yield* Effect.fail(
+        decodeReportFailure("embedded theory applicability differs from live semantic artifact", {
+          path: "embedded/theory-applicability.json",
+        }),
       );
   });
 
@@ -3923,7 +4244,8 @@ const decodeReportMode = (
         }),
       ),
     );
-    yield* validateM037ReportDigests(report);
+    yield* validateM037ReportDigests(report, M037_DIGEST_FAILURE_BUILDERS.decode);
+    yield* validateM037ReportSources(canonicalRoot, report);
     return `${reportPath}: valid`;
   });
 
@@ -3931,15 +4253,21 @@ export const publishM037Entries = (
   root: string,
   entries: ReadonlyArray<PublicationEntry>,
 ): Effect.Effect<void, M037CandidateFailure, FileSystem.FileSystem | Path.Path> =>
-  publishAtomically(root, entries).pipe(
-    Effect.mapError((error) =>
-      candidateFailures.publication(
-        error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
-        error.message,
-        { path: error.path, cause: publicationCause(error) },
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    yield* publishAtomically(root, entries).pipe(
+      Effect.mapError((error) =>
+        publicationFailure(
+          error.reason === "rollback-failed" ? "rollback-failed" : "publication-failed",
+          error.message,
+          {
+            path: projectMissionOwnedPath(root, error.path, path),
+            cause: publicationCause(error),
+          },
+        ),
       ),
-    ),
-  );
+    );
+  });
 
 const candidateProgram = (
   runtime: RuntimeBoundary,
@@ -4027,13 +4355,14 @@ const candidateProgram = (
         second,
         staleMembers,
       );
-      yield* validateM037ReportDigests(report).pipe(
+      yield* validateM037ReportDigests(report, M037_DIGEST_FAILURE_BUILDERS.accumulation).pipe(
         Effect.mapError((error) =>
-          candidateFailures.accumulation("report-invalid", error.message, {
-            ...(error.path === undefined ? {} : { path: error.path }),
-            ...(error.command === undefined ? {} : { command: error.command }),
-            ...(error.cause === undefined ? {} : { cause: error.cause }),
-          }),
+          error.reason === "digest-failed"
+            ? error
+            : candidateFailures.accumulation("report-invalid", error.message, {
+                ...(error.path === undefined ? {} : { path: error.path }),
+                ...(error.command === undefined ? {} : { command: error.command }),
+              }),
         ),
       );
       const reportBytes = textEncoder.encode(`${encodeCanonicalJson(report)}\n`);
@@ -4049,13 +4378,14 @@ const candidateProgram = (
           ),
         ),
       );
-      yield* validateM037ReportDigests(reloaded).pipe(
+      yield* validateM037ReportDigests(reloaded, M037_DIGEST_FAILURE_BUILDERS.accumulation).pipe(
         Effect.mapError((error) =>
-          candidateFailures.accumulation("report-invalid", error.message, {
-            ...(error.path === undefined ? {} : { path: error.path }),
-            ...(error.command === undefined ? {} : { command: error.command }),
-            ...(error.cause === undefined ? {} : { cause: error.cause }),
-          }),
+          error.reason === "digest-failed"
+            ? error
+            : candidateFailures.accumulation("report-invalid", error.message, {
+                ...(error.path === undefined ? {} : { path: error.path }),
+                ...(error.command === undefined ? {} : { command: error.command }),
+              }),
         ),
       );
       const finalEntries = [...first.entries, { path: REPORT_PATH, bytes: reportBytes }];
