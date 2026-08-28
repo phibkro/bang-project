@@ -57,7 +57,7 @@ M025 is complete through `bang project`. One project-owned selection composes th
 
 [M035](../design-specs/M035-external-extension-boundary.md) adds `bang export-schemas`. It generates one versioned publication under `dist/schemas/1/` — a digest-pinned manifest, three JSON Schema documents compiled from the live producer Schemas through Effect's JSON Schema generation, and consumer types with strict JSON decoders — replacing any same-version publication atomically with byte-identical output. The focused consumer journey copies only the publication and real artifact bytes into a temporary directory outside the workspace, runs a script importing solely publication entries plus node built-ins, verifies every recorded SHA-256 custody digest, strictly decodes the theory lock and evidence record, checks their agreement on theory identity, version, and package semantic digest, and prints one typed verdict; eight negative fixtures pin every rejection stage from publication custody through record agreement.
 
-[M036](../design-specs/M036-second-domain-realization-boundary-portability.md) is active with complete local acceptance evidence. Protected integration is pending.
+[M036](../design-specs/M036-second-domain-realization-boundary-portability.md) is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
 Its positive inputs are under `examples/clinic/`. Checked Core supplies the Clinic machine, operation, state, capability, failure, and realization identities.
 
@@ -72,6 +72,34 @@ Schema publication major 2 accepts the checked-Core-selected observation identit
 The external consumer uses strict decode, custody, and record agreement only. Its loader observes only the sandbox consumer, published consumer module, and required Node built-ins.
 
 No package or CLI verb was added. M036 does not add a generic target plugin protocol or move target-owned decrement behavior into Core.
+
+[M037](../design-specs/M037-full-compiler-candidate.md) remains active. Local acceptance is complete, and protected delivery is pending.
+
+The command composes existing Clinic explanation, qualification, planning, assembly, audit, schema publication, and external consumption. It adds no BANG CLI verb.
+
+Mission-root preflights check the supported `x86_64-linux` host, Git worktrees, Bash, Just, Bun, and Nix network and cache access.
+
+The copied artifact uses the real Erlang-store `escript`. Its child receives an artifact-only working directory and an Erlang-only replacement `PATH`.
+
+The report records narrow path-resolution facts. It does not claim filesystem sandboxing.
+
+The report separates historical mission citations from current digest-bound sources and new observations. It does not copy or combine evidence grades. Its six-family scorecard does not claim author-independent Clinic design or universal unification.
+
+The accepted report records 7 inputs, 24 stages, 8 embedded records, 21 producer files per clean run, 22 outputs, and 27 claims. Eleven claims are warranted, and 16 remain unsupported.
+
+The focused suite covers N01–N23 with 300 assertions. A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`.
+
+A comprehensive review then found one medium N20 gap. Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed it, and the focused and full gates passed.
+
+The current pre-push documentation review found only wording issues.
+
+An independent public executor completed the documented journey once at `8ee4e31b06105a54635410d973595ce47042cc49`. The executor then repeated only the candidate command.
+
+Both candidate-run reports at that revision had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The generated report and focused contract remain the detailed evidence roots. The repository map does not duplicate the 22-file inventory.
+
+M037 does not establish independent authorship, universal family unification, production correctness, distributed guarantees, filesystem sandboxing, or concurrent-reader isolation. It also does not establish recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 M018 keeps the quantity judgment in checked Core. The Effect target owns the grant state and its atomic consumption.
 

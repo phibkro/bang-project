@@ -276,12 +276,15 @@ Otherwise it belongs in Surface, Library, a target adapter, or research.
 36. M034 — audit one published assembly closure and requalify only its invalidated evidence.
 37. M035 — publish versioned semantic schemas and prove one out-of-workspace typed verdict.
 38. M036 — carry one checked-Core-selected Clinic operation through the M031–M035 path while preserving every TinyBank output byte.
+39. M037 — run one full compiler candidate from a clean checkout through one public command and one accumulated report. Local acceptance is complete. Protected delivery is pending.
 
 Completed nodes record evidence, not a fixed architecture. Active and future nodes remain hypotheses until one mission freezes their user-visible claim.
 
 M024 is complete through `bang trace`. M025 is complete through `bang project <selection>`. M026 and M027 are complete through `bang database <selection>`. M028 is complete through `bang evolve <selection>`. M029 and M030 are complete through `bang explain <selection>`. M031 is complete through `bang classify examples/tiny-bank/realizations/two-qualified-exact-one.json`. M032 is complete through `bang plan examples/tiny-bank/plans/supervised-exact-one.json`. M033 is complete through `bang assemble examples/tiny-bank/assemblies/supervised-exact-one.json`. M034 is complete through `bang audit <assembly-id>`. M035 is complete through `bang export-schemas`.
 
-M036 has complete local acceptance evidence. It remains active because protected integration is pending.
+M036 is complete through the checked Clinic qualification, planning, assembly, audit, and external-consumer path. Protected integration passed at `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
+
+M037 is the sole active mission. Local acceptance freezes the candidate boundary, and protected delivery remains pending.
 
 M031 turns heterogeneous realization classification into a fresh two-target execution journey. Effect TypeScript and supervised Gleam/BEAM consume the same checked packaged requirement, publish separate target-specific evidence, and qualify independently. Gleam actor-incarnation behavior remains target-owned; Core does not promise restart persistence or distributed exactly-once delivery.
 
@@ -311,7 +314,34 @@ Run `bun run evidence:m036` for the clean-worktree parity check. The machine rec
 
 The verifier is [`scripts/m036-clean-parity.ts`](scripts/m036-clean-parity.ts). Local `just verify` also passes.
 
-The M036 unsupported claims remain in its active contract. Local acceptance does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
+The M036 unsupported claims remain in its completed contract. M036 does not prove clinical correctness, distributed execution, liveness, or implementation conformance.
+M037 composes the existing Clinic path through one root Bun command. It adds no BANG CLI verb or semantic authority.
+
+The public host is `x86_64-linux`. Mission-root preflights check Git worktrees, Bash, Just 1.58.0, Bun 1.3.13, and Nix network and cache access.
+
+The copied artifact runs with the real Erlang-store `escript`. It receives an artifact-only working directory and an Erlang-only replacement `PATH`.
+
+M037 records narrow path-resolution facts. It does not claim filesystem sandboxing.
+
+The command runs two clean worktrees. It compares 21 producer files and five observation records before it publishes one 22-file enumerated batch. For handled failures, the publisher restores prior bytes only when rollback succeeds. A rollback failure makes no restoration claim. The batch is not one physical transaction and provides no concurrent-reader isolation or process-termination recovery.
+
+The accumulated report separates historical mission citations from current digest-bound sources. Its six-family scorecard does not claim universal semantic unification.
+
+M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
+
+A read-only evidence audit returned `PASS` at `feb322e23a11ffa5bc7fe06a2b6693b5f15a46de`. A comprehensive review then found one medium N20 cross-owner cause gap.
+
+Head `c8eb5550dca73f55b009efddff56dd7a3fcc17a2` fixed the gap. Its 23-test focused gate and `just verify` passed. The current pre-push documentation review found only wording issues.
+
+An independent public executor completed the documented journey once at `8ee4e31b06105a54635410d973595ce47042cc49`. The executor then repeated only the candidate command.
+
+The candidate commands, strict decode, and standalone artifact sequence succeeded with empty standard error. Both candidate-run reports at that revision had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+Each report records 7 inputs, 24 stages, 8 embedded records, 22 outputs, and 27 claims.
+
+The 11 warranted claims do not upgrade the 16 unsupported claims. M037 remains active until protected delivery records hosted integration evidence and a final protected revision.
+
+M037 does not establish independent Clinic authorship, universal family unification, clinical correctness, distributed durability, fairness, or filesystem sandboxing. It also does not establish concurrent-reader isolation, recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 ## Provisional full-compiler horizon
 
@@ -337,7 +367,7 @@ real BANG self-check
   → full compiler candidate
 ```
 
-Mission evidence can split, merge, reorder, replace, or remove each future node. [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md) defines the compiler acceptance signals. [Decision 0011](decisions/0011-semantic-data-service-exploration.md) defines the new product exploration.
+Mission evidence can split, merge, reorder, replace, or remove each later node. M037 activates the full compiler candidate node from [Decision 0010](decisions/0010-surface-inference-and-full-compiler-horizon.md).
 
 Bounded temporal protocols, feedback controllers, and adaptation remain optional semantic branches. They require separate missions and do not block the product tracer.
 

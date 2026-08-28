@@ -57,14 +57,111 @@ The completed vertical missions are listed below. See the [capability dependency
 - [M033 selected realization assembly](design-specs/M033-selected-realization-assembly.md).
 - [M034 continuous evidence invalidation](design-specs/M034-evidence-invalidation.md).
 - [M035 external extension boundary](design-specs/M035-external-extension-boundary.md).
+- [M036 second-domain realization boundary portability](design-specs/M036-second-domain-realization-boundary-portability.md).
 
 This monorepo contains the BANG specification language, Core, compilers, target projections, conformance tools, build tools, theories, and future realization packages. See the [repository map](docs/repository-map.md). A frozen mission must create pressure before a subsystem becomes a package.
 
 ## Current frontier
 
-M036 is the active mission. Its local acceptance evidence is complete, but delivery awaits protected integration.
+M037 is the active mission. It freezes one full compiler candidate from a clean checkout through one public command.
 
-The Clinic journey reuses the M031–M035 path. Checked Core supplies its identities and accepted shape, while each target owns its runtime behavior.
+The command uses the committed Clinic inputs and current typed compiler APIs in-process. It adds no child BANG CLI command, new BANG CLI verb, or semantic construct.
+
+M037 supports this public-host contract:
+
+| Host item | Required value or capability                                                        | Project-host observation     |
+| --------- | ----------------------------------------------------------------------------------- | ---------------------------- |
+| Platform  | `x86_64-linux`                                                                      | `x86_64-linux`               |
+| Git       | detached no-checkout worktree creation and cleanup                                  | `git version 2.55.0`         |
+| Bash      | `-euo pipefail` support because the `Justfile` selects Bash                         | GNU Bash `5.3.15(1)-release` |
+| Just      | exactly `just 1.58.0`                                                               | `just 1.58.0`                |
+| Bun       | exactly `1.3.13`                                                                    | `1.3.13`                     |
+| Nix       | `nix-command`, flakes, refreshed network resolution, and `https://cache.nixos.org/` | `nix (Nix) 2.34.8`           |
+
+The host must let Nix reach GitHub and the public Nix cache. Run `just install` before the candidate command.
+
+The mission root checks every version and capability before it creates the two run worktrees. The report records the normalized results.
+
+The active contract freezes this command:
+
+```sh
+bun run scripts/m037-full-compiler-candidate.ts examples/clinic/full-candidate.json
+```
+
+On success, standard output is exactly `.bang/evidence/M037.json`.
+
+A reviewer can strictly decode the report with:
+
+```sh
+bun run scripts/m037-full-compiler-candidate.ts --decode .bang/evidence/M037.json
+```
+
+The decode command prints exactly `.bang/evidence/M037.json: valid`.
+
+The artifact run resolves the real Erlang-store `escript` from the pinned environment. It hashes that executable.
+
+The child runs this exact process boundary:
+
+```text
+argv = [<absolute-erlang-store>/bin/escript, exact_one]
+cwd = <artifact-only-temp>
+env = {
+  HOME=<artifact-only-temp>
+  LANG=C.UTF-8
+  PATH=<absolute-erlang-store>/bin
+  ERL_ROOTDIR=<absolute-erlang-store>/lib/erlang
+  ERL_CRASH_DUMP_SECONDS=0
+}
+```
+
+The working directory contains only the copied artifact. Workspace sentinels and `gleam` must not resolve through the working directory or `PATH`.
+
+This process boundary is not a filesystem sandbox. The mission does not claim that it denies absolute host paths.
+
+After the candidate command publishes the artifact, run this sequence from the repository root:
+
+```sh
+(
+  set -euo pipefail
+  ARTIFACT="$(realpath .bang/assemblies/clinic-supervised-exact-one/bin/exact_one)"
+  TOOLCHAIN="$(nix build --file nix/gleam.nix --no-link --print-out-paths)"
+  ESCRIPT="$(readlink -f "$TOOLCHAIN/bin/escript")"
+  ERLANG_STORE="${ESCRIPT%/bin/escript}"
+  RUN_DIR="$(mktemp -d /tmp/bang-m037-artifact.XXXXXXXXXX)"
+  trap 'rm -rf "$RUN_DIR"' EXIT
+  cp "$ARTIFACT" "$RUN_DIR/exact_one"
+  (
+    cd "$RUN_DIR"
+    env -i \
+      HOME="$RUN_DIR" \
+      LANG=C.UTF-8 \
+      PATH="$ERLANG_STORE/bin" \
+      ERL_ROOTDIR="$ERLANG_STORE/lib/erlang" \
+      ERL_CRASH_DUMP_SECONDS=0 \
+      "$ESCRIPT" exact_one
+  ) | sed -n '/^BANG_M031_RESULT|/p'
+)
+```
+
+The sequence uses `nix/gleam.nix` to resolve the pinned Erlang-store `escript`. The artifact process receives only the Erlang-store bin directory in `PATH`.
+
+Standard output is exactly:
+
+```text
+BANG_M031_RESULT|{"target":"gleam-beam","realization":"BookAppointmentOnce","entity":"appointment-book-1","validCall":true,"reuse":true,"competing":true,"competingSuccesses":1,"competingRejections":1,"wrongDestination":true,"disabled":true,"defect":true,"stateTrace":{"valid":"10>6","reuse":"6>6","competing":"6>4","wrongDestination":"4>4","disabled":"4>4","defect":"4>10","stale":"10>10","replacement":"10>7"},"remainingTrace":{"valid":"1>0","reuse":"0>0","competing":"1>0","wrongDestination":"1>1","disabled":"1>1","defect":"1>0","stale":"0>0","replacement":"1>0"},"actorRestart":{"oldGrantRejected":true,"freshGrantDistinct":true,"replacementGrantAccepted":true},"supervised":true}
+```
+
+Standard error is empty. The exit trap removes the temporary directory and its copied artifact.
+
+The mission script provisions Node 24.7.0 from one immutable Nixpkgs revision. It does not use ambient Node.
+
+It does not change `package.json` or `bun.lock`.
+
+The merge-blocking quality job pins its `setup-just` input to `1.58.0`. It runs M036 parity, the focused M037 test, and `just verify`. M037 adds no package script.
+
+M037 does not claim author-independent Clinic design. M036 created the Clinic inputs.
+
+The six-family scorecard separates historical mission citations from current digest-bound sources and new observations.
 
 ## Experience the current capability
 
@@ -125,7 +222,7 @@ M035 established the public `bang export-schemas` boundary. The current command 
 
 Major 2 accepts checked-Core-selected realization and entity identifiers in target evidence. Major 1 fixed those fields to TinyBank literals.
 
-M036 has complete local acceptance evidence. Protected integration is pending, so the mission remains active.
+M036 is complete at protected revision `5e45b1242c74c6a5306b0817ddd08814b68292a9`.
 
 Checked Core selects `AppointmentBook`, its operation and state shapes, `ConfirmBooking`, `BookingRejectedOnce`, and `BookAppointmentOnce`. Each target owns the decrement.
 
@@ -156,6 +253,22 @@ Local `just verify` passes its `check`, completed previews, full test chain, and
 M036 does not establish a Core decrement law or clinical correctness. It does not establish durable exact-once execution, liveness, fairness, or broader target shapes.
 
 It also does not generalize to arbitrary domains. External validity does not prove implementation conformance or evidence truth.
+
+M037 remains active. Local acceptance is complete, and protected delivery is pending.
+
+Its candidate command composes the Clinic chain through artifact execution, audit, schema publication, and external consumption. The public host has frozen tool preflights.
+
+The command writes `.bang/evidence/M037.json`. It compares two clean 21-file producer inventories and five observation projections before one 22-file enumerated publication.
+
+The report records 27 claims. Eleven claims are warranted, and 16 claims remain unsupported.
+
+At `8ee4e31b06105a54635410d973595ce47042cc49`, an independent public executor completed the documented journey once. The executor then repeated only the candidate command. Both candidate-run reports had SHA-256 `5e952284236721ccda52a6334b47500f201cbd305af9df3c42352493c13e91b4`.
+
+The copied artifact uses a real Erlang-store `escript`, an artifact-only working directory, and an Erlang-only `PATH`. This boundary does not provide filesystem sandboxing.
+
+For handled failures, publication restores prior bytes only when rollback succeeds. A rollback failure makes no restoration claim. The batch is not one physical transaction and provides no concurrent-reader isolation or process-termination recovery.
+
+M037 does not claim independent Clinic authorship, universal six-family unification, production clinical correctness, distributed guarantees, or filesystem sandboxing. It also does not claim recovery from rollback failure, rollback under process termination, deployment, security, or performance.
 
 The install prepares the pinned `@effect/tsgo` language server. VS Code-family editors use the repository settings under `.vscode/`; other editors should invoke the executable reported by `bunx effect-tsgo get-exe-path`. Run `bun run check:effect-lsp` to observe both the clean project and a deliberately floating Effect counterexample.
 
